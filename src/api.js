@@ -1,4 +1,4 @@
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz-cIUAk93mk-Aswh85-z5Mq3jmR8pXBAIsA_Ju36bzDxxUZiDupsGkN7Y9qod9yGzM/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbybaTaAJQTRlpzu68jqG3MnHwyWXfZswF7tYyH-uBNmUUkYakquzTyTxxSSXeunrdsA/exec';
 
 export const loginUser = async (name, passcode) => {
   const response = await fetch(SCRIPT_URL, {

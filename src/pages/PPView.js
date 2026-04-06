@@ -2,9 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { submitIssuance, getRecords, getDropdowns } from '../api';
 
 function PPView({ user, onLogout }) {
-  const [form, setForm] = useState({
+const [form, setForm] = useState({
     issueDate: new Date().toLocaleDateString('en-GB'),
     poNumber: '',
+    joNumber: '',
+    article: '',
+    receivingVendor: '',
     garmentType: '',
     fabricName: '',
     fabricColor: '',
@@ -14,9 +17,10 @@ function PPView({ user, onLogout }) {
     issueRemarks: ''
   });
 
-  const [dropdowns, setDropdowns] = useState({
+const [dropdowns, setDropdowns] = useState({
     garmentTypes: [],
     units: [],
+    receivingVendors: []
   });
 
   const [records, setRecords] = useState([]);
@@ -45,7 +49,8 @@ function PPView({ user, onLogout }) {
       if (dropdownsRes.success) {
         setDropdowns({
           garmentTypes: dropdownsRes.garmentTypes,
-          units: dropdownsRes.units
+          units: dropdownsRes.units,
+          receivingVendors: dropdownsRes.receivingVendors
         });
       }
     } catch (err) {
@@ -65,7 +70,7 @@ function PPView({ user, onLogout }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const required = ['poNumber', 'garmentType', 'fabricName', 'fabricColor', 'noOfThaan', 'qtyIssued', 'unit'];
+    const required = ['poNumber', 'joNumber', 'receivingVendor', 'garmentType', 'fabricName', 'fabricColor', 'noOfThaan', 'qtyIssued', 'unit'];
     for (let field of required) {
       if (!form[field].toString().trim()) {
         setMessage({ type: 'error', text: 'Please fill all required fields.' });
@@ -87,6 +92,9 @@ function PPView({ user, onLogout }) {
         setForm({
           issueDate: new Date().toLocaleDateString('en-GB'),
           poNumber: '',
+          joNumber: '',
+          article: '',
+          receivingVendor: '',
           garmentType: '',
           fabricName: '',
           fabricColor: '',
@@ -164,6 +172,42 @@ function PPView({ user, onLogout }) {
                   value={form.poNumber}
                   onChange={handleChange}
                 />
+              </div>
+
+              <div className="form-group">
+                <label>JO Number *</label>
+                <input
+                  type="text"
+                  name="joNumber"
+                  placeholder="e.g. JO-001"
+                  value={form.joNumber}
+                  onChange={handleChange}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Article</label>
+                <input
+                  type="text"
+                  name="article"
+                  placeholder="e.g. Shalwar Kameez"
+                  value={form.article}
+                  onChange={handleChange}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Receiving Vendor *</label>
+                <select
+                  name="receivingVendor"
+                  value={form.receivingVendor}
+                  onChange={handleChange}
+                >
+                  <option value="">Select vendor</option>
+                  {dropdowns.receivingVendors.map(v => (
+                    <option key={v} value={v}>{v}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="form-group">
@@ -292,27 +336,33 @@ function PPView({ user, onLogout }) {
                 <thead>
                   <tr>
                     <th>Record ID</th>
-                    <th>Date</th>
-                    <th>PO</th>
-                    <th>Lot</th>
-                    <th>Fabric</th>
-                    <th>Color</th>
-                    <th>Qty</th>
-                    <th>Unit</th>
-                    <th>Status</th>
+<th>Date</th>
+<th>PO</th>
+<th>JO</th>
+<th>Lot</th>
+<th>Article</th>
+<th>Vendor</th>
+<th>Fabric</th>
+<th>Color</th>
+<th>Qty</th>
+<th>Unit</th>
+<th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {records.map((r, i) => (
                     <tr key={i}>
                       <td>{r.Record_ID}</td>
-                      <td>{r.Issue_Date}</td>
-                      <td>{r.PO_Number}</td>
-                      <td>{r.Lot_Number}</td>
-                      <td>{r.Fabric_Name}</td>
-                      <td>{r.Fabric_Color}</td>
-                      <td>{r.Qty_Issued}</td>
-                      <td>{r.Unit}</td>
+<td>{r.Issue_Date ? new Date(r.Issue_Date).toLocaleDateString('en-GB') : '—'}</td>
+<td>{r.PO_Number}</td>
+<td>{r.JO_Number}</td>
+<td>{r.Lot_Number}</td>
+<td>{r.Article || '—'}</td>
+<td>{r.Receiving_Vendor}</td>
+<td>{r.Fabric_Name}</td>
+<td>{r.Fabric_Color}</td>
+<td>{r.Qty_Issued}</td>
+<td>{r.Unit}</td>
                       <td>
                         <span className={getStatusBadge(r.Acceptance_Status || r.Issue_Status)}>
                           {r.Acceptance_Status || r.Issue_Status}

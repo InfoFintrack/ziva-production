@@ -38,7 +38,7 @@ function CuttingView({ user, onLogout }) {
     setLoading(false);
   };
 
-  const pendingRecords = records.filter(r => r.Issue_Status === 'Issued' && !r.Acceptance_Status);
+  const pendingRecords = records.filter(r => r.Issue_Status === 'Issued' && !r.Acceptance_Status && r.Receiving_Vendor === 'Cutting');
   const completedRecords = records.filter(r => r.Acceptance_Status);
 
   const handleSelect = (record) => {
@@ -329,22 +329,24 @@ function CuttingView({ user, onLogout }) {
                   <thead>
                     <tr>
                       <th>Record ID</th>
-                      <th>PO</th>
-                      <th>Lot</th>
-                      <th>Qty Issued</th>
-                      <th>Qty Received</th>
-                      <th>Discrepancy</th>
-                      <th>Condition</th>
-                      <th>Status</th>
+<th>Date</th>
+<th>PO</th>
+<th>Lot</th>
+<th>Qty Issued</th>
+<th>Qty Received</th>
+<th>Discrepancy</th>
+<th>Condition</th>
+<th>Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {completedRecords.map((r, i) => (
                       <tr key={i}>
                         <td>{r.Record_ID}</td>
-                        <td>{r.PO_Number}</td>
-                        <td>{r.Lot_Number}</td>
-                        <td>{r.Qty_Issued}</td>
+<td>{r.Issue_Date ? new Date(r.Issue_Date).toLocaleDateString('en-GB') : '—'}</td>
+<td>{r.PO_Number}</td>
+<td>{r.Lot_Number}</td>
+<td>{r.Qty_Issued}</td>
                         <td>{r.Qty_Received}</td>
                         <td className={Number(r.Discrepancy) > 0 ? 'discrepancy-flag' : ''}>
                           {Number(r.Discrepancy) > 0 ? `⚠ ${r.Discrepancy}` : '✓ 0'}

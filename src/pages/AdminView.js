@@ -217,30 +217,36 @@ function AdminView({ user, onLogout }) {
                 <thead>
                   <tr>
                     <th>Record ID</th>
-                    <th>Date</th>
-                    <th>PO</th>
-                    <th>Lot</th>
-                    <th>Fabric</th>
-                    <th>Color</th>
-                    <th>Qty Issued</th>
-                    <th>Qty Received</th>
-                    <th>Discrepancy</th>
-                    <th>Condition</th>
-                    <th>Issued By</th>
-                    <th>Accepted By</th>
-                    <th>Status</th>
-                    <th>Override</th>
+<th>Date</th>
+<th>PO</th>
+<th>JO</th>
+<th>Article</th>
+<th>Vendor</th>
+<th>Lot</th>
+<th>Fabric</th>
+<th>Color</th>
+<th>Qty Issued</th>
+<th>Qty Received</th>
+<th>Discrepancy</th>
+<th>Condition</th>
+<th>Issued By</th>
+<th>Accepted By</th>
+<th>Status</th>
+<th>Override</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredRecords.map((r, i) => (
                     <tr key={i}>
                       <td>{r.Record_ID}</td>
-                      <td>{r.Issue_Date}</td>
-                      <td>{r.PO_Number}</td>
-                      <td>{r.Lot_Number}</td>
-                      <td>{r.Fabric_Name}</td>
-                      <td>{r.Fabric_Color}</td>
+<td>{r.Issue_Date ? new Date(r.Issue_Date).toLocaleDateString('en-GB') : '—'}</td>
+<td>{r.PO_Number}</td>
+<td>{r.JO_Number}</td>
+<td>{r.Article || '—'}</td>
+<td>{r.Receiving_Vendor}</td>
+<td>{r.Lot_Number}</td>
+<td>{r.Fabric_Name}</td>
+<td>{r.Fabric_Color}</td>
                       <td>{r.Qty_Issued}</td>
                       <td>{r.Qty_Received || '—'}</td>
                       <td className={Number(r.Discrepancy) > 0 ? 'discrepancy-flag' : ''}>
