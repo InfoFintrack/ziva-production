@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from 'react';
 import { submitIssuance, getRecords, getDropdowns } from '../api';
 
@@ -29,12 +30,7 @@ const [dropdowns, setDropdowns] = useState({
   const [message, setMessage] = useState(null);
   const [lotPreview, setLotPreview] = useState('Auto-generated on submit');
 
-useEffect(() => {
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+const loadData = async () => {
     setLoading(true);
     try {
       const [recordsRes, dropdownsRes] = await Promise.all([
@@ -59,6 +55,10 @@ useEffect(() => {
     }
     setLoading(false);
   };
+
+  useEffect(() => {
+    loadData(); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
