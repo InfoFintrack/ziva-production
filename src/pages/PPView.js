@@ -29,7 +29,8 @@ const [dropdowns, setDropdowns] = useState({
   const [message, setMessage] = useState(null);
   const [lotPreview, setLotPreview] = useState('Auto-generated on submit');
 
-  useEffect(() => {
+useEffect(() => {
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     loadData();
   }, []);
 
