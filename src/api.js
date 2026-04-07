@@ -1,63 +1,74 @@
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbybaTaAJQTRlpzu68jqG3MnHwyWXfZswF7tYyH-uBNmUUkYakquzTyTxxSSXeunrdsA/exec';
+const BASE_URL = '';
 
-export const loginUser = async (name, passcode) => {
-  const response = await fetch(SCRIPT_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify({
-      action: 'login',
-      name,
-      passcode: passcode.toString()
-    })
+const getToken = () => sessionStorage.getItem('zivaToken');
+
+const authFetch = async (url, options = {}) => {
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${getToken()}`,
+      ...(options.headers || {}),
+    },
   });
-  return response.json();
+  if (res.status === 401) {
+    sessionStorage.clear();
+    window.location.href = '/';
+    return { success: false, message: 'Session expired. Please log in again.' };
+  }
+  return res.json();
 };
 
-export const submitIssuance = async (formData) => {
-  const response = await fetch(SCRIPT_URL, {
+const post = (path, body) =>
+  authFetch(`${BASE_URL}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify({
-      action: 'submitIssuance',
-      ...formData
-    })
+    body: JSON.stringify(body),
   });
-  return response.json();
-};
 
-export const submitAcceptance = async (formData) => {
-  const response = await fetch(SCRIPT_URL, {
+export const loginUser = (name, passcode) =>
+  fetch(`${BASE_URL}/api/login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify({
-      action: 'submitAcceptance',
-      ...formData
-    })
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, passcode: passcode.toString() }),
+  }).then((r) => r.json());
+
+export const submitIssuance = (formData) =>
+  post('/api/issuance', formData);
+
+export const submitAcceptance = (formData) =>
+  post('/api/acceptance', formData);
+
+export const adminOverride = (recordId, field, newValue, adminName) =>
+  post('/api/override', { recordId, field, newValue, adminName });
+
+export const getRecords = () =>
+  authFetch(`${BASE_URL}/api/records`);
+
+export const getDropdowns = () =>
+  authFetch(`${BASE_URL}/api/dropdowns`);
+
+export const getUsers = () =>
+  authFetch(`${BASE_URL}/api/users`);
+
+export const addUser = (userData) =>
+  post('/api/users', userData);
+
+export const editUser = ({ userId, name, passcode, role }) =>
+  authFetch(`/api/users?id=${encodeURIComponent(userId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ name, passcode, role }),
   });
-  return response.json();
-};
 
-export const adminOverride = async (recordId, field, newValue, adminName) => {
-  const response = await fetch(SCRIPT_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify({
-      action: 'adminOverride',
-      recordId,
-      field,
-      newValue,
-      adminName
-    })
+export const deactivateUser = (userId, currentStatus) =>
+  authFetch(`/api/users?id=${encodeURIComponent(userId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ currentStatus }),
   });
-  return response.json();
-};
 
-export const getRecords = async () => {
-  const response = await fetch(`${SCRIPT_URL}?action=getRecords`);
-  return response.json();
-};
+export const addDropdownValue = (field, value) =>
+  post('/api/dropdowns', { field: field.toLowerCase(), value });
 
-export const getDropdowns = async () => {
-  const response = await fetch(`${SCRIPT_URL}?action=getDropdowns`);
-  return response.json();
-};
+export const removeDropdownValue = (field, value) =>
+  authFetch(`/api/dropdowns?field=${field.toLowerCase()}&value=${encodeURIComponent(value)}`, {
+    method: 'DELETE',
+  });

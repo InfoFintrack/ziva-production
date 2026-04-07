@@ -4,6 +4,7 @@ import Login from './pages/Login';
 import PPView from './pages/PPView';
 import CuttingView from './pages/CuttingView';
 import AdminView from './pages/AdminView';
+import AdminSettings from './pages/AdminSettings';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -13,12 +14,14 @@ function App() {
     if (savedUser) setUser(JSON.parse(savedUser));
   }, []);
 
-  const handleLogin = (userData) => {
+  const handleLogin = ({ token, ...userData }) => {
+    sessionStorage.setItem('zivaToken', token);
     sessionStorage.setItem('zivaUser', JSON.stringify(userData));
     setUser(userData);
   };
 
   const handleLogout = () => {
+    sessionStorage.removeItem('zivaToken');
     sessionStorage.removeItem('zivaUser');
     setUser(null);
   };
@@ -46,6 +49,11 @@ function App() {
         <Route path="/admin" element={
           user.role === 'Admin'
             ? <AdminView user={user} onLogout={handleLogout} />
+            : <Navigate to="/" />
+        } />
+        <Route path="/admin/settings" element={
+          user.role === 'Admin'
+            ? <AdminSettings user={user} onLogout={handleLogout} />
             : <Navigate to="/" />
         } />
       </Routes>

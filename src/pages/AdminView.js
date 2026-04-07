@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getRecords, adminOverride } from '../api';
 
 function AdminView({ user, onLogout }) {
+  const navigate = useNavigate();
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
@@ -102,6 +104,13 @@ function AdminView({ user, onLogout }) {
         <div className="user-info">
           <span>Welcome, {user.name}</span>
           <span className="role-badge">Admin</span>
+          <button
+            className="btn btn-small"
+            onClick={() => navigate('/admin/settings')}
+            style={{ background: '#e0e7ff', color: '#0f3460' }}
+          >
+            ⚙ Settings
+          </button>
           <button className="btn btn-danger btn-small" onClick={onLogout}>
             Logout
           </button>

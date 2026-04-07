@@ -58,7 +58,6 @@ function Login({ onLogin }) {
               value={passcode}
               onChange={(e) => setPasscode(e.target.value)}
               disabled={loading}
-              maxLength={6}
             />
           </div>
 

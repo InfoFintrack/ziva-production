@@ -40,6 +40,7 @@ function CuttingView({ user, onLogout }) {
 
   const pendingRecords = records.filter(r => r.Issue_Status === 'Issued' && !r.Acceptance_Status && r.Receiving_Vendor === 'Cutting');
   const completedRecords = records.filter(r => r.Acceptance_Status);
+  const historyRecords = records.filter(r => r.Accepted_By === user.name);
 
   const handleSelect = (record) => {
     setSelectedRecord(record);
@@ -261,6 +262,13 @@ function CuttingView({ user, onLogout }) {
               Completed ({completedRecords.length})
             </button>
             <button
+              className={`btn btn-small`}
+              onClick={() => setTab('history')}
+              style={{ width: 'auto', background: tab === 'history' ? '#0f3460' : '#e0e7ff', color: tab === 'history' ? 'white' : '#0f3460' }}
+            >
+              My History ({historyRecords.length})
+            </button>
+            <button
               className="btn btn-small"
               onClick={loadData}
               style={{ width: 'auto', background: '#f0f2f5', color: '#333', marginLeft: 'auto' }}
@@ -318,7 +326,7 @@ function CuttingView({ user, onLogout }) {
                 </table>
               </div>
             )
-          ) : (
+          ) : tab === 'completed' ? (
             completedRecords.length === 0 ? (
               <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>
                 No completed records yet.
@@ -329,29 +337,72 @@ function CuttingView({ user, onLogout }) {
                   <thead>
                     <tr>
                       <th>Record ID</th>
-<th>Date</th>
-<th>PO</th>
-<th>Lot</th>
-<th>Qty Issued</th>
-<th>Qty Received</th>
-<th>Discrepancy</th>
-<th>Condition</th>
-<th>Status</th>
+                      <th>Date</th>
+                      <th>PO</th>
+                      <th>Lot</th>
+                      <th>Qty Issued</th>
+                      <th>Qty Received</th>
+                      <th>Discrepancy</th>
+                      <th>Condition</th>
+                      <th>Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {completedRecords.map((r, i) => (
                       <tr key={i}>
                         <td>{r.Record_ID}</td>
-<td>{r.Issue_Date ? new Date(r.Issue_Date).toLocaleDateString('en-GB') : '—'}</td>
-<td>{r.PO_Number}</td>
-<td>{r.Lot_Number}</td>
-<td>{r.Qty_Issued}</td>
+                        <td>{r.Issue_Date ? new Date(r.Issue_Date).toLocaleDateString('en-GB') : '—'}</td>
+                        <td>{r.PO_Number}</td>
+                        <td>{r.Lot_Number}</td>
+                        <td>{r.Qty_Issued}</td>
                         <td>{r.Qty_Received}</td>
                         <td className={Number(r.Discrepancy) > 0 ? 'discrepancy-flag' : ''}>
                           {Number(r.Discrepancy) > 0 ? `⚠ ${r.Discrepancy}` : '✓ 0'}
                         </td>
                         <td>{r.Fabric_Condition}</td>
+                        <td>
+                          <span className={getStatusBadge(r.Acceptance_Status)}>
+                            {r.Acceptance_Status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          ) : (
+            historyRecords.length === 0 ? (
+              <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>
+                No records accepted by you yet.
+              </p>
+            ) : (
+              <div className="table-container">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Record ID</th>
+                      <th>Date</th>
+                      <th>PO</th>
+                      <th>Lot</th>
+                      <th>Qty Issued</th>
+                      <th>Qty Received</th>
+                      <th>Discrepancy</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historyRecords.map((r, i) => (
+                      <tr key={i}>
+                        <td>{r.Record_ID}</td>
+                        <td>{r.Issue_Date ? new Date(r.Issue_Date).toLocaleDateString('en-GB') : '—'}</td>
+                        <td>{r.PO_Number}</td>
+                        <td>{r.Lot_Number}</td>
+                        <td>{r.Qty_Issued} {r.Unit}</td>
+                        <td>{r.Qty_Received} {r.Unit}</td>
+                        <td className={Number(r.Discrepancy) > 0 ? 'discrepancy-flag' : ''}>
+                          {Number(r.Discrepancy) > 0 ? `⚠ ${r.Discrepancy}` : '✓ 0'}
+                        </td>
                         <td>
                           <span className={getStatusBadge(r.Acceptance_Status)}>
                             {r.Acceptance_Status}
