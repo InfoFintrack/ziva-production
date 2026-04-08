@@ -46,6 +46,9 @@ export default async function handler(req, res) {
       Issue_Remarks:      r.issue_remarks,
       Acceptance_Remarks: r.acceptance_remarks,
       Article:            r.article,
+      Fabric_Width:       r.fabric_width,
+      Accessories:        r.accessories,
+      Laces:              r.laces,
     }));
 
     res.json({ success: true, records });

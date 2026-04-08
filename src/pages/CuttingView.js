@@ -153,6 +153,22 @@ function CuttingView({ user, onLogout }) {
                   ['No. of Thaan', selectedRecord.No_of_Thaan],
                   ['Qty Issued', `${selectedRecord.Qty_Issued} ${selectedRecord.Unit}`],
                   ['Issued By', selectedRecord.Issued_By],
+                  ['Accessories', (() => {
+                    try {
+                      const items = selectedRecord.Accessories ? JSON.parse(selectedRecord.Accessories) : [];
+                      return items.length > 0
+                        ? items.map(a => `${a.type}: ${a.qty} ${a.unit}`).join(', ')
+                        : 'None';
+                    } catch { return 'None'; }
+                  })()],
+                  ['Laces', (() => {
+                    try {
+                      const items = selectedRecord.Laces ? JSON.parse(selectedRecord.Laces) : [];
+                      return items.length > 0
+                        ? items.map(l => `${l.laceType}: ${l.qty} ${l.unit}`).join(', ')
+                        : 'None';
+                    } catch { return 'None'; }
+                  })()],
                 ].map(([label, value]) => (
                   <div className="form-group" key={label}>
                     <label>{label}</label>

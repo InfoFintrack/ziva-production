@@ -2,7 +2,7 @@ const { getPool } = require('./_lib/db');
 const { authenticateToken } = require('./_lib/auth');
 
 const VALID_DROPDOWN_FIELDS = new Set([
-  'garment_type', 'unit', 'fabric_condition', 'receiving_vendor',
+  'garment_type', 'unit', 'fabric_condition', 'receiving_vendor', 'accessory_type',
 ]);
 
 export default async function handler(req, res) {
@@ -30,6 +30,7 @@ export default async function handler(req, res) {
         units:            group('unit'),
         fabricConditions: group('fabric_condition'),
         receivingVendors: group('receiving_vendor'),
+        accessoryTypes:   group('accessory_type'),
       });
     } catch (err) {
       console.error('Dropdowns GET error:', err.message);

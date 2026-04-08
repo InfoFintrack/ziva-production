@@ -43,6 +43,7 @@ export default async function handler(req, res) {
     poNumber, joNumber, receivingVendor, garmentType,
     fabricName, fabricColor, qtyIssued, unit,
     noOfThaan, issuedBy, issueRemarks, article,
+    fabricWidth, accessories, laces,
   } = req.body;
 
   if (!poNumber || !fabricName || !qtyIssued || !issuedBy) {
@@ -59,11 +60,13 @@ export default async function handler(req, res) {
       `INSERT INTO fabric_movement
          (record_id, issue_date, po_number, jo_number, lot_number, receiving_vendor,
           garment_type, fabric_name, fabric_color, qty_issued, unit, no_of_thaan,
-          issued_by, issue_remarks, article, issue_status, created_at)
-       VALUES ($1, NOW(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'Issued', NOW())`,
+          issued_by, issue_remarks, article, fabric_width, accessories, laces,
+          issue_status, created_at)
+       VALUES ($1, NOW(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'Issued', NOW())`,
       [recordId, poNumber, joNumber, lotNumber, receivingVendor,
        garmentType, fabricName, fabricColor, qtyIssued, unit,
-       noOfThaan, issuedBy, issueRemarks, article]
+       noOfThaan, issuedBy, issueRemarks, article,
+       fabricWidth || null, accessories || null, laces || null]
     );
 
     await pool.query(

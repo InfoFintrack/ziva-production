@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { submitIssuance, getRecords, getDropdowns } from '../api';
 
+const ACCESSORY_UNITS = ['Meters', 'Yards', 'Pieces', 'KG'];
+
 function PPView({ user, onLogout }) {
 const [form, setForm] = useState({
     issueDate: new Date().toLocaleDateString('en-GB'),
@@ -15,13 +17,18 @@ const [form, setForm] = useState({
     noOfThaan: '',
     qtyIssued: '',
     unit: '',
+    fabricWidth: '',
     issueRemarks: ''
   });
+
+  const [accessories, setAccessories] = useState([]);
+  const [laces, setLaces] = useState([]);
 
 const [dropdowns, setDropdowns] = useState({
     garmentTypes: [],
     units: [],
-    receivingVendors: []
+    receivingVendors: [],
+    accessoryTypes: [],
   });
 
   const [records, setRecords] = useState([]);
@@ -47,7 +54,8 @@ const loadData = async () => {
         setDropdowns({
           garmentTypes: dropdownsRes.garmentTypes,
           units: dropdownsRes.units,
-          receivingVendors: dropdownsRes.receivingVendors
+          receivingVendors: dropdownsRes.receivingVendors,
+          accessoryTypes: dropdownsRes.accessoryTypes || [],
         });
       }
     } catch (err) {
@@ -69,6 +77,55 @@ const loadData = async () => {
     }
   };
 
+  // Accessories handlers
+  const addAccessory = () => {
+    if (accessories.length >= 10) return;
+    setAccessories(prev => [...prev, { type: '', qty: '', unit: '' }]);
+  };
+
+  const removeAccessory = (index) => {
+    setAccessories(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleAccessoryChange = (index, field, value) => {
+    setAccessories(prev => prev.map((a, i) => i === index ? { ...a, [field]: value } : a));
+  };
+
+  // Laces handlers
+  const addLace = () => {
+    if (laces.length >= 10) return;
+    setLaces(prev => [...prev, { laceType: '', qty: '', unit: '' }]);
+  };
+
+  const removeLace = (index) => {
+    setLaces(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleLaceChange = (index, field, value) => {
+    setLaces(prev => prev.map((l, i) => i === index ? { ...l, [field]: value } : l));
+  };
+
+  const resetForm = () => {
+    setForm({
+      issueDate: new Date().toLocaleDateString('en-GB'),
+      poNumber: '',
+      joNumber: '',
+      article: '',
+      receivingVendor: '',
+      garmentType: '',
+      fabricName: '',
+      fabricColor: '',
+      noOfThaan: '',
+      qtyIssued: '',
+      unit: '',
+      fabricWidth: '',
+      issueRemarks: ''
+    });
+    setAccessories([]);
+    setLaces([]);
+    setLotPreview('Auto-generated on submit');
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     const required = ['poNumber', 'joNumber', 'receivingVendor', 'garmentType', 'fabricName', 'fabricColor', 'noOfThaan', 'qtyIssued', 'unit'];
@@ -83,6 +140,8 @@ const loadData = async () => {
     try {
       const result = await submitIssuance({
         ...form,
+        accessories: accessories.length > 0 ? JSON.stringify(accessories) : null,
+        laces: laces.length > 0 ? JSON.stringify(laces) : null,
         issuedBy: user.name
       });
       if (result.success) {
@@ -90,21 +149,7 @@ const loadData = async () => {
           type: 'success',
           text: `✓ Fabric issued successfully! Record ID: ${result.recordId} | Lot: ${result.lotNumber}`
         });
-        setForm({
-          issueDate: new Date().toLocaleDateString('en-GB'),
-          poNumber: '',
-          joNumber: '',
-          article: '',
-          receivingVendor: '',
-          garmentType: '',
-          fabricName: '',
-          fabricColor: '',
-          noOfThaan: '',
-          qtyIssued: '',
-          unit: '',
-          issueRemarks: ''
-        });
-        setLotPreview('Auto-generated on submit');
+        resetForm();
         loadData();
       } else {
         setMessage({ type: 'error', text: result.message });
@@ -296,6 +341,17 @@ const loadData = async () => {
               </div>
 
               <div className="form-group">
+                <label>Fabric Width</label>
+                <input
+                  type="text"
+                  name="fabricWidth"
+                  placeholder='e.g. 40, 50, 40+50'
+                  value={form.fabricWidth}
+                  onChange={handleChange}
+                />
+              </div>
+
+              <div className="form-group">
                 <label>Remarks</label>
                 <input
                   type="text"
@@ -307,7 +363,119 @@ const loadData = async () => {
               </div>
             </div>
 
-            <div style={{ marginTop: '8px' }}>
+            {/* ACCESSORIES SECTION */}
+            <div style={{ marginTop: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                <h4 style={{ margin: 0, color: '#0f3460' }}>Accessories</h4>
+                {accessories.length < 10 && (
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    onClick={addAccessory}
+                    style={{ background: '#e0e7ff', color: '#0f3460', width: 'auto' }}
+                  >
+                    + Add Accessory
+                  </button>
+                )}
+              </div>
+              {accessories.map((acc, i) => (
+                <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
+                  <select
+                    value={acc.type}
+                    onChange={e => handleAccessoryChange(i, 'type', e.target.value)}
+                    style={{ flex: 2, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}
+                  >
+                    <option value="">Select type</option>
+                    {dropdowns.accessoryTypes.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    placeholder="Qty"
+                    value={acc.qty}
+                    onChange={e => handleAccessoryChange(i, 'qty', e.target.value)}
+                    min="0"
+                    style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}
+                  />
+                  <select
+                    value={acc.unit}
+                    onChange={e => handleAccessoryChange(i, 'unit', e.target.value)}
+                    style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}
+                  >
+                    <option value="">Unit</option>
+                    {ACCESSORY_UNITS.map(u => (
+                      <option key={u} value={u}>{u}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => removeAccessory(i)}
+                    style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#dc2626', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              {accessories.length === 0 && (
+                <p style={{ color: '#aaa', fontSize: '13px', margin: '4px 0 0' }}>No accessories added.</p>
+              )}
+            </div>
+
+            {/* LACES SECTION */}
+            <div style={{ marginTop: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                <h4 style={{ margin: 0, color: '#0f3460' }}>Laces</h4>
+                {laces.length < 10 && (
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    onClick={addLace}
+                    style={{ background: '#e0e7ff', color: '#0f3460', width: 'auto' }}
+                  >
+                    + Add Lace
+                  </button>
+                )}
+              </div>
+              {laces.map((lace, i) => (
+                <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    placeholder="Lace type"
+                    value={lace.laceType}
+                    onChange={e => handleLaceChange(i, 'laceType', e.target.value)}
+                    style={{ flex: 2, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}
+                  />
+                  <input
+                    type="number"
+                    placeholder="Qty"
+                    value={lace.qty}
+                    onChange={e => handleLaceChange(i, 'qty', e.target.value)}
+                    min="0"
+                    style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Unit"
+                    value={lace.unit}
+                    onChange={e => handleLaceChange(i, 'unit', e.target.value)}
+                    style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeLace(i)}
+                    style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#dc2626', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              {laces.length === 0 && (
+                <p style={{ color: '#aaa', fontSize: '13px', margin: '4px 0 0' }}>No laces added.</p>
+              )}
+            </div>
+
+            <div style={{ marginTop: '20px' }}>
               <button
                 type="submit"
                 className="btn btn-primary"
