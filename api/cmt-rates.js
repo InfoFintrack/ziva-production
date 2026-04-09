@@ -39,7 +39,7 @@ export default async function handler(req, res) {
     }
 
   } else if (req.method === 'POST') {
-    if (!['Stitching', 'Admin'].includes(user.role)) {
+    if (!['Cutting', 'Stitching', 'Admin'].includes(user.role)) {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
 
