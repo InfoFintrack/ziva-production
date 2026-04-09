@@ -72,3 +72,28 @@ export const removeDropdownValue = (field, value) =>
   authFetch(`/api/dropdowns?field=${field.toLowerCase()}&value=${encodeURIComponent(value)}`, {
     method: 'DELETE',
   });
+
+// PO Master
+export const getPOs = () => authFetch('/api/po-master');
+export const createPO = (data) => post('/api/po-master', data);
+export const updatePO = (data) => authFetch('/api/po-master', { method: 'PUT', body: JSON.stringify(data) });
+
+// CMT Rates
+export const getCMTRates = (params = '') => authFetch(`/api/cmt-rates${params}`);
+export const submitCMTRate = (data) => post('/api/cmt-rates', data);
+export const approveCMTRate = (data) => authFetch('/api/cmt-rates', { method: 'PUT', body: JSON.stringify(data) });
+
+// Stitchers
+export const getStitchers = (activeOnly = false) => authFetch(`/api/stitchers${activeOnly ? '?active=true' : ''}`);
+export const createStitcher = (data) => post('/api/stitchers', data);
+export const updateStitcher = (data) => authFetch('/api/stitchers', { method: 'PUT', body: JSON.stringify(data) });
+
+// Allocations
+export const getAllocations = (params = '') => authFetch(`/api/allocations${params}`);
+export const createAllocation = (data) => post('/api/allocations', data);
+export const updateAllocation = (data) => authFetch('/api/allocations', { method: 'PUT', body: JSON.stringify(data) });
+
+// CMT Payments
+export const getCMTPayments = (params = '') => authFetch(`/api/cmt-payments${params}`);
+export const submitPayment = (data) => post('/api/cmt-payments', data);
+export const updatePayment = (data) => authFetch('/api/cmt-payments', { method: 'PUT', body: JSON.stringify(data) });

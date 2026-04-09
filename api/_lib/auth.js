@@ -23,4 +23,16 @@ function authenticateToken(req, res) {
   }
 }
 
-module.exports = { authenticateToken };
+/**
+ * Role-checking middleware factory.
+ * Usage (Express): router.use(requireRole('Admin', 'Accounts'))
+ * In serverless handlers use inline: if (!roles.includes(user.role)) ...
+ */
+const requireRole = (...roles) => (req, res, next) => {
+  if (!roles.includes(req.user.role)) {
+    return res.status(403).json({ success: false, error: 'Access denied' });
+  }
+  next();
+};
+
+module.exports = { authenticateToken, requireRole };
