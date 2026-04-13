@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
 import { submitAcceptance, getRecords, getDropdowns, getPOs, submitCMTRate, getCMTRates, approveCMTRate, getStitchers, createStitcher } from '../api';
+import { ColourInput } from './PPView';
 
 // ── CMT Rate form constants ──────────────────────────────────────────────────
 
@@ -136,7 +137,8 @@ function CuttingView({ user, onLogout }) {
   const [submissions, setSubmissions] = useState([]);
   const [submissionsLoading, setSubmissionsLoading] = useState(false);
   const [editingRateId, setEditingRateId] = useState(null);
-  const cmtFormRef = useRef(null);
+  const cmtFormRef    = useRef(null);
+  const cmtColourRef  = useRef(null);
 
   // ── Stitchers state ────────────────────────────────────────────────────
   const [stitchers, setStitchers] = useState([]);
@@ -333,6 +335,15 @@ function CuttingView({ user, onLogout }) {
       setCMTMessage({ type: 'error', text: 'PO Number is required.' });
       return;
     }
+    // Validate colour field if visible and filled
+    if (!colorDesignLocked && cmtForm.color_design && cmtColourRef.current) {
+      const colourValid = cmtColourRef.current.validate();
+      if (!colourValid) {
+        setCMTMessage({ type: 'error', text: 'Please enter a valid colour/design name (min 4 characters).' });
+        return;
+      }
+    }
+
     const hasAnyRate = ALL_RATE_KEYS.some(k => Number(cmtForm[k]) > 0);
     if (!hasAnyRate) {
       setCMTMessage({ type: 'error', text: 'At least one rate field must be greater than 0.' });
@@ -881,14 +892,12 @@ function CuttingView({ user, onLogout }) {
 
                   <div className="form-group">
                     <label>Color / Design</label>
-                    <input
-                      type="text"
-                      name="color_design"
-                      placeholder="e.g. Black Karundi"
+                    <ColourInput
+                      ref={cmtColourRef}
                       value={cmtForm.color_design}
-                      onChange={handleCMTChange}
+                      onChange={(v) => setCMTForm(prev => ({ ...prev, color_design: v }))}
+                      placeholder="e.g. Black Karundi"
                       disabled={colorDesignLocked}
-                      className={colorDesignLocked ? 'auto-field' : ''}
                     />
                   </div>
 

@@ -1,83 +1,254 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-import React, { useState, useEffect } from 'react';
-import { submitIssuance, getRecords, getDropdowns, getPOs, createPO } from '../api';
+import React, { useState, useEffect, useRef } from 'react';
+import ReactDOM from 'react-dom';
+import {
+  submitIssuance, getRecords, getDropdowns, getPOs, createPO, updatePO,
+  getPoAccessories, addPoAccessory, getFabricIssuanceLog, logFabricIssuance,
+} from '../api';
 
-const ACCESSORY_UNITS = ['Meters', 'Yards', 'Pieces', 'KG'];
+// ── Constants ────────────────────────────────────────────────────────────────
+
+export const COLOUR_LIST = [
+  'Black','White','Red','Maroon','Navy Blue','Teal','Green','Mustard','Peach','Beige',
+  'Brown','Purple','Pink','Cream','Off White','Burgundy','Lime Yellow','Sea Green','Blue',
+  'Yellow','Orange','Grey','Silver','Gold','Ferozi','Skin','Rust','Mint','Ivory','Coral',
+  'Black Karundi','Green Karundi','Brown Karundi','Cream Karundi','Mustard Karundi',
+  'Burgundy Karundi','Purple Karundi','Pink Karundi','Blue Karundi','Red Karundi',
+  'Maroon Karundi','Navy Karundi',
+];
+
+const FABRIC_TYPES = [
+  'Lawn','Khaddar','Cotton','Jacquard','Velvet','Raw Silk','Chiffon','Georgette',
+  'Grip Silk','Katan Silk','Mixed',
+];
+
+const PO_ACCESSORY_TYPES = [
+  'Lace','Button','Zip','Thread','Lining','Elastic','Label','Packaging','Other',
+];
+
+const PO_ACCESSORY_UNITS = ['Meters','Pieces','Rolls','Packets'];
+
+const ACCESSORY_UNITS = ['Meters','Yards','Pieces','KG'];
+
+const getEmptyPOForm = () => ({
+  po_number:      '',
+  collection_name:'',
+  article_name:   '',
+  garment_type:   '',
+  po_date:        new Date().toISOString().split('T')[0],
+  delivery_date:  '',
+  remarks:        '',
+  shirt_colour:   '',
+  shirt_fabric:   '',
+  shirt_qty:      '',
+  shirt_remarks:  '',
+  trouser_colour: '',
+  trouser_fabric: '',
+  trouser_qty:    '',
+  trouser_remarks:'',
+  dupatta_colour: '',
+  dupatta_fabric: '',
+  dupatta_qty:    '',
+  dupatta_remarks:'',
+});
+
+// ── ColourInput component ────────────────────────────────────────────────────
+
+export const ColourInput = React.forwardRef(function ColourInput(
+  { value, onChange, onValidate, placeholder, required, disabled },
+  ref
+) {
+  const [suggestions, setSuggestions] = useState([]);
+  const [showDropdown, setShowDropdown]  = useState(false);
+  const [error, setError] = useState('');
+
+  React.useImperativeHandle(ref, () => ({
+    validate: () => {
+      if (!value && !required) {
+        setError('');
+        if (onValidate) onValidate(true);
+        return true;
+      }
+      const inList = COLOUR_LIST.includes(value);
+      const valid  = inList || value.length >= 4;
+      setError(valid ? '' : 'Please enter full colour name (min 4 characters)');
+      if (onValidate) onValidate(valid);
+      return valid;
+    },
+  }), [value, required, onValidate]);
+
+  if (disabled) {
+    return (
+      <input
+        type="text"
+        value={value}
+        disabled
+        className="auto-field"
+        style={{ width: '100%', padding: '12px 16px', border: '2px solid #e8e8e8', borderRadius: '8px', fontSize: '15px', background: '#f0f0f0', color: '#999', boxSizing: 'border-box' }}
+      />
+    );
+  }
+
+  const handleChange = (e) => {
+    const v = e.target.value;
+    onChange(v);
+    setError('');
+    if (v.length > 0) {
+      const filtered = COLOUR_LIST.filter(c => c.toLowerCase().includes(v.toLowerCase())).slice(0, 8);
+      setSuggestions(filtered);
+      setShowDropdown(filtered.length > 0);
+    } else {
+      setSuggestions([]);
+      setShowDropdown(false);
+    }
+  };
+
+  const handleSelect = (colour) => {
+    onChange(colour);
+    setSuggestions([]);
+    setShowDropdown(false);
+    setError('');
+    if (onValidate) onValidate(true);
+  };
+
+  const handleBlur = () => {
+    setTimeout(() => {
+      setShowDropdown(false);
+      if (!value && !required) { setError(''); return; }
+      const inList = COLOUR_LIST.includes(value);
+      const valid  = inList || value.length >= 4;
+      setError(valid ? '' : 'Please enter full colour name (min 4 characters)');
+      if (onValidate) onValidate(valid);
+    }, 150);
+  };
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        type="text"
+        value={value}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        placeholder={placeholder}
+        required={required}
+        style={{
+          width: '100%',
+          padding: '12px 16px',
+          border: error ? '2px solid #dc2626' : '2px solid #e8e8e8',
+          borderRadius: '8px',
+          fontSize: '15px',
+          background: '#fafafa',
+          boxSizing: 'border-box',
+          outline: 'none',
+        }}
+        onFocus={e => { e.target.style.borderColor = error ? '#dc2626' : '#0f3460'; e.target.style.background = 'white'; }}
+      />
+      {showDropdown && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0,
+          background: 'white', border: '1px solid #d1d5db', borderRadius: '6px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 100,
+          maxHeight: '200px', overflowY: 'auto',
+        }}>
+          {suggestions.map(s => (
+            <div
+              key={s}
+              onMouseDown={() => handleSelect(s)}
+              style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '14px', borderBottom: '1px solid #f0f2f5' }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#f0f2f5'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'white'; }}
+            >
+              {s}
+            </div>
+          ))}
+        </div>
+      )}
+      {error && (
+        <p style={{ color: '#dc2626', fontSize: '12px', margin: '4px 0 0' }}>{error}</p>
+      )}
+    </div>
+  );
+});
+
+// ── PPView ────────────────────────────────────────────────────────────────────
 
 function PPView({ user, onLogout }) {
-const [form, setForm] = useState({
-    issueDate: new Date().toLocaleDateString('en-GB'),
-    poNumber: '',
-    joNumber: '',
-    article: '',
-    receivingVendor: '',
-    garmentType: '',
-    fabricName: '',
-    fabricColor: '',
-    noOfThaan: '',
-    qtyIssued: '',
-    unit: '',
-    fabricWidth: '',
-    issueRemarks: ''
-  });
 
+  // ── Issue Fabric state ─────────────────────────────────────────────────
+  const [form, setForm] = useState({
+    issueDate:       new Date().toLocaleDateString('en-GB'),
+    poNumber:        '',
+    joNumber:        '',
+    article:         '',
+    receivingVendor: '',
+    garmentType:     '',
+    fabricName:      '',
+    fabricColor:     '',
+    noOfThaan:       '',
+    qtyIssued:       '',
+    unit:            '',
+    fabricWidth:     '',
+    issueRemarks:    '',
+  });
   const [accessories, setAccessories] = useState([]);
   const [laces, setLaces] = useState([]);
-
-const [dropdowns, setDropdowns] = useState({
-    garmentTypes: [],
-    units: [],
-    receivingVendors: [],
-    accessoryTypes: [],
+  const [dropdowns, setDropdowns] = useState({
+    garmentTypes: [], units: [], receivingVendors: [], accessoryTypes: [],
   });
-
-  const [records, setRecords] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [records, setRecords]   = useState([]);
+  const [loading, setLoading]   = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState(null);
+  const [message, setMessage]   = useState(null);
   const [lotPreview, setLotPreview] = useState('Auto-generated on submit');
 
-  // Tab state
+  // New Issue-Fabric PO-link fields
+  const [issuePO, setIssuePO]               = useState('');
+  const [issuePODetails, setIssuePODetails] = useState(null);
+  const [issueComponent, setIssueComponent] = useState('');
+  const [metersToIssue, setMetersToIssue]   = useState('');
+  const [issueMetersRemarks, setIssueMetersRemarks] = useState('');
+
+  // ── Tab state ──────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState('issue');
 
-  // PO Management state
-  const [poForm, setPOForm] = useState({
-    po_number: '',
-    buyer_name: '',
-    garment_type: '',
-    color_design: '',
-    po_date: new Date().toISOString().split('T')[0],
-    delivery_date: '',
-    total_qty: '',
-    remarks: '',
-  });
-  const [pos, setPos] = useState([]);
+  // ── PO Management state ────────────────────────────────────────────────
+  const [poForm, setPOForm] = useState(getEmptyPOForm());
+  const [poAccessories, setPOAccessories] = useState([{ accessory_type: '', quantity: '', unit: '' }]);
+  const [collapsedCards, setCollapsedCards] = useState({ shirt: false, trouser: false, dupatta: false });
+  const [pos, setPos]             = useState([]);
   const [poLoading, setPOLoading] = useState(false);
   const [poSubmitting, setPOSubmitting] = useState(false);
   const [poMessage, setPOMessage] = useState(null);
 
-const loadData = async () => {
+  // ColourInput refs (PO form)
+  const shirtColourRef   = useRef(null);
+  const trouserColourRef = useRef(null);
+  const dupattaColourRef = useRef(null);
+
+  // ── PO Detail Modal state ──────────────────────────────────────────────
+  const [selectedPODetail, setSelectedPODetail]     = useState(null);
+  const [poDetailAccessories, setPODetailAccessories] = useState([]);
+  const [poDetailLog, setPODetailLog]               = useState([]);
+  const [detailLoading, setDetailLoading]           = useState(false);
+
+  // ── Data loading ───────────────────────────────────────────────────────
+
+  const loadData = async () => {
     setLoading(true);
     try {
-      const [recordsRes, dropdownsRes] = await Promise.all([
-        getRecords(),
-        getDropdowns()
-      ]);
+      const [recordsRes, dropdownsRes] = await Promise.all([getRecords(), getDropdowns()]);
       if (recordsRes.success) {
-        const myRecords = recordsRes.records.filter(
-          r => r.Issued_By === user.name
-        );
-        setRecords(myRecords.reverse());
+        setRecords(recordsRes.records.filter(r => r.Issued_By === user.name).reverse());
       }
       if (dropdownsRes.success) {
         setDropdowns({
-          garmentTypes: dropdownsRes.garmentTypes,
-          units: dropdownsRes.units,
-          receivingVendors: dropdownsRes.receivingVendors,
-          accessoryTypes: dropdownsRes.accessoryTypes || [],
+          garmentTypes:    dropdownsRes.garmentTypes,
+          units:           dropdownsRes.units,
+          receivingVendors:dropdownsRes.receivingVendors,
+          accessoryTypes:  dropdownsRes.accessoryTypes || [],
         });
       }
-    } catch (err) {
+    } catch {
       setMessage({ type: 'error', text: 'Failed to load data.' });
     }
     setLoading(false);
@@ -88,9 +259,7 @@ const loadData = async () => {
     try {
       const res = await getPOs();
       if (res.success) setPos(res.pos);
-    } catch {
-      // silently fail — PO list is non-critical on load
-    }
+    } catch { /* silently fail */ }
     setPOLoading(false);
   };
 
@@ -98,6 +267,8 @@ const loadData = async () => {
     loadData();
     loadPOs();
   }, []);
+
+  // ── Issue Fabric handlers ──────────────────────────────────────────────
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -111,105 +282,147 @@ const loadData = async () => {
     setForm(prev => ({ ...prev, [name]: value }));
   };
 
-  // Accessories handlers
   const addAccessory = () => {
     if (accessories.length >= 10) return;
     setAccessories(prev => [...prev, { type: '', qty: '', unit: '' }]);
   };
+  const removeAccessory = (i) => setAccessories(prev => prev.filter((_, idx) => idx !== i));
+  const handleAccessoryChange = (i, field, value) =>
+    setAccessories(prev => prev.map((a, idx) => idx === i ? { ...a, [field]: value } : a));
 
-  const removeAccessory = (index) => {
-    setAccessories(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const handleAccessoryChange = (index, field, value) => {
-    setAccessories(prev => prev.map((a, i) => i === index ? { ...a, [field]: value } : a));
-  };
-
-  // Laces handlers
   const addLace = () => {
     if (laces.length >= 10) return;
     setLaces(prev => [...prev, { laceType: '', qty: '', unit: '' }]);
   };
-
-  const removeLace = (index) => {
-    setLaces(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const handleLaceChange = (index, field, value) => {
-    setLaces(prev => prev.map((l, i) => i === index ? { ...l, [field]: value } : l));
-  };
+  const removeLace = (i) => setLaces(prev => prev.filter((_, idx) => idx !== i));
+  const handleLaceChange = (i, field, value) =>
+    setLaces(prev => prev.map((l, idx) => idx === i ? { ...l, [field]: value } : l));
 
   const resetForm = () => {
     setForm({
       issueDate: new Date().toLocaleDateString('en-GB'),
-      poNumber: '',
-      joNumber: '',
-      article: '',
-      receivingVendor: '',
-      garmentType: '',
-      fabricName: '',
-      fabricColor: '',
-      noOfThaan: '',
-      qtyIssued: '',
-      unit: '',
-      fabricWidth: '',
-      issueRemarks: ''
+      poNumber: '', joNumber: '', article: '', receivingVendor: '',
+      garmentType: '', fabricName: '', fabricColor: '', noOfThaan: '',
+      qtyIssued: '', unit: '', fabricWidth: '', issueRemarks: '',
     });
     setAccessories([]);
     setLaces([]);
     setLotPreview('Auto-generated on submit');
   };
 
+  const handleIssuePOSelect = (e) => {
+    const po_number = e.target.value;
+    setIssuePO(po_number);
+    setIssueComponent('');
+    setMetersToIssue('');
+    if (po_number) {
+      const found = pos.find(p => p.po_number === po_number);
+      setIssuePODetails(found || null);
+    } else {
+      setIssuePODetails(null);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Validate PO-link fields if a PO is linked
+    if (issuePO) {
+      if (!issueComponent) {
+        setMessage({ type: 'error', text: 'Please select a component for the linked PO.' });
+        return;
+      }
+      if (!metersToIssue || Number(metersToIssue) <= 0) {
+        setMessage({ type: 'error', text: 'Please enter meters to issue for the linked PO.' });
+        return;
+      }
+      const compKey   = issueComponent.toLowerCase();
+      const qty       = Number(issuePODetails?.[`${compKey}_qty`] || 0);
+      const issued    = Number(issuePODetails?.[`${compKey}_meters_issued`] || 0);
+      const remaining = qty - issued;
+      if (Number(metersToIssue) > remaining) {
+        setMessage({ type: 'error', text: `Cannot exceed remaining ${remaining} m for ${issueComponent}.` });
+        return;
+      }
+    }
+
+    // Existing validation
     if (!form.poNumber.trim()) {
       setMessage({ type: 'error', text: 'PO Number digits are required.' });
       return;
     }
-    const required = ['joNumber', 'receivingVendor', 'garmentType', 'fabricName', 'fabricColor', 'noOfThaan', 'qtyIssued', 'unit'];
-    for (let field of required) {
+    const required = ['joNumber','receivingVendor','garmentType','fabricName','fabricColor','noOfThaan','qtyIssued','unit'];
+    for (const field of required) {
       if (!form[field].toString().trim()) {
         setMessage({ type: 'error', text: 'Please fill all required fields.' });
         return;
       }
     }
+
     setSubmitting(true);
     setMessage(null);
     try {
       const result = await submitIssuance({
         ...form,
-        poNumber: `PO-${form.poNumber}`,
+        poNumber:    `PO-${form.poNumber}`,
         accessories: accessories.length > 0 ? JSON.stringify(accessories) : null,
-        laces: laces.length > 0 ? JSON.stringify(laces) : null,
-        issuedBy: user.name
+        laces:       laces.length > 0       ? JSON.stringify(laces)       : null,
+        issuedBy:    user.name,
       });
+
       if (result.success) {
+        // Log fabric issuance and update PO meters if a PO was linked
+        if (issuePO && issueComponent && metersToIssue) {
+          try {
+            await Promise.all([
+              logFabricIssuance({
+                po_number:    issuePO,
+                component:    issueComponent.toLowerCase(),
+                meters_issued:Number(metersToIssue),
+                issued_by:    user.name,
+                remarks:      issueMetersRemarks || undefined,
+              }),
+              updatePO({
+                po_number:   issuePO,
+                action:      'update_meters',
+                component:   issueComponent.toLowerCase(),
+                meters_delta:Number(metersToIssue),
+              }),
+            ]);
+            // Refresh PO list and update summary card
+            const posRes = await getPOs();
+            if (posRes.success) {
+              setPos(posRes.pos);
+              const updated = posRes.pos.find(p => p.po_number === issuePO);
+              setIssuePODetails(updated || null);
+            }
+          } catch { /* non-critical; main issuance already succeeded */ }
+          setIssueComponent('');
+          setMetersToIssue('');
+          setIssueMetersRemarks('');
+        }
+
         setMessage({
           type: 'success',
-          text: `✓ Fabric issued successfully! Record ID: ${result.recordId} | Lot: ${result.lotNumber}`
+          text: `✓ Fabric issued successfully! Record ID: ${result.recordId} | Lot: ${result.lotNumber}`,
         });
         resetForm();
         loadData();
       } else {
         setMessage({ type: 'error', text: result.message });
       }
-    } catch (err) {
+    } catch {
       setMessage({ type: 'error', text: 'Submission failed. Please try again.' });
     }
     setSubmitting(false);
   };
 
   const getStatusBadge = (status) => {
-    const map = {
-      'Issued': 'badge-issued',
-      'Accepted': 'badge-accepted',
-      'Partial': 'badge-partial',
-      'Rejected': 'badge-rejected'
-    };
+    const map = { Issued: 'badge-issued', Accepted: 'badge-accepted', Partial: 'badge-partial', Rejected: 'badge-rejected' };
     return `badge ${map[status] || 'badge-pending'}`;
   };
 
-  // ── PO Management handlers ───────────────────────────────────────────────
+  // ── PO Management handlers ─────────────────────────────────────────────
 
   const handlePOChange = (e) => {
     const { name, value } = e.target;
@@ -221,41 +434,102 @@ const loadData = async () => {
     setPOForm(prev => ({ ...prev, [name]: value }));
   };
 
+  const handlePOColourChange = (component, value) =>
+    setPOForm(prev => ({ ...prev, [`${component}_colour`]: value }));
+
+  const toggleCard = (key) =>
+    setCollapsedCards(prev => ({ ...prev, [key]: !prev[key] }));
+
+  const handlePOAccessoryChange = (i, field, value) =>
+    setPOAccessories(prev => prev.map((a, idx) => idx === i ? { ...a, [field]: value } : a));
+
+  const addPOAccessoryRow = () =>
+    setPOAccessories(prev => [...prev, { accessory_type: '', quantity: '', unit: '' }]);
+
+  const removePOAccessoryRow = (i) =>
+    setPOAccessories(prev => prev.filter((_, idx) => idx !== i));
+
   const handlePOSubmit = async (e) => {
     e.preventDefault();
+
     if (!poForm.po_number.trim()) {
-      setPOMessage({ type: 'error', text: 'PO Number is required.' });
-      return;
+      setPOMessage({ type: 'error', text: 'PO Number is required.' }); return;
+    }
+    if (!poForm.collection_name.trim()) {
+      setPOMessage({ type: 'error', text: 'Collection Name is required.' }); return;
+    }
+    if (!poForm.article_name.trim()) {
+      setPOMessage({ type: 'error', text: 'Article Name is required.' }); return;
+    }
+    if (!poForm.garment_type) {
+      setPOMessage({ type: 'error', text: 'Garment Type is required.' }); return;
+    }
+
+    // Validate component required fields
+    const components = [
+      { key: 'shirt',   label: 'Shirt' },
+      { key: 'trouser', label: 'Trouser' },
+      { key: 'dupatta', label: 'Dupatta' },
+    ];
+    for (const { key, label } of components) {
+      if (!poForm[`${key}_colour`].trim()) {
+        setPOMessage({ type: 'error', text: `${label} Colour is required.` }); return;
+      }
+      if (!poForm[`${key}_fabric`]) {
+        setPOMessage({ type: 'error', text: `${label} Fabric Type is required.` }); return;
+      }
+      if (!poForm[`${key}_qty`]) {
+        setPOMessage({ type: 'error', text: `${label} Quantity is required.` }); return;
+      }
+    }
+
+    // Validate colour inputs
+    const shirtOk   = shirtColourRef.current?.validate()   ?? true;
+    const trouserOk = trouserColourRef.current?.validate() ?? true;
+    const dupattaOk = dupattaColourRef.current?.validate() ?? true;
+    if (!shirtOk || !trouserOk || !dupattaOk) {
+      setPOMessage({ type: 'error', text: 'Please fix all colour fields.' }); return;
     }
 
     setPOSubmitting(true);
     setPOMessage(null);
     try {
       const res = await createPO({
-        po_number:     `PO-${poForm.po_number.trim()}`,
-        buyer_name:    poForm.buyer_name    || undefined,
-        garment_type:  poForm.garment_type  || undefined,
-        color_design:  poForm.color_design  || undefined,
-        po_date:       poForm.po_date       || undefined,
-        delivery_date: poForm.delivery_date || undefined,
-        total_qty:     poForm.total_qty ? Number(poForm.total_qty) : undefined,
-        remarks:       poForm.remarks       || undefined,
+        po_number:      `PO-${poForm.po_number.trim()}`,
+        collection_name:poForm.collection_name,
+        article_name:   poForm.article_name   || undefined,
+        garment_type:   poForm.garment_type   || undefined,
+        po_date:        poForm.po_date         || undefined,
+        delivery_date:  poForm.delivery_date   || undefined,
+        remarks:        poForm.remarks         || undefined,
+        shirt_colour:   poForm.shirt_colour    || undefined,
+        shirt_fabric:   poForm.shirt_fabric    || undefined,
+        shirt_qty:      poForm.shirt_qty ? Number(poForm.shirt_qty) : undefined,
+        trouser_colour: poForm.trouser_colour  || undefined,
+        trouser_fabric: poForm.trouser_fabric  || undefined,
+        trouser_qty:    poForm.trouser_qty ? Number(poForm.trouser_qty) : undefined,
+        dupatta_colour: poForm.dupatta_colour  || undefined,
+        dupatta_fabric: poForm.dupatta_fabric  || undefined,
+        dupatta_qty:    poForm.dupatta_qty ? Number(poForm.dupatta_qty) : undefined,
       });
+
       if (res.success) {
-        setPOMessage({
-          type: 'success',
-          text: `✓ PO ${res.po.po_number} created successfully.`,
-        });
-        setPOForm({
-          po_number: '',
-          buyer_name: '',
-          garment_type: '',
-          color_design: '',
-          po_date: new Date().toISOString().split('T')[0],
-          delivery_date: '',
-          total_qty: '',
-          remarks: '',
-        });
+        // Post filled accessory rows
+        const filled = poAccessories.filter(a => a.accessory_type && a.quantity && a.unit);
+        for (const acc of filled) {
+          try {
+            await addPoAccessory({
+              po_number:      res.po.po_number,
+              accessory_type: acc.accessory_type,
+              quantity:       Number(acc.quantity),
+              unit:           acc.unit,
+            });
+          } catch { /* non-critical */ }
+        }
+        setPOMessage({ type: 'success', text: `✓ PO ${res.po.po_number} created successfully.` });
+        setPOForm(getEmptyPOForm());
+        setPOAccessories([{ accessory_type: '', quantity: '', unit: '' }]);
+        setCollapsedCards({ shirt: false, trouser: false, dupatta: false });
         loadPOs();
       } else {
         setPOMessage({ type: 'error', text: res.message || 'Failed to create PO.' });
@@ -266,12 +540,97 @@ const loadData = async () => {
     setPOSubmitting(false);
   };
 
+  // ── PO Detail Modal ────────────────────────────────────────────────────
+
+  const openPODetail = async (po) => {
+    setSelectedPODetail(po);
+    setDetailLoading(true);
+    try {
+      const [accRes, logRes] = await Promise.all([
+        getPoAccessories(po.po_number),
+        getFabricIssuanceLog(po.po_number),
+      ]);
+      if (accRes.success) setPODetailAccessories(accRes.accessories);
+      if (logRes.success) setPODetailLog(logRes.logs);
+    } catch { /* silently fail */ }
+    setDetailLoading(false);
+  };
+
+  const closePODetail = () => {
+    setSelectedPODetail(null);
+    setPODetailAccessories([]);
+    setPODetailLog([]);
+  };
+
   const getPOStatusBadge = (status) => {
     if (status === 'Active')    return { cls: 'badge badge-accepted', style: undefined };
     if (status === 'Cancelled') return { cls: 'badge badge-rejected', style: undefined };
-    // Completed → blue
     return { cls: 'badge', style: { background: '#dbeafe', color: '#1e40af' } };
   };
+
+  // ── Helpers ────────────────────────────────────────────────────────────
+
+  const componentCard = (compKey, compLabel, colourRef) => (
+    <div key={compKey} style={{ border: '1px solid #e8e8e8', borderRadius: '8px', marginBottom: '12px', overflow: 'hidden' }}>
+      <div
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#f8fafc', cursor: 'pointer' }}
+        onClick={() => toggleCard(compKey)}
+      >
+        <span style={{ fontWeight: '700', color: '#0f3460', fontSize: '14px' }}>{compLabel} Details</span>
+        <span style={{ fontSize: '12px', color: '#888' }}>{collapsedCards[compKey] ? '▼' : '▲'}</span>
+      </div>
+      {!collapsedCards[compKey] && (
+        <div style={{ padding: '16px' }}>
+          <div className="form-grid">
+            <div className="form-group">
+              <label>Colour *</label>
+              <ColourInput
+                ref={colourRef}
+                value={poForm[`${compKey}_colour`]}
+                onChange={(v) => handlePOColourChange(compKey, v)}
+                placeholder="e.g. Navy Blue"
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label>Fabric Type *</label>
+              <select
+                name={`${compKey}_fabric`}
+                value={poForm[`${compKey}_fabric`]}
+                onChange={handlePOChange}
+              >
+                <option value="">Select fabric</option>
+                {FABRIC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Quantity (Pieces) *</label>
+              <input
+                type="number"
+                name={`${compKey}_qty`}
+                value={poForm[`${compKey}_qty`]}
+                onChange={handlePOChange}
+                min="1"
+                placeholder="e.g. 1000"
+              />
+            </div>
+            <div className="form-group">
+              <label>Remarks</label>
+              <input
+                type="text"
+                name={`${compKey}_remarks`}
+                value={poForm[`${compKey}_remarks`]}
+                onChange={handlePOChange}
+                placeholder="Optional"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  // ── Render ─────────────────────────────────────────────────────────────
 
   return (
     <div className="app-container">
@@ -280,24 +639,14 @@ const loadData = async () => {
         <div className="user-info">
           <span>Welcome, {user.name}</span>
           <span className="role-badge">PP Department</span>
-          <button
-            className="btn btn-danger btn-small"
-            onClick={onLogout}
-          >
-            Logout
-          </button>
+          <button className="btn btn-danger btn-small" onClick={onLogout}>Logout</button>
         </div>
       </nav>
 
       <div className="main-content">
 
-        {/* TAB SWITCHER */}
-        <div style={{
-          display: 'flex',
-          gap: '0',
-          marginBottom: '24px',
-          borderBottom: '2px solid #e8e8e8',
-        }}>
+        {/* Tab switcher */}
+        <div style={{ display: 'flex', gap: '0', marginBottom: '24px', borderBottom: '2px solid #e8e8e8' }}>
           {[
             { key: 'issue', label: 'Issue Fabric' },
             { key: 'po',    label: 'PO Management' },
@@ -306,18 +655,11 @@ const loadData = async () => {
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
               style={{
-                padding: '10px 24px',
-                border: 'none',
-                background: 'none',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '600',
+                padding: '10px 24px', border: 'none', background: 'none', cursor: 'pointer',
+                fontSize: '14px', fontWeight: '600',
                 color: activeTab === tab.key ? '#0f3460' : '#888',
-                borderBottom: activeTab === tab.key
-                  ? '3px solid #0f3460'
-                  : '3px solid transparent',
-                marginBottom: '-2px',
-                transition: 'color 0.15s',
+                borderBottom: activeTab === tab.key ? '3px solid #0f3460' : '3px solid transparent',
+                marginBottom: '-2px', transition: 'color 0.15s',
               }}
             >
               {tab.label}
@@ -325,37 +667,121 @@ const loadData = async () => {
           ))}
         </div>
 
-        {/* ── TAB 1: ISSUE FABRIC ─────────────────────────────────────── */}
+        {/* ── TAB 1: ISSUE FABRIC ───────────────────────────────────────── */}
         {activeTab === 'issue' && (
           <>
-            {/* ISSUANCE FORM */}
             <div className="card">
               <h3>Issue Fabric to Cutting Department</h3>
 
-              {message && (
-                <div className={`alert alert-${message.type}`}>
-                  {message.text}
-                </div>
-              )}
+              {message && <div className={`alert alert-${message.type}`}>{message.text}</div>}
 
               <form onSubmit={handleSubmit}>
+
+                {/* NEW: PO link at top */}
+                <div className="form-group">
+                  <label>Link to PO (optional)</label>
+                  <select value={issuePO} onChange={handleIssuePOSelect}>
+                    <option value="">— Select Active PO —</option>
+                    {pos.filter(p => p.status === 'Active').map(p => (
+                      <option key={p.po_number} value={p.po_number}>
+                        {p.po_number}{p.collection_name ? ` — ${p.collection_name}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* PO Summary Card */}
+                {issuePODetails && (
+                  <div style={{ background: '#f8fafc', border: '1px solid #e8e8e8', borderRadius: '8px', padding: '16px', marginBottom: '20px' }}>
+                    <p style={{ fontWeight: '700', color: '#0f3460', marginBottom: '12px', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      PO Summary — {issuePODetails.collection_name || issuePODetails.po_number}
+                    </p>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                      {['shirt','trouser','dupatta'].map(comp => {
+                        const qty       = Number(issuePODetails[`${comp}_qty`] || 0);
+                        const issued    = Number(issuePODetails[`${comp}_meters_issued`] || 0);
+                        const remaining = qty - issued;
+                        return (
+                          <div key={comp} style={{ background: 'white', borderRadius: '6px', padding: '12px', border: '1px solid #e8e8e8' }}>
+                            <p style={{ fontWeight: '700', color: '#0f3460', marginBottom: '6px', textTransform: 'capitalize', fontSize: '13px' }}>{comp}</p>
+                            <p style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>
+                              {issuePODetails[`${comp}_colour`] || '—'} · {issuePODetails[`${comp}_fabric`] || '—'}
+                            </p>
+                            <p style={{ fontSize: '12px', marginBottom: '2px' }}>Total Qty: <strong>{qty} pcs</strong></p>
+                            <p style={{ fontSize: '12px', marginBottom: '2px' }}>Issued: {issued} m</p>
+                            <p style={{ fontSize: '12px', fontWeight: '600', color: remaining > 0 ? '#16a34a' : '#dc2626' }}>
+                              Remaining: {remaining} m
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Component + Meters fields — shown when PO is linked */}
+                {issuePO && (
+                  <>
+                    <div className="form-grid">
+                      <div className="form-group">
+                        <label>Component *</label>
+                        <select value={issueComponent} onChange={e => { setIssueComponent(e.target.value); setMetersToIssue(''); }}>
+                          <option value="">Select component</option>
+                          <option value="Shirt">Shirt</option>
+                          <option value="Trouser">Trouser</option>
+                          <option value="Dupatta">Dupatta</option>
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label>Meters to Issue *</label>
+                        <input
+                          type="number"
+                          value={metersToIssue}
+                          onChange={e => setMetersToIssue(e.target.value)}
+                          min="0.01"
+                          step="0.01"
+                          placeholder="e.g. 250"
+                        />
+                        {issueComponent && metersToIssue && issuePODetails && (() => {
+                          const compKey   = issueComponent.toLowerCase();
+                          const qty       = Number(issuePODetails[`${compKey}_qty`] || 0);
+                          const issued    = Number(issuePODetails[`${compKey}_meters_issued`] || 0);
+                          const remaining = qty - issued;
+                          const after     = remaining - Number(metersToIssue);
+                          return (
+                            <p style={{ fontSize: '12px', marginTop: '4px', color: after > 0 ? '#16a34a' : '#dc2626' }}>
+                              After issuance: {after.toFixed(2)} m remaining
+                            </p>
+                          );
+                        })()}
+                      </div>
+
+                      <div className="form-group">
+                        <label>Issuance Remarks</label>
+                        <input
+                          type="text"
+                          value={issueMetersRemarks}
+                          onChange={e => setIssueMetersRemarks(e.target.value)}
+                          placeholder="Optional notes"
+                        />
+                      </div>
+                    </div>
+                    <hr style={{ border: 'none', borderTop: '1px solid #e8e8e8', margin: '0 0 20px' }} />
+                  </>
+                )}
+
+                {/* Existing form fields — unchanged */}
                 <div className="form-grid">
                   <div className="form-group">
                     <label>Issue Date *</label>
-                    <input
-                      type="text"
-                      name="issueDate"
-                      value={form.issueDate}
-                      onChange={handleChange}
-                    />
+                    <input type="text" name="issueDate" value={form.issueDate} onChange={handleChange} />
                   </div>
 
                   <div className="form-group">
                     <label>PO Number *</label>
                     <div style={{ display: 'flex', alignItems: 'center', border: '2px solid #e8e8e8', borderRadius: '8px', overflow: 'hidden', background: '#fafafa' }}>
-                      <span style={{ padding: '12px 14px', background: '#f0f2f5', color: '#555', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderRight: '2px solid #e8e8e8', userSelect: 'none' }}>
-                        PO-
-                      </span>
+                      <span style={{ padding: '12px 14px', background: '#f0f2f5', color: '#555', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderRight: '2px solid #e8e8e8', userSelect: 'none' }}>PO-</span>
                       <input
                         type="text"
                         name="poNumber"
@@ -370,321 +796,152 @@ const loadData = async () => {
 
                   <div className="form-group">
                     <label>JO Number *</label>
-                    <input
-                      type="text"
-                      name="joNumber"
-                      placeholder="e.g. JO-001"
-                      value={form.joNumber}
-                      onChange={handleChange}
-                    />
+                    <input type="text" name="joNumber" placeholder="e.g. JO-001" value={form.joNumber} onChange={handleChange} />
                   </div>
 
                   <div className="form-group">
                     <label>Article</label>
-                    <input
-                      type="text"
-                      name="article"
-                      placeholder="e.g. Shalwar Kameez"
-                      value={form.article}
-                      onChange={handleChange}
-                    />
+                    <input type="text" name="article" placeholder="e.g. Shalwar Kameez" value={form.article} onChange={handleChange} />
                   </div>
 
                   <div className="form-group">
                     <label>Receiving Vendor *</label>
-                    <select
-                      name="receivingVendor"
-                      value={form.receivingVendor}
-                      onChange={handleChange}
-                    >
+                    <select name="receivingVendor" value={form.receivingVendor} onChange={handleChange}>
                       <option value="">Select vendor</option>
-                      {dropdowns.receivingVendors.map(v => (
-                        <option key={v} value={v}>{v}</option>
-                      ))}
+                      {dropdowns.receivingVendors.map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
                   </div>
 
                   <div className="form-group">
                     <label>Lot Number</label>
-                    <input
-                      type="text"
-                      value={lotPreview}
-                      className="auto-field"
-                      disabled
-                    />
+                    <input type="text" value={lotPreview} className="auto-field" disabled />
                   </div>
 
                   <div className="form-group">
                     <label>Garment Type *</label>
-                    <select
-                      name="garmentType"
-                      value={form.garmentType}
-                      onChange={handleChange}
-                    >
+                    <select name="garmentType" value={form.garmentType} onChange={handleChange}>
                       <option value="">Select type</option>
-                      {dropdowns.garmentTypes.map(t => (
-                        <option key={t} value={t}>{t}</option>
-                      ))}
+                      {dropdowns.garmentTypes.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </div>
 
                   <div className="form-group">
                     <label>Fabric Name *</label>
-                    <input
-                      type="text"
-                      name="fabricName"
-                      placeholder="e.g. Lawn, Khaddar"
-                      value={form.fabricName}
-                      onChange={handleChange}
-                    />
+                    <input type="text" name="fabricName" placeholder="e.g. Lawn, Khaddar" value={form.fabricName} onChange={handleChange} />
                   </div>
 
                   <div className="form-group">
                     <label>Fabric Color *</label>
-                    <input
-                      type="text"
-                      name="fabricColor"
-                      placeholder="e.g. Navy Blue"
-                      value={form.fabricColor}
-                      onChange={handleChange}
-                    />
+                    <input type="text" name="fabricColor" placeholder="e.g. Navy Blue" value={form.fabricColor} onChange={handleChange} />
                   </div>
 
                   <div className="form-group">
                     <label>No. of Thaan *</label>
-                    <input
-                      type="number"
-                      name="noOfThaan"
-                      placeholder="e.g. 5"
-                      value={form.noOfThaan}
-                      onChange={handleChange}
-                      min="1"
-                    />
+                    <input type="number" name="noOfThaan" placeholder="e.g. 5" value={form.noOfThaan} onChange={handleChange} min="1" />
                   </div>
 
                   <div className="form-group">
                     <label>Quantity Issued *</label>
-                    <input
-                      type="number"
-                      name="qtyIssued"
-                      placeholder="e.g. 250"
-                      value={form.qtyIssued}
-                      onChange={handleChange}
-                      min="1"
-                    />
+                    <input type="number" name="qtyIssued" placeholder="e.g. 250" value={form.qtyIssued} onChange={handleChange} min="1" />
                   </div>
 
                   <div className="form-group">
                     <label>Unit *</label>
-                    <select
-                      name="unit"
-                      value={form.unit}
-                      onChange={handleChange}
-                    >
+                    <select name="unit" value={form.unit} onChange={handleChange}>
                       <option value="">Select unit</option>
-                      {dropdowns.units.map(u => (
-                        <option key={u} value={u}>{u}</option>
-                      ))}
+                      {dropdowns.units.map(u => <option key={u} value={u}>{u}</option>)}
                     </select>
                   </div>
 
                   <div className="form-group">
                     <label>Fabric Width</label>
-                    <input
-                      type="text"
-                      name="fabricWidth"
-                      placeholder='e.g. 40, 50, 40+50'
-                      value={form.fabricWidth}
-                      onChange={handleChange}
-                    />
+                    <input type="text" name="fabricWidth" placeholder='e.g. 40, 50, 40+50' value={form.fabricWidth} onChange={handleChange} />
                   </div>
 
                   <div className="form-group">
                     <label>Remarks</label>
-                    <input
-                      type="text"
-                      name="issueRemarks"
-                      placeholder="Optional notes"
-                      value={form.issueRemarks}
-                      onChange={handleChange}
-                    />
+                    <input type="text" name="issueRemarks" placeholder="Optional notes" value={form.issueRemarks} onChange={handleChange} />
                   </div>
                 </div>
 
-                {/* ACCESSORIES SECTION */}
+                {/* Accessories */}
                 <div style={{ marginTop: '24px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
                     <h4 style={{ margin: 0, color: '#0f3460' }}>Accessories</h4>
                     {accessories.length < 10 && (
-                      <button
-                        type="button"
-                        className="btn btn-small"
-                        onClick={addAccessory}
-                        style={{ background: '#e0e7ff', color: '#0f3460', width: 'auto' }}
-                      >
-                        + Add Accessory
-                      </button>
+                      <button type="button" className="btn btn-small" onClick={addAccessory} style={{ background: '#e0e7ff', color: '#0f3460', width: 'auto' }}>+ Add Accessory</button>
                     )}
                   </div>
                   {accessories.map((acc, i) => (
                     <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
-                      <select
-                        value={acc.type}
-                        onChange={e => handleAccessoryChange(i, 'type', e.target.value)}
-                        style={{ flex: 2, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}
-                      >
+                      <select value={acc.type} onChange={e => handleAccessoryChange(i, 'type', e.target.value)} style={{ flex: 2, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}>
                         <option value="">Select type</option>
-                        {dropdowns.accessoryTypes.map(t => (
-                          <option key={t} value={t}>{t}</option>
-                        ))}
+                        {dropdowns.accessoryTypes.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
-                      <input
-                        type="number"
-                        placeholder="Qty"
-                        value={acc.qty}
-                        onChange={e => handleAccessoryChange(i, 'qty', e.target.value)}
-                        min="0"
-                        style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}
-                      />
-                      <select
-                        value={acc.unit}
-                        onChange={e => handleAccessoryChange(i, 'unit', e.target.value)}
-                        style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}
-                      >
+                      <input type="number" placeholder="Qty" value={acc.qty} onChange={e => handleAccessoryChange(i, 'qty', e.target.value)} min="0" style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }} />
+                      <select value={acc.unit} onChange={e => handleAccessoryChange(i, 'unit', e.target.value)} style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}>
                         <option value="">Unit</option>
-                        {ACCESSORY_UNITS.map(u => (
-                          <option key={u} value={u}>{u}</option>
-                        ))}
+                        {ACCESSORY_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
                       </select>
-                      <button
-                        type="button"
-                        onClick={() => removeAccessory(i)}
-                        style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#dc2626', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}
-                      >
-                        ✕
-                      </button>
+                      <button type="button" onClick={() => removeAccessory(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#dc2626', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
                     </div>
                   ))}
-                  {accessories.length === 0 && (
-                    <p style={{ color: '#aaa', fontSize: '13px', margin: '4px 0 0' }}>No accessories added.</p>
-                  )}
+                  {accessories.length === 0 && <p style={{ color: '#aaa', fontSize: '13px', margin: '4px 0 0' }}>No accessories added.</p>}
                 </div>
 
-                {/* LACES SECTION */}
+                {/* Laces */}
                 <div style={{ marginTop: '24px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
                     <h4 style={{ margin: 0, color: '#0f3460' }}>Laces</h4>
                     {laces.length < 10 && (
-                      <button
-                        type="button"
-                        className="btn btn-small"
-                        onClick={addLace}
-                        style={{ background: '#e0e7ff', color: '#0f3460', width: 'auto' }}
-                      >
-                        + Add Lace
-                      </button>
+                      <button type="button" className="btn btn-small" onClick={addLace} style={{ background: '#e0e7ff', color: '#0f3460', width: 'auto' }}>+ Add Lace</button>
                     )}
                   </div>
                   {laces.map((lace, i) => (
                     <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
-                      <input
-                        type="text"
-                        placeholder="Lace type"
-                        value={lace.laceType}
-                        onChange={e => handleLaceChange(i, 'laceType', e.target.value)}
-                        style={{ flex: 2, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}
-                      />
-                      <input
-                        type="number"
-                        placeholder="Qty"
-                        value={lace.qty}
-                        onChange={e => handleLaceChange(i, 'qty', e.target.value)}
-                        min="0"
-                        style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}
-                      />
-                      <input
-                        type="text"
-                        placeholder="Unit"
-                        value={lace.unit}
-                        onChange={e => handleLaceChange(i, 'unit', e.target.value)}
-                        style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeLace(i)}
-                        style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#dc2626', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}
-                      >
-                        ✕
-                      </button>
+                      <input type="text" placeholder="Lace type" value={lace.laceType} onChange={e => handleLaceChange(i, 'laceType', e.target.value)} style={{ flex: 2, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }} />
+                      <input type="number" placeholder="Qty" value={lace.qty} onChange={e => handleLaceChange(i, 'qty', e.target.value)} min="0" style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }} />
+                      <input type="text" placeholder="Unit" value={lace.unit} onChange={e => handleLaceChange(i, 'unit', e.target.value)} style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }} />
+                      <button type="button" onClick={() => removeLace(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#dc2626', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
                     </div>
                   ))}
-                  {laces.length === 0 && (
-                    <p style={{ color: '#aaa', fontSize: '13px', margin: '4px 0 0' }}>No laces added.</p>
-                  )}
+                  {laces.length === 0 && <p style={{ color: '#aaa', fontSize: '13px', margin: '4px 0 0' }}>No laces added.</p>}
                 </div>
 
                 <div style={{ marginTop: '20px' }}>
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    disabled={submitting}
-                  >
+                  <button type="submit" className="btn btn-primary" disabled={submitting}>
                     {submitting ? 'Submitting...' : 'Issue Fabric'}
                   </button>
                 </div>
               </form>
             </div>
 
-            {/* MY RECORDS */}
+            {/* My Records */}
             <div className="card">
               <h3>My Issuance Records</h3>
               {loading ? (
-                <div className="loading">
-                  <div className="spinner"></div>
-                  Loading records...
-                </div>
+                <div className="loading"><div className="spinner"></div>Loading records...</div>
               ) : records.length === 0 ? (
-                <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>
-                  No records yet. Issue fabric above to get started.
-                </p>
+                <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>No records yet. Issue fabric above to get started.</p>
               ) : (
                 <div className="table-container">
                   <table>
                     <thead>
                       <tr>
-                        <th>Record ID</th>
-<th>Date</th>
-<th>PO</th>
-<th>JO</th>
-<th>Lot</th>
-<th>Article</th>
-<th>Vendor</th>
-<th>Fabric</th>
-<th>Color</th>
-<th>Qty</th>
-<th>Unit</th>
-<th>Status</th>
+                        <th>Record ID</th><th>Date</th><th>PO</th><th>JO</th><th>Lot</th>
+                        <th>Article</th><th>Vendor</th><th>Fabric</th><th>Color</th><th>Qty</th><th>Unit</th><th>Status</th>
                       </tr>
                     </thead>
                     <tbody>
                       {records.map((r, i) => (
                         <tr key={i}>
                           <td>{r.Record_ID}</td>
-<td>{r.Issue_Date ? new Date(r.Issue_Date).toLocaleDateString('en-GB') : '—'}</td>
-<td>{r.PO_Number}</td>
-<td>{r.JO_Number}</td>
-<td>{r.Lot_Number}</td>
-<td>{r.Article || '—'}</td>
-<td>{r.Receiving_Vendor}</td>
-<td>{r.Fabric_Name}</td>
-<td>{r.Fabric_Color}</td>
-<td>{r.Qty_Issued}</td>
-<td>{r.Unit}</td>
-                          <td>
-                            <span className={getStatusBadge(r.Acceptance_Status || r.Issue_Status)}>
-                              {r.Acceptance_Status || r.Issue_Status}
-                            </span>
-                          </td>
+                          <td>{r.Issue_Date ? new Date(r.Issue_Date).toLocaleDateString('en-GB') : '—'}</td>
+                          <td>{r.PO_Number}</td><td>{r.JO_Number}</td><td>{r.Lot_Number}</td>
+                          <td>{r.Article || '—'}</td><td>{r.Receiving_Vendor}</td>
+                          <td>{r.Fabric_Name}</td><td>{r.Fabric_Color}</td>
+                          <td>{r.Qty_Issued}</td><td>{r.Unit}</td>
+                          <td><span className={getStatusBadge(r.Acceptance_Status || r.Issue_Status)}>{r.Acceptance_Status || r.Issue_Status}</span></td>
                         </tr>
                       ))}
                     </tbody>
@@ -695,27 +952,26 @@ const loadData = async () => {
           </>
         )}
 
-        {/* ── TAB 2: PO MANAGEMENT ────────────────────────────────────── */}
+        {/* ── TAB 2: PO MANAGEMENT ─────────────────────────────────────── */}
         {activeTab === 'po' && (
           <>
-            {/* CREATE PO FORM */}
+            {/* Create PO Form */}
             <div className="card">
               <h3>Create New PO</h3>
 
-              {poMessage && (
-                <div className={`alert alert-${poMessage.type}`}>
-                  {poMessage.text}
-                </div>
-              )}
+              {poMessage && <div className={`alert alert-${poMessage.type}`}>{poMessage.text}</div>}
 
               <form onSubmit={handlePOSubmit}>
+
+                {/* Section A: Header */}
+                <div style={{ marginBottom: '8px', paddingBottom: '8px', borderBottom: '2px solid #f0f2f5' }}>
+                  <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f3460', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 16px' }}>A — Header</p>
+                </div>
                 <div className="form-grid">
                   <div className="form-group">
                     <label>PO Number *</label>
                     <div style={{ display: 'flex', alignItems: 'center', border: '2px solid #e8e8e8', borderRadius: '8px', overflow: 'hidden', background: '#fafafa' }}>
-                      <span style={{ padding: '12px 14px', background: '#f0f2f5', color: '#555', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderRight: '2px solid #e8e8e8', userSelect: 'none' }}>
-                        PO-
-                      </span>
+                      <span style={{ padding: '12px 14px', background: '#f0f2f5', color: '#555', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderRight: '2px solid #e8e8e8', userSelect: 'none' }}>PO-</span>
                       <input
                         type="text"
                         name="po_number"
@@ -729,122 +985,95 @@ const loadData = async () => {
                   </div>
 
                   <div className="form-group">
-                    <label>Buyer Name</label>
-                    <input
-                      type="text"
-                      name="buyer_name"
-                      placeholder="e.g. Al-Karam"
-                      value={poForm.buyer_name}
-                      onChange={handlePOChange}
-                    />
+                    <label>Collection Name *</label>
+                    <input type="text" name="collection_name" placeholder="e.g. Linen Collection 2026" value={poForm.collection_name} onChange={handlePOChange} />
                   </div>
 
                   <div className="form-group">
-                    <label>Garment Type</label>
-                    <select
-                      name="garment_type"
-                      value={poForm.garment_type}
-                      onChange={handlePOChange}
-                    >
+                    <label>Article Name *</label>
+                    <input type="text" name="article_name" placeholder="e.g. 3-Piece Suit" value={poForm.article_name} onChange={handlePOChange} />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Garment Type *</label>
+                    <select name="garment_type" value={poForm.garment_type} onChange={handlePOChange}>
                       <option value="">Select type</option>
-                      {dropdowns.garmentTypes.map(t => (
-                        <option key={t} value={t}>{t}</option>
-                      ))}
+                      {dropdowns.garmentTypes.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </div>
 
                   <div className="form-group">
-                    <label>Color / Design</label>
-                    <input
-                      type="text"
-                      name="color_design"
-                      placeholder="e.g. Black Karundi"
-                      value={poForm.color_design}
-                      onChange={handlePOChange}
-                    />
-                  </div>
-
-                  <div className="form-group">
                     <label>PO Date</label>
-                    <input
-                      type="date"
-                      name="po_date"
-                      value={poForm.po_date}
-                      onChange={handlePOChange}
-                    />
+                    <input type="date" name="po_date" value={poForm.po_date} onChange={handlePOChange} />
                   </div>
 
                   <div className="form-group">
                     <label>Delivery Date</label>
-                    <input
-                      type="date"
-                      name="delivery_date"
-                      value={poForm.delivery_date}
-                      onChange={handlePOChange}
-                    />
+                    <input type="date" name="delivery_date" value={poForm.delivery_date} onChange={handlePOChange} />
                   </div>
 
-                  <div className="form-group">
-                    <label>Total Qty</label>
-                    <input
-                      type="number"
-                      name="total_qty"
-                      placeholder="e.g. 5000"
-                      value={poForm.total_qty}
-                      onChange={handlePOChange}
-                      min="1"
-                    />
-                  </div>
-
-                  <div className="form-group">
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                     <label>Remarks</label>
-                    <input
-                      type="text"
-                      name="remarks"
-                      placeholder="Optional notes"
-                      value={poForm.remarks}
-                      onChange={handlePOChange}
-                    />
+                    <textarea name="remarks" placeholder="Optional notes" value={poForm.remarks} onChange={handlePOChange} rows={2} />
                   </div>
                 </div>
 
-                <div style={{ marginTop: '20px' }}>
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    disabled={poSubmitting}
-                  >
+                {/* Section B: Components */}
+                <div style={{ marginTop: '24px', marginBottom: '8px', paddingBottom: '8px', borderBottom: '2px solid #f0f2f5' }}>
+                  <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f3460', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 16px' }}>B — Components</p>
+                </div>
+                {componentCard('shirt',   'Shirt',   shirtColourRef)}
+                {componentCard('trouser', 'Trouser', trouserColourRef)}
+                {componentCard('dupatta', 'Dupatta', dupattaColourRef)}
+
+                {/* Section C: Accessories */}
+                <div style={{ marginTop: '24px', marginBottom: '8px', paddingBottom: '8px', borderBottom: '2px solid #f0f2f5' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f3460', textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>C — Accessories</p>
+                    <button type="button" className="btn btn-small" onClick={addPOAccessoryRow} style={{ background: '#e0e7ff', color: '#0f3460', width: 'auto' }}>+ Add Accessory</button>
+                  </div>
+                </div>
+                {poAccessories.map((acc, i) => (
+                  <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
+                    <select value={acc.accessory_type} onChange={e => handlePOAccessoryChange(i, 'accessory_type', e.target.value)} style={{ flex: 2, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}>
+                      <option value="">Accessory type</option>
+                      {PO_ACCESSORY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <input type="number" placeholder="Qty" value={acc.quantity} onChange={e => handlePOAccessoryChange(i, 'quantity', e.target.value)} min="0" style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }} />
+                    <select value={acc.unit} onChange={e => handlePOAccessoryChange(i, 'unit', e.target.value)} style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}>
+                      <option value="">Unit</option>
+                      {PO_ACCESSORY_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                    {poAccessories.length > 1 && (
+                      <button type="button" onClick={() => removePOAccessoryRow(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#dc2626', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
+                    )}
+                  </div>
+                ))}
+                <p style={{ color: '#aaa', fontSize: '12px', margin: '4px 0 0' }}>Accessories are optional — leave rows blank to skip.</p>
+
+                <div style={{ marginTop: '24px' }}>
+                  <button type="submit" className="btn btn-primary" disabled={poSubmitting}>
                     {poSubmitting ? 'Creating...' : 'Create PO'}
                   </button>
                 </div>
               </form>
             </div>
 
-            {/* MY POs TABLE */}
+            {/* PO List */}
             <div className="card">
               <h3>My POs</h3>
               {poLoading ? (
-                <div className="loading">
-                  <div className="spinner"></div>
-                  Loading POs...
-                </div>
+                <div className="loading"><div className="spinner"></div>Loading POs...</div>
               ) : pos.length === 0 ? (
-                <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>
-                  No POs created yet.
-                </p>
+                <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>No POs created yet.</p>
               ) : (
                 <div className="table-container">
                   <table>
                     <thead>
                       <tr>
-                        <th>PO Number</th>
-                        <th>Buyer</th>
-                        <th>Garment Type</th>
-                        <th>Color / Design</th>
-                        <th>Date</th>
-                        <th>Total Qty</th>
-                        <th>Status</th>
-                        <th>Remarks</th>
+                        <th>PO Number</th><th>Collection</th><th>Article</th><th>Type</th>
+                        <th>Shirt Qty</th><th>Trouser Qty</th><th>Dupatta Qty</th>
+                        <th>Status</th><th>View</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -853,17 +1082,18 @@ const loadData = async () => {
                         return (
                           <tr key={i}>
                             <td>{p.po_number}</td>
-                            <td>{p.buyer_name || '—'}</td>
+                            <td>{p.collection_name || p.buyer_name || '—'}</td>
+                            <td>{p.article_name || '—'}</td>
                             <td>{p.garment_type || '—'}</td>
-                            <td>{p.color_design || '—'}</td>
-                            <td>{p.po_date ? new Date(p.po_date).toLocaleDateString('en-GB') : '—'}</td>
-                            <td>{p.total_qty ?? '—'}</td>
+                            <td>{p.shirt_qty ?? '—'}</td>
+                            <td>{p.trouser_qty ?? '—'}</td>
+                            <td>{p.dupatta_qty ?? '—'}</td>
+                            <td><span className={badge.cls} style={badge.style}>{p.status || '—'}</span></td>
                             <td>
-                              <span className={badge.cls} style={badge.style}>
-                                {p.status || '—'}
-                              </span>
+                              <button className="btn btn-small" onClick={() => openPODetail(p)} style={{ background: '#e0e7ff', color: '#0f3460', width: 'auto' }}>
+                                View
+                              </button>
                             </td>
-                            <td>{p.remarks || '—'}</td>
                           </tr>
                         );
                       })}
@@ -876,6 +1106,122 @@ const loadData = async () => {
         )}
 
       </div>
+
+      {/* ── PO Detail Modal (portal — direct child of body for print) ──── */}
+      {selectedPODetail && ReactDOM.createPortal(
+        <div
+          className="po-detail-modal-print"
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+            zIndex: 1000, overflowY: 'auto', padding: '5vh 16px',
+          }}
+          onClick={e => { if (e.target === e.currentTarget) closePODetail(); }}
+        >
+          <div style={{ background: 'white', borderRadius: '12px', padding: '32px', maxWidth: '800px', width: '100%' }}>
+            {/* Modal header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+              <div>
+                <h2 style={{ color: '#0f3460', marginBottom: '4px' }}>{selectedPODetail.po_number}</h2>
+                <p style={{ color: '#666', fontSize: '14px' }}>{selectedPODetail.collection_name || selectedPODetail.buyer_name || '—'}</p>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button className="btn btn-small" onClick={() => window.print()} style={{ background: '#e0e7ff', color: '#0f3460', width: 'auto' }}>Print</button>
+                <button className="btn btn-small btn-danger" onClick={closePODetail} style={{ width: 'auto' }}>Close</button>
+              </div>
+            </div>
+
+            {/* Section A: Header fields */}
+            <div style={{ marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid #e8e8e8' }}>
+              <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f3460', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>A — Header</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '14px' }}>
+                <div><span style={{ color: '#888' }}>Article: </span><strong>{selectedPODetail.article_name || '—'}</strong></div>
+                <div><span style={{ color: '#888' }}>Garment Type: </span><strong>{selectedPODetail.garment_type || '—'}</strong></div>
+                <div><span style={{ color: '#888' }}>PO Date: </span><strong>{selectedPODetail.po_date ? new Date(selectedPODetail.po_date).toLocaleDateString('en-GB') : '—'}</strong></div>
+                <div><span style={{ color: '#888' }}>Delivery Date: </span><strong>{selectedPODetail.delivery_date ? new Date(selectedPODetail.delivery_date).toLocaleDateString('en-GB') : '—'}</strong></div>
+                <div style={{ gridColumn: '1 / -1' }}><span style={{ color: '#888' }}>Remarks: </span><strong>{selectedPODetail.remarks || '—'}</strong></div>
+              </div>
+            </div>
+
+            {/* Section B: Component cards */}
+            <div style={{ marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid #e8e8e8' }}>
+              <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f3460', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>B — Components</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                {['shirt','trouser','dupatta'].map(comp => {
+                  const qty       = Number(selectedPODetail[`${comp}_qty`] || 0);
+                  const issued    = Number(selectedPODetail[`${comp}_meters_issued`] || 0);
+                  const remaining = qty - issued;
+                  return (
+                    <div key={comp} style={{ border: '1px solid #e8e8e8', borderRadius: '8px', padding: '12px' }}>
+                      <p style={{ fontWeight: '700', color: '#0f3460', marginBottom: '8px', textTransform: 'capitalize', fontSize: '13px' }}>{comp}</p>
+                      <p style={{ fontSize: '13px', marginBottom: '4px' }}><span style={{ color: '#888' }}>Colour: </span>{selectedPODetail[`${comp}_colour`] || '—'}</p>
+                      <p style={{ fontSize: '13px', marginBottom: '4px' }}><span style={{ color: '#888' }}>Fabric: </span>{selectedPODetail[`${comp}_fabric`] || '—'}</p>
+                      <p style={{ fontSize: '13px', marginBottom: '4px' }}><span style={{ color: '#888' }}>Total Qty: </span>{qty} pcs</p>
+                      <p style={{ fontSize: '13px', marginBottom: '4px' }}><span style={{ color: '#888' }}>Issued: </span>{issued} m</p>
+                      <p style={{ fontSize: '13px', fontWeight: '600', color: remaining > 0 ? '#16a34a' : '#dc2626' }}>
+                        Remaining: {remaining} m
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Section C: Accessories */}
+            <div style={{ marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid #e8e8e8' }}>
+              <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f3460', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>C — Accessories</p>
+              {detailLoading ? (
+                <p style={{ color: '#888', fontSize: '13px' }}>Loading...</p>
+              ) : poDetailAccessories.length === 0 ? (
+                <p style={{ color: '#aaa', fontSize: '13px' }}>No accessories recorded.</p>
+              ) : (
+                <div className="table-container">
+                  <table>
+                    <thead><tr><th>Type</th><th>Quantity</th><th>Unit</th></tr></thead>
+                    <tbody>
+                      {poDetailAccessories.map((a, i) => (
+                        <tr key={i}><td>{a.accessory_type}</td><td>{a.quantity}</td><td>{a.unit}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Section D: Issuance History */}
+            <div>
+              <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f3460', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>D — Issuance History</p>
+              {detailLoading ? (
+                <p style={{ color: '#888', fontSize: '13px' }}>Loading...</p>
+              ) : poDetailLog.length === 0 ? (
+                <p style={{ color: '#aaa', fontSize: '13px' }}>No issuance history.</p>
+              ) : (
+                <div className="table-container">
+                  <table>
+                    <thead>
+                      <tr><th>Date</th><th>Component</th><th>Meters Issued</th><th>Issued By</th><th>Remarks</th></tr>
+                    </thead>
+                    <tbody>
+                      {poDetailLog.map((l, i) => (
+                        <tr key={i}>
+                          <td>{l.issued_at ? new Date(l.issued_at).toLocaleDateString('en-GB') : '—'}</td>
+                          <td style={{ textTransform: 'capitalize' }}>{l.component}</td>
+                          <td>{l.meters_issued} m</td>
+                          <td>{l.issued_by}</td>
+                          <td>{l.remarks || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
     </div>
   );
 }

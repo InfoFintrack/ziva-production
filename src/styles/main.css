@@ -342,3 +342,8 @@ tr:hover {
     max-height: 95vh;
   }
 }
+
+@media print {
+  body > * { display: none !important; }
+  .po-detail-modal-print { display: block !important; }
+}
