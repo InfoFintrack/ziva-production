@@ -55,8 +55,6 @@ const [dropdowns, setDropdowns] = useState({
   const [poLoading, setPOLoading] = useState(false);
   const [poSubmitting, setPOSubmitting] = useState(false);
   const [poMessage, setPOMessage] = useState(null);
-  const [poDuplicateError, setPODuplicateError] = useState('');
-  const [poCheckLoading, setPOCheckLoading] = useState(false);
 
 const loadData = async () => {
     setLoading(true);
@@ -227,26 +225,6 @@ const loadData = async () => {
   const handlePOChange = (e) => {
     const { name, value } = e.target;
     setPOForm(prev => ({ ...prev, [name]: value }));
-    if (name === 'po_number') setPODuplicateError('');
-  };
-
-  const handlePONumberBlur = async () => {
-    const val = poForm.po_number.trim();
-    if (!val) return;
-    setPOCheckLoading(true);
-    try {
-      const res = await getPOs();
-      if (res.success) {
-        setPos(res.pos);
-        const exists = res.pos.some(
-          p => p.po_number.toLowerCase() === val.toLowerCase()
-        );
-        setPODuplicateError(exists ? 'PO already exists' : '');
-      }
-    } catch {
-      // silently fail — don't block the form
-    }
-    setPOCheckLoading(false);
   };
 
   const handlePOSubmit = async (e) => {
