@@ -29,7 +29,14 @@ export default async function handler(req, res) {
 
       const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
       const { rows } = await pool.query(
-        `SELECT * FROM cmt_rates ${where} ORDER BY created_at DESC`,
+        `SELECT t.*,
+           (COALESCE(t.cutting,0)+COALESCE(t.shirt,0)+COALESCE(t.trouser,0)+COALESCE(t.dupatta,0)+
+            COALESCE(t.patching,0)+COALESCE(t.fs_clipping,0)+COALESCE(t.fs_heming,0)+
+            COALESCE(t.fs_tussling,0)+COALESCE(t.fs_pressing,0)+COALESCE(t.ft_clipping,0)+
+            COALESCE(t.ft_heming,0)+COALESCE(t.ft_pressing,0)+COALESCE(t.ft_patching,0)+
+            COALESCE(t.fd_heming,0)+COALESCE(t.fd_tussling,0)+COALESCE(t.fd_pressing,0)+
+            COALESCE(t.fd_patching,0)+COALESCE(t.quality_packing,0)) AS total
+         FROM cmt_rates t ${where} ORDER BY t.created_at DESC`,
         values
       );
       return res.json({ success: true, rates: rows });
@@ -117,15 +124,33 @@ export default async function handler(req, res) {
     }
 
   } else if (req.method === 'PUT') {
-    const { id, action, remarks } = req.body;
+    const {
+      id, action, remarks,
+      cutting, shirt, trouser, dupatta, patching,
+      fs_clipping, fs_heming, fs_tussling, fs_pressing,
+      ft_clipping, ft_heming, ft_pressing, ft_patching,
+      fd_heming, fd_tussling, fd_pressing, fd_patching,
+      quality_packing, color_design,
+    } = req.body;
+
     if (!id || !action) {
       return res.json({ success: false, message: 'id and action are required.' });
     }
-    if (!['approve', 'reject'].includes(action)) {
-      return res.json({ success: false, message: 'action must be "approve" or "reject".' });
+
+    const validActions = ['approve', 'reject', 'resubmit', 'admin_edit'];
+    if (!validActions.includes(action)) {
+      return res.json({ success: false, message: `action must be one of: ${validActions.join(', ')}.` });
     }
-    if (!['Accounts', 'CEO'].includes(user.role)) {
-      return res.status(403).json({ success: false, error: 'Access denied' });
+
+    // Role-based access per action
+    if (action === 'resubmit' && user.role !== 'Cutting') {
+      return res.status(403).json({ success: false, error: 'Only Cutting role can resubmit.' });
+    }
+    if (action === 'admin_edit' && !['Accounts', 'CEO', 'Admin'].includes(user.role)) {
+      return res.status(403).json({ success: false, error: 'Access denied.' });
+    }
+    if (['approve', 'reject'].includes(action) && !['Accounts', 'CEO'].includes(user.role)) {
+      return res.status(403).json({ success: false, error: 'Access denied.' });
     }
 
     try {
@@ -139,11 +164,50 @@ export default async function handler(req, res) {
 
       const currentStatus = current[0].status;
 
-      if (currentStatus === 'Approved') {
+      // Locked check only applies to approve/reject, not resubmit/admin_edit
+      if (['approve', 'reject'].includes(action) && currentStatus === 'Approved') {
         return res.json({ success: false, error: 'Rate is locked and cannot be modified' });
       }
 
-      if (user.role === 'Accounts') {
+      const rateValues = [
+        cutting || 0, shirt || 0, trouser || 0, dupatta || 0, patching || 0,
+        fs_clipping || 0, fs_heming || 0, fs_tussling || 0, fs_pressing || 0,
+        ft_clipping || 0, ft_heming || 0, ft_pressing || 0, ft_patching || 0,
+        fd_heming || 0, fd_tussling || 0, fd_pressing || 0, fd_patching || 0,
+        quality_packing || 0, color_design || null,
+      ];
+
+      if (action === 'resubmit') {
+        await pool.query(
+          `UPDATE cmt_rates
+           SET status = 'Pending_Accounts',
+               cutting=$1, shirt=$2, trouser=$3, dupatta=$4, patching=$5,
+               fs_clipping=$6, fs_heming=$7, fs_tussling=$8, fs_pressing=$9,
+               ft_clipping=$10, ft_heming=$11, ft_pressing=$12, ft_patching=$13,
+               fd_heming=$14, fd_tussling=$15, fd_pressing=$16, fd_patching=$17,
+               quality_packing=$18, color_design=$19,
+               accounts_remarks=NULL, ceo_remarks=NULL,
+               approved_by_accounts=NULL, accounts_approved_at=NULL,
+               approved_by_ceo=NULL, ceo_approved_at=NULL
+           WHERE id = $20`,
+          [...rateValues, id]
+        );
+
+      } else if (action === 'admin_edit') {
+        await pool.query(
+          `UPDATE cmt_rates
+           SET status = 'Approved',
+               cutting=$1, shirt=$2, trouser=$3, dupatta=$4, patching=$5,
+               fs_clipping=$6, fs_heming=$7, fs_tussling=$8, fs_pressing=$9,
+               ft_clipping=$10, ft_heming=$11, ft_pressing=$12, ft_patching=$13,
+               fd_heming=$14, fd_tussling=$15, fd_pressing=$16, fd_patching=$17,
+               quality_packing=$18, color_design=$19,
+               approved_by_ceo=$20, ceo_approved_at=NOW()
+           WHERE id = $21`,
+          [...rateValues, user.name, id]
+        );
+
+      } else if (user.role === 'Accounts') {
         if (currentStatus !== 'Pending_Accounts') {
           return res.json({ success: false, message: 'Rate is not pending Accounts review.' });
         }
@@ -156,9 +220,7 @@ export default async function handler(req, res) {
           );
         } else {
           await pool.query(
-            `UPDATE cmt_rates
-             SET status = 'Rejected', accounts_remarks = $1
-             WHERE id = $2`,
+            `UPDATE cmt_rates SET status = 'Rejected', accounts_remarks = $1 WHERE id = $2`,
             [remarks || null, id]
           );
         }
@@ -176,9 +238,7 @@ export default async function handler(req, res) {
           );
         } else {
           await pool.query(
-            `UPDATE cmt_rates
-             SET status = 'Rejected', ceo_remarks = $1
-             WHERE id = $2`,
+            `UPDATE cmt_rates SET status = 'Rejected', ceo_remarks = $1 WHERE id = $2`,
             [remarks || null, id]
           );
         }

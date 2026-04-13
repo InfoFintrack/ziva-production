@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-import React, { useState, useEffect } from 'react';
-import { submitAcceptance, getRecords, getDropdowns, getPOs, submitCMTRate, getCMTRates } from '../api';
+import React, { useState, useEffect, useRef } from 'react';
+import { submitAcceptance, getRecords, getDropdowns, getPOs, submitCMTRate, getCMTRates, approveCMTRate } from '../api';
 
 // ── CMT Rate form constants ──────────────────────────────────────────────────
 
@@ -126,6 +126,8 @@ function CuttingView({ user, onLogout }) {
   const [cmtMessage, setCMTMessage] = useState(null);
   const [submissions, setSubmissions] = useState([]);
   const [submissionsLoading, setSubmissionsLoading] = useState(false);
+  const [editingRateId, setEditingRateId] = useState(null);
+  const cmtFormRef = useRef(null);
 
   // ── Data loaders ───────────────────────────────────────────────────────
 
@@ -280,6 +282,31 @@ function CuttingView({ user, onLogout }) {
     0
   );
 
+  const handleEditRate = (r) => {
+    const prefilledForm = {
+      po_number:    r.po_number,
+      color_design: r.color_design || '',
+      remarks:      r.remarks || '',
+    };
+    ALL_RATE_KEYS.forEach(k => {
+      prefilledForm[k] = r[k] != null ? String(r[k]) : '0';
+    });
+    setCMTForm(prefilledForm);
+    setColorDesignLocked(!!r.color_design);
+    setEditingRateId(r.id);
+    setCMTMessage(null);
+    if (cmtFormRef.current) {
+      cmtFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingRateId(null);
+    setCMTForm(EMPTY_CMT_FORM);
+    setColorDesignLocked(false);
+    setCMTMessage(null);
+  };
+
   const handleCMTSubmit = async (e) => {
     e.preventDefault();
     if (!cmtForm.po_number) {
@@ -294,28 +321,41 @@ function CuttingView({ user, onLogout }) {
 
     setCMTSubmitting(true);
     setCMTMessage(null);
-    try {
-      const payload = {
-        po_number:    cmtForm.po_number,
-        color_design: cmtForm.color_design || undefined,
-        remarks:      cmtForm.remarks      || undefined,
-        status:       'Pending_Accounts',
-      };
-      ALL_RATE_KEYS.forEach(k => {
-        payload[k] = cmtForm[k] !== '' ? Number(cmtForm[k]) : 0;
-      });
 
-      const res = await submitCMTRate(payload);
-      if (res.success) {
-        setCMTMessage({
-          type: 'success',
-          text: `✓ CMT rates for ${cmtForm.po_number} submitted successfully. Pending Accounts review.`,
-        });
-        setCMTForm(EMPTY_CMT_FORM);
-        setColorDesignLocked(false);
-        loadSubmissions();
+    try {
+      if (editingRateId) {
+        const payload = { id: editingRateId, action: 'resubmit', color_design: cmtForm.color_design || null };
+        ALL_RATE_KEYS.forEach(k => { payload[k] = cmtForm[k] !== '' ? Number(cmtForm[k]) : 0; });
+        const res = await approveCMTRate(payload);
+        if (res.success) {
+          setCMTMessage({ type: 'success', text: '✓ CMT rates updated and resubmitted for Accounts review.' });
+          setCMTForm(EMPTY_CMT_FORM);
+          setColorDesignLocked(false);
+          setEditingRateId(null);
+          loadSubmissions();
+        } else {
+          setCMTMessage({ type: 'error', text: res.message || 'Update failed.' });
+        }
       } else {
-        setCMTMessage({ type: 'error', text: res.message || 'Submission failed.' });
+        const payload = {
+          po_number:    cmtForm.po_number,
+          color_design: cmtForm.color_design || undefined,
+          remarks:      cmtForm.remarks      || undefined,
+          status:       'Pending_Accounts',
+        };
+        ALL_RATE_KEYS.forEach(k => { payload[k] = cmtForm[k] !== '' ? Number(cmtForm[k]) : 0; });
+        const res = await submitCMTRate(payload);
+        if (res.success) {
+          setCMTMessage({
+            type: 'success',
+            text: `✓ CMT rates for ${cmtForm.po_number} submitted successfully. Pending Accounts review.`,
+          });
+          setCMTForm(EMPTY_CMT_FORM);
+          setColorDesignLocked(false);
+          loadSubmissions();
+        } else {
+          setCMTMessage({ type: 'error', text: res.message || 'Submission failed.' });
+        }
       }
     } catch {
       setCMTMessage({ type: 'error', text: 'Submission failed. Please try again.' });
@@ -697,8 +737,8 @@ function CuttingView({ user, onLogout }) {
         {activeTab === 'cmt' && (
           <>
             {/* SUBMIT RATES FORM */}
-            <div className="card">
-              <h3>Submit CMT Rates</h3>
+            <div className="card" ref={cmtFormRef}>
+              <h3>{editingRateId ? 'Edit CMT Rates' : 'Submit CMT Rates'}</h3>
 
               {cmtMessage && (
                 <div className={`alert alert-${cmtMessage.type}`}>
@@ -718,18 +758,27 @@ function CuttingView({ user, onLogout }) {
                 <div className="form-grid">
                   <div className="form-group">
                     <label>PO Number *</label>
-                    <select
-                      name="po_number"
-                      value={cmtForm.po_number}
-                      onChange={handlePOSelect}
-                    >
-                      <option value="">Select active PO</option>
-                      {activePOs.map(p => (
-                        <option key={p.po_number} value={p.po_number}>
-                          {p.po_number}{p.buyer_name ? ` — ${p.buyer_name}` : ''}
-                        </option>
-                      ))}
-                    </select>
+                    {editingRateId ? (
+                      <input
+                        type="text"
+                        value={cmtForm.po_number}
+                        disabled
+                        className="auto-field"
+                      />
+                    ) : (
+                      <select
+                        name="po_number"
+                        value={cmtForm.po_number}
+                        onChange={handlePOSelect}
+                      >
+                        <option value="">Select active PO</option>
+                        {activePOs.map(p => (
+                          <option key={p.po_number} value={p.po_number}>
+                            {p.po_number}{p.buyer_name ? ` — ${p.buyer_name}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
 
                   <div className="form-group">
@@ -857,14 +906,28 @@ function CuttingView({ user, onLogout }) {
                   </div>
                 </div>
 
-                <div style={{ marginTop: '24px' }}>
+                <div style={{ marginTop: '24px', display: 'flex', gap: '12px' }}>
                   <button
                     type="submit"
                     className="btn btn-primary"
                     disabled={cmtSubmitting}
+                    style={{ flex: 1 }}
                   >
-                    {cmtSubmitting ? 'Submitting...' : 'Submit CMT Rates'}
+                    {cmtSubmitting
+                      ? (editingRateId ? 'Updating...' : 'Submitting...')
+                      : (editingRateId ? 'Update & Resubmit' : 'Submit CMT Rates')}
                   </button>
+                  {editingRateId && (
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={handleCancelEdit}
+                      disabled={cmtSubmitting}
+                      style={{ flex: 1, background: '#e0e7ff', color: '#0f3460' }}
+                    >
+                      Cancel
+                    </button>
+                  )}
                 </div>
               </form>
             </div>
@@ -891,6 +954,7 @@ function CuttingView({ user, onLogout }) {
                         <th>Total (PKR)</th>
                         <th>Submitted Date</th>
                         <th>Status</th>
+                        <th>Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -918,6 +982,15 @@ function CuttingView({ user, onLogout }) {
                                   {rejectionRemarks}
                                 </p>
                               )}
+                            </td>
+                            <td>
+                              <button
+                                className="btn btn-small"
+                                onClick={() => handleEditRate(r)}
+                                style={{ width: 'auto', background: '#e0e7ff', color: '#0f3460' }}
+                              >
+                                Edit
+                              </button>
                             </td>
                           </tr>
                         );

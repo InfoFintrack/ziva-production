@@ -103,11 +103,14 @@ const loadData = async () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setForm(prev => ({ ...prev, [name]: value }));
-    if (name === 'poNumber' && value) {
-      const cleanPO = value.replace(/[^a-zA-Z0-9]/g, '');
-      setLotPreview(`LOT-${cleanPO}-XXX (auto on submit)`);
+    if (name === 'poNumber') {
+      const digits = value.replace(/[^0-9]/g, '').slice(0, 4);
+      setForm(prev => ({ ...prev, poNumber: digits }));
+      if (digits) setLotPreview(`LOT-PO${digits}-XXX (auto on submit)`);
+      else setLotPreview('Auto-generated on submit');
+      return;
     }
+    setForm(prev => ({ ...prev, [name]: value }));
   };
 
   // Accessories handlers
@@ -161,7 +164,11 @@ const loadData = async () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const required = ['poNumber', 'joNumber', 'receivingVendor', 'garmentType', 'fabricName', 'fabricColor', 'noOfThaan', 'qtyIssued', 'unit'];
+    if (!form.poNumber.trim()) {
+      setMessage({ type: 'error', text: 'PO Number digits are required.' });
+      return;
+    }
+    const required = ['joNumber', 'receivingVendor', 'garmentType', 'fabricName', 'fabricColor', 'noOfThaan', 'qtyIssued', 'unit'];
     for (let field of required) {
       if (!form[field].toString().trim()) {
         setMessage({ type: 'error', text: 'Please fill all required fields.' });
@@ -173,6 +180,7 @@ const loadData = async () => {
     try {
       const result = await submitIssuance({
         ...form,
+        poNumber: `PO-${form.poNumber}`,
         accessories: accessories.length > 0 ? JSON.stringify(accessories) : null,
         laces: laces.length > 0 ? JSON.stringify(laces) : null,
         issuedBy: user.name
@@ -363,13 +371,20 @@ const loadData = async () => {
 
                   <div className="form-group">
                     <label>PO Number *</label>
-                    <input
-                      type="text"
-                      name="poNumber"
-                      placeholder="e.g. PO-001"
-                      value={form.poNumber}
-                      onChange={handleChange}
-                    />
+                    <div style={{ display: 'flex', alignItems: 'center', border: '2px solid #e8e8e8', borderRadius: '8px', overflow: 'hidden', background: '#fafafa' }}>
+                      <span style={{ padding: '12px 14px', background: '#f0f2f5', color: '#555', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderRight: '2px solid #e8e8e8', userSelect: 'none' }}>
+                        PO-
+                      </span>
+                      <input
+                        type="text"
+                        name="poNumber"
+                        placeholder="001"
+                        value={form.poNumber}
+                        onChange={handleChange}
+                        maxLength={4}
+                        style={{ border: 'none', flex: 1, padding: '12px 10px', outline: 'none', background: 'transparent', fontSize: '15px' }}
+                      />
+                    </div>
                   </div>
 
                   <div className="form-group">
