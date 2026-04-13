@@ -5,7 +5,7 @@ const CNIC_REGEX  = /^[0-9]{5}-[0-9]{7}-[0-9]{1}$/;
 const PHONE_REGEX = /^[0-9]{4}-[0-9]{7}$/;
 
 // Whitelist of fields that may be updated (excludes id and stitcher_code)
-const ALLOWED_UPDATE_FIELDS = ['name', 'cnic', 'phone', 'specialization', 'status', 'date_joined'];
+const ALLOWED_UPDATE_FIELDS = ['name', 'cnic', 'phone', 'specialization', 'status', 'date_joined', 'group_parent'];
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -31,7 +31,7 @@ export default async function handler(req, res) {
     }
 
   } else if (req.method === 'POST') {
-    if (!['Admin', 'Accounts'].includes(user.role)) {
+    if (!['Admin', 'Accounts', 'Cutting'].includes(user.role)) {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
 

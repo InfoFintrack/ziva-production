@@ -92,7 +92,7 @@ function App() {
         } />
 
         <Route path="/admin/settings" element={
-          user.role === 'Admin'
+          ['Admin', 'Accounts'].includes(user.role)
             ? <AdminSettings user={user} onLogout={handleLogout} />
             : <Navigate to={home} />
         } />

@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
-import { submitAcceptance, getRecords, getDropdowns, getPOs, submitCMTRate, getCMTRates, approveCMTRate } from '../api';
+import { submitAcceptance, getRecords, getDropdowns, getPOs, submitCMTRate, getCMTRates, approveCMTRate, getStitchers, createStitcher } from '../api';
 
 // ── CMT Rate form constants ──────────────────────────────────────────────────
 
@@ -49,6 +49,20 @@ const SEC_C_DUPATTA = [
   { key: 'fd_pressing', label: 'Pressing' },
   { key: 'fd_patching', label: 'Patching' },
 ];
+
+// ── Stitcher constants ───────────────────────────────────────────────────────
+const PHONE_REGEX = /^\d{4}-\d{7}$/;
+const SPECIALIZATIONS = ['Shirt', 'Trouser', 'Dupatta', 'Mixed'];
+
+const formatPhone = (val) => {
+  const d = val.replace(/\D/g, '').slice(0, 11);
+  if (d.length <= 4) return d;
+  return d.slice(0, 4) + '-' + d.slice(4);
+};
+
+const EMPTY_STITCHER_FORM = {
+  name: '', phone: '', cnic: '', specialization: '', date_joined: '',
+};
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -129,12 +143,23 @@ function CuttingView({ user, onLogout }) {
   const [editingRateId, setEditingRateId] = useState(null);
   const cmtFormRef = useRef(null);
 
+  // ── Stitchers state ────────────────────────────────────────────────────
+  const [stitchers, setStitchers] = useState([]);
+  const [stitchersLoading, setStitchersLoading] = useState(false);
+  const [stitcherForm, setStitcherForm] = useState(EMPTY_STITCHER_FORM);
+  const [stitcherSubmitting, setStitcherSubmitting] = useState(false);
+  const [stitcherMessage, setStitcherMessage] = useState(null);
+  const [stitcherPhoneError, setStitcherPhoneError] = useState('');
+  const [stitcherSearch, setStitcherSearch] = useState('');
+  const [stitcherStatusFilter, setStitcherStatusFilter] = useState('Active');
+
   // ── Data loaders ───────────────────────────────────────────────────────
 
   useEffect(() => {
     loadData();
     loadActivePOs();
     loadSubmissions();
+    loadStitchers();
   }, []);
 
   const loadData = async () => {
@@ -363,6 +388,66 @@ function CuttingView({ user, onLogout }) {
     setCMTSubmitting(false);
   };
 
+  // ── Stitcher handlers ──────────────────────────────────────────────────
+
+  const loadStitchers = async () => {
+    setStitchersLoading(true);
+    try {
+      const res = await getStitchers();
+      if (res.success) setStitchers(res.stitchers);
+    } catch { /* silently fail */ }
+    setStitchersLoading(false);
+  };
+
+  const handleStitcherFormChange = (e) => {
+    const { name, value } = e.target;
+    if (name === 'phone') {
+      setStitcherForm(prev => ({ ...prev, phone: formatPhone(value) }));
+      if (stitcherPhoneError) setStitcherPhoneError('');
+      return;
+    }
+    setStitcherForm(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleStitcherSubmit = async (e) => {
+    e.preventDefault();
+    // Phone validation
+    if (!stitcherForm.phone || !PHONE_REGEX.test(stitcherForm.phone)) {
+      setStitcherPhoneError('Phone number required in format XXXX-XXXXXXX');
+      return;
+    }
+    setStitcherSubmitting(true);
+    setStitcherMessage(null);
+    try {
+      const res = await createStitcher({
+        name:           stitcherForm.name,
+        phone:          stitcherForm.phone,
+        cnic:           stitcherForm.cnic  || undefined,
+        specialization: stitcherForm.specialization,
+        date_joined:    stitcherForm.date_joined || undefined,
+      });
+      if (res.success) {
+        setStitcherMessage({ type: 'success', text: `✓ Stitcher ${res.stitcher.stitcher_code} — ${res.stitcher.name} added successfully.` });
+        setStitcherForm(EMPTY_STITCHER_FORM);
+        setStitcherPhoneError('');
+        loadStitchers();
+      } else {
+        setStitcherMessage({ type: 'error', text: res.message || 'Failed to add stitcher.' });
+      }
+    } catch {
+      setStitcherMessage({ type: 'error', text: 'Submission failed. Please try again.' });
+    }
+    setStitcherSubmitting(false);
+  };
+
+  const filteredStitchers = stitchers.filter(s => {
+    const matchSearch = !stitcherSearch.trim() ||
+      s.name?.toLowerCase().includes(stitcherSearch.toLowerCase()) ||
+      s.stitcher_code?.toLowerCase().includes(stitcherSearch.toLowerCase());
+    const matchStatus = stitcherStatusFilter === 'All' || s.status === stitcherStatusFilter;
+    return matchSearch && matchStatus;
+  });
+
   // ── Render ─────────────────────────────────────────────────────────────
 
   return (
@@ -390,6 +475,7 @@ function CuttingView({ user, onLogout }) {
           {[
             { key: 'acceptance', label: 'Fabric Acceptance' },
             { key: 'cmt',        label: 'CMT Rates' },
+            { key: 'stitchers',  label: 'Stitchers' },
           ].map(t => (
             <button
               key={t.key}
@@ -995,6 +1081,168 @@ function CuttingView({ user, onLogout }) {
                           </tr>
                         );
                       })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* ── TAB 3: STITCHERS ────────────────────────────────────────── */}
+        {activeTab === 'stitchers' && (
+          <>
+            {/* ADD STITCHER FORM */}
+            <div className="card">
+              <h3>Add Stitcher</h3>
+
+              {stitcherMessage && (
+                <div className={`alert alert-${stitcherMessage.type}`}>{stitcherMessage.text}</div>
+              )}
+
+              <form onSubmit={handleStitcherSubmit}>
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label>Name *</label>
+                    <input
+                      type="text"
+                      name="name"
+                      placeholder="Full name"
+                      value={stitcherForm.name}
+                      onChange={handleStitcherFormChange}
+                      required
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Phone *</label>
+                    <input
+                      type="text"
+                      name="phone"
+                      placeholder="0300-1234567"
+                      value={stitcherForm.phone}
+                      onChange={handleStitcherFormChange}
+                      style={stitcherPhoneError ? { borderColor: '#dc2626' } : {}}
+                    />
+                    {stitcherPhoneError && (
+                      <p style={{ fontSize: '12px', color: '#dc2626', marginTop: '4px', fontWeight: '600' }}>
+                        {stitcherPhoneError}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="form-group">
+                    <label>CNIC</label>
+                    <input
+                      type="text"
+                      name="cnic"
+                      placeholder="00000-0000000-0"
+                      value={stitcherForm.cnic}
+                      onChange={handleStitcherFormChange}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Specialization *</label>
+                    <select
+                      name="specialization"
+                      value={stitcherForm.specialization}
+                      onChange={handleStitcherFormChange}
+                      required
+                    >
+                      <option value="">Select specialization</option>
+                      {SPECIALIZATIONS.map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Date Joined</label>
+                    <input
+                      type="date"
+                      name="date_joined"
+                      value={stitcherForm.date_joined}
+                      onChange={handleStitcherFormChange}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginTop: '20px' }}>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={stitcherSubmitting}
+                  >
+                    {stitcherSubmitting ? 'Adding...' : 'Add Stitcher'}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* STITCHERS TABLE */}
+            <div className="card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+                <h3 style={{ margin: 0, borderBottom: 'none', padding: 0 }}>All Stitchers</h3>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <input
+                    type="text"
+                    placeholder="Search by name or code..."
+                    value={stitcherSearch}
+                    onChange={e => setStitcherSearch(e.target.value)}
+                    style={{ padding: '7px 12px', border: '2px solid #e8e8e8', borderRadius: '8px', fontSize: '13px', width: '200px' }}
+                  />
+                  <select
+                    value={stitcherStatusFilter}
+                    onChange={e => setStitcherStatusFilter(e.target.value)}
+                    style={{ padding: '7px 10px', border: '2px solid #e8e8e8', borderRadius: '8px', fontSize: '13px' }}
+                  >
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                    <option value="All">All</option>
+                  </select>
+                  <button
+                    className="btn btn-small"
+                    onClick={loadStitchers}
+                    style={{ width: 'auto', background: '#f0f2f5', color: '#333' }}
+                  >
+                    ↻ Refresh
+                  </button>
+                </div>
+              </div>
+
+              {stitchersLoading ? (
+                <div className="loading"><div className="spinner"></div>Loading stitchers...</div>
+              ) : filteredStitchers.length === 0 ? (
+                <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>
+                  {stitchers.length === 0 ? 'No stitchers yet.' : 'No results match your search.'}
+                </p>
+              ) : (
+                <div className="table-container">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Code</th>
+                        <th>Name</th>
+                        <th>Specialization</th>
+                        <th>Phone</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredStitchers.map(s => (
+                        <tr key={s.id}>
+                          <td>{s.stitcher_code}</td>
+                          <td>{s.name}</td>
+                          <td>{s.specialization}</td>
+                          <td>{s.phone}</td>
+                          <td>
+                            <span className={`badge ${s.status === 'Active' ? 'badge-accepted' : 'badge-rejected'}`}>
+                              {s.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
