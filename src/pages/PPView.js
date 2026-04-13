@@ -85,11 +85,22 @@ const loadData = async () => {
     setLoading(false);
   };
 
+  const getNextPONumber = (posList) => {
+    const nums = posList
+      .map(p => { const m = p.po_number.match(/^PO-(\d+)$/i); return m ? parseInt(m[1], 10) : 0; })
+      .filter(n => n > 0);
+    const max = nums.length > 0 ? Math.max(...nums) : 0;
+    return `PO-${String(max + 1).padStart(3, '0')}`;
+  };
+
   const loadPOs = async () => {
     setPOLoading(true);
     try {
       const res = await getPOs();
-      if (res.success) setPos(res.pos);
+      if (res.success) {
+        setPos(res.pos);
+        setPOForm(prev => ({ ...prev, po_number: getNextPONumber(res.pos) }));
+      }
     } catch {
       // silently fail — PO list is non-critical on load
     }
@@ -244,7 +255,6 @@ const loadData = async () => {
       setPOMessage({ type: 'error', text: 'PO Number is required.' });
       return;
     }
-    if (poDuplicateError) return;
 
     setPOSubmitting(true);
     setPOMessage(null);
@@ -274,7 +284,6 @@ const loadData = async () => {
           total_qty: '',
           remarks: '',
         });
-        setPODuplicateError('');
         loadPOs();
       } else {
         setPOMessage({ type: 'error', text: res.message || 'Failed to create PO.' });
@@ -733,22 +742,10 @@ const loadData = async () => {
                     <label>PO Number *</label>
                     <input
                       type="text"
-                      name="po_number"
-                      placeholder="e.g. PO-001"
-                      value={poForm.po_number}
-                      onChange={handlePOChange}
-                      onBlur={handlePONumberBlur}
+                      value={poForm.po_number || 'Loading...'}
+                      disabled
+                      className="auto-field"
                     />
-                    {poCheckLoading && (
-                      <p style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>
-                        Checking...
-                      </p>
-                    )}
-                    {poDuplicateError && !poCheckLoading && (
-                      <p style={{ fontSize: '12px', color: '#dc2626', marginTop: '4px', fontWeight: '600' }}>
-                        {poDuplicateError}
-                      </p>
-                    )}
                   </div>
 
                   <div className="form-group">
@@ -835,7 +832,7 @@ const loadData = async () => {
                   <button
                     type="submit"
                     className="btn btn-primary"
-                    disabled={poSubmitting || !!poDuplicateError}
+                    disabled={poSubmitting}
                   >
                     {poSubmitting ? 'Creating...' : 'Create PO'}
                   </button>
