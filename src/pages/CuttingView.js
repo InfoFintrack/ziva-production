@@ -54,11 +54,6 @@ const SEC_C_DUPATTA = [
 const PHONE_REGEX = /^\d{4}-\d{7}$/;
 const SPECIALIZATIONS = ['Shirt', 'Trouser', 'Dupatta', 'Mixed'];
 
-const formatPhone = (val) => {
-  const d = val.replace(/\D/g, '').slice(0, 11);
-  if (d.length <= 4) return d;
-  return d.slice(0, 4) + '-' + d.slice(4);
-};
 
 const EMPTY_STITCHER_FORM = {
   name: '', phone: '', cnic: '', specialization: '', date_joined: '',
@@ -401,12 +396,29 @@ function CuttingView({ user, onLogout }) {
 
   const handleStitcherFormChange = (e) => {
     const { name, value } = e.target;
-    if (name === 'phone') {
-      setStitcherForm(prev => ({ ...prev, phone: formatPhone(value) }));
-      if (stitcherPhoneError) setStitcherPhoneError('');
-      return;
-    }
     setStitcherForm(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handlePhoneChange = (e) => {
+    const digits = e.target.value.replace(/\D/g, '').slice(0, 11);
+    let formatted = digits;
+    if (digits.length > 4) {
+      formatted = digits.slice(0, 4) + '-' + digits.slice(4);
+    }
+    setStitcherForm(prev => ({ ...prev, phone: formatted }));
+    if (stitcherPhoneError) setStitcherPhoneError('');
+  };
+
+  const handleCNICChange = (e) => {
+    const digits = e.target.value.replace(/\D/g, '').slice(0, 13);
+    let formatted = digits;
+    if (digits.length > 5) {
+      formatted = digits.slice(0, 5) + '-' + digits.slice(5);
+    }
+    if (digits.length > 12) {
+      formatted = digits.slice(0, 5) + '-' + digits.slice(5, 12) + '-' + digits.slice(12);
+    }
+    setStitcherForm(prev => ({ ...prev, cnic: formatted }));
   };
 
   const handleStitcherSubmit = async (e) => {
@@ -1121,7 +1133,7 @@ function CuttingView({ user, onLogout }) {
                       name="phone"
                       placeholder="0300-1234567"
                       value={stitcherForm.phone}
-                      onChange={handleStitcherFormChange}
+                      onChange={handlePhoneChange}
                       style={stitcherPhoneError ? { borderColor: '#dc2626' } : {}}
                     />
                     {stitcherPhoneError && (
@@ -1138,7 +1150,7 @@ function CuttingView({ user, onLogout }) {
                       name="cnic"
                       placeholder="00000-0000000-0"
                       value={stitcherForm.cnic}
-                      onChange={handleStitcherFormChange}
+                      onChange={handleCNICChange}
                     />
                   </div>
 
