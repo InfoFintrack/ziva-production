@@ -83,22 +83,11 @@ const loadData = async () => {
     setLoading(false);
   };
 
-  const getNextPONumber = (posList) => {
-    const nums = posList
-      .map(p => { const m = p.po_number.match(/^PO-(\d+)$/i); return m ? parseInt(m[1], 10) : 0; })
-      .filter(n => n > 0);
-    const max = nums.length > 0 ? Math.max(...nums) : 0;
-    return `PO-${String(max + 1).padStart(3, '0')}`;
-  };
-
   const loadPOs = async () => {
     setPOLoading(true);
     try {
       const res = await getPOs();
-      if (res.success) {
-        setPos(res.pos);
-        setPOForm(prev => ({ ...prev, po_number: getNextPONumber(res.pos) }));
-      }
+      if (res.success) setPos(res.pos);
     } catch {
       // silently fail — PO list is non-critical on load
     }
@@ -224,6 +213,11 @@ const loadData = async () => {
 
   const handlePOChange = (e) => {
     const { name, value } = e.target;
+    if (name === 'po_number') {
+      const digits = value.replace(/[^0-9]/g, '').slice(0, 4);
+      setPOForm(prev => ({ ...prev, po_number: digits }));
+      return;
+    }
     setPOForm(prev => ({ ...prev, [name]: value }));
   };
 
@@ -238,7 +232,7 @@ const loadData = async () => {
     setPOMessage(null);
     try {
       const res = await createPO({
-        po_number:     poForm.po_number.trim(),
+        po_number:     `PO-${poForm.po_number.trim()}`,
         buyer_name:    poForm.buyer_name    || undefined,
         garment_type:  poForm.garment_type  || undefined,
         color_design:  poForm.color_design  || undefined,
@@ -718,12 +712,20 @@ const loadData = async () => {
                 <div className="form-grid">
                   <div className="form-group">
                     <label>PO Number *</label>
-                    <input
-                      type="text"
-                      value={poForm.po_number || 'Loading...'}
-                      disabled
-                      className="auto-field"
-                    />
+                    <div style={{ display: 'flex', alignItems: 'center', border: '2px solid #e8e8e8', borderRadius: '8px', overflow: 'hidden', background: '#fafafa' }}>
+                      <span style={{ padding: '12px 14px', background: '#f0f2f5', color: '#555', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderRight: '2px solid #e8e8e8', userSelect: 'none' }}>
+                        PO-
+                      </span>
+                      <input
+                        type="text"
+                        name="po_number"
+                        placeholder="001"
+                        value={poForm.po_number}
+                        onChange={handlePOChange}
+                        maxLength={4}
+                        style={{ border: 'none', flex: 1, padding: '12px 10px', outline: 'none', background: 'transparent', fontSize: '15px' }}
+                      />
+                    </div>
                   </div>
 
                   <div className="form-group">
