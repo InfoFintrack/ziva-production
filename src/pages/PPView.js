@@ -318,8 +318,40 @@ function PPView({ user, onLogout }) {
     if (po_number) {
       const found = pos.find(p => p.po_number === po_number);
       setIssuePODetails(found || null);
+      setForm(prev => ({
+        ...prev,
+        poNumber:    po_number.replace('PO-', ''),
+        garmentType: found?.garment_type || '',
+        article:     found?.article_name || '',
+        fabricColor: '',
+        fabricName:  '',
+      }));
     } else {
       setIssuePODetails(null);
+      setForm(prev => ({
+        ...prev,
+        poNumber:    '',
+        garmentType: '',
+        article:     '',
+        fabricColor: '',
+        fabricName:  '',
+      }));
+    }
+  };
+
+  const handleIssueComponentSelect = (e) => {
+    const comp = e.target.value;
+    setIssueComponent(comp);
+    setMetersToIssue('');
+    if (comp && issuePODetails) {
+      const compKey = comp.toLowerCase();
+      setForm(prev => ({
+        ...prev,
+        fabricColor: issuePODetails[`${compKey}_colour`] || '',
+        fabricName:  issuePODetails[`${compKey}_fabric`]  || '',
+      }));
+    } else {
+      setForm(prev => ({ ...prev, fabricColor: '', fabricName: '' }));
     }
   };
 
@@ -333,7 +365,7 @@ function PPView({ user, onLogout }) {
         return;
       }
       if (!metersToIssue || Number(metersToIssue) <= 0) {
-        setMessage({ type: 'error', text: 'Please enter meters to issue for the linked PO.' });
+        setMessage({ type: 'error', text: 'Please enter pieces to issue for the linked PO.' });
         return;
       }
       const compKey   = issueComponent.toLowerCase();
@@ -341,7 +373,7 @@ function PPView({ user, onLogout }) {
       const issued    = Number(issuePODetails?.[`${compKey}_meters_issued`] || 0);
       const remaining = qty - issued;
       if (Number(metersToIssue) > remaining) {
-        setMessage({ type: 'error', text: `Cannot exceed remaining ${remaining} m for ${issueComponent}.` });
+        setMessage({ type: 'error', text: `Cannot exceed remaining ${remaining} pcs for ${issueComponent}.` });
         return;
       }
     }
@@ -407,6 +439,15 @@ function PPView({ user, onLogout }) {
           text: `✓ Fabric issued successfully! Record ID: ${result.recordId} | Lot: ${result.lotNumber}`,
         });
         resetForm();
+        // Re-apply PO-level auto-fills (poNumber, garmentType, article) if PO is still linked
+        if (issuePO && issuePODetails) {
+          setForm(prev => ({
+            ...prev,
+            poNumber:    issuePO.replace('PO-', ''),
+            garmentType: issuePODetails.garment_type || '',
+            article:     issuePODetails.article_name || '',
+          }));
+        }
         loadData();
       } else {
         setMessage({ type: 'error', text: result.message });
@@ -708,9 +749,9 @@ function PPView({ user, onLogout }) {
                               {issuePODetails[`${comp}_colour`] || '—'} · {issuePODetails[`${comp}_fabric`] || '—'}
                             </p>
                             <p style={{ fontSize: '12px', marginBottom: '2px' }}>Total Qty: <strong>{qty} pcs</strong></p>
-                            <p style={{ fontSize: '12px', marginBottom: '2px' }}>Issued: {issued} m</p>
+                            <p style={{ fontSize: '12px', marginBottom: '2px' }}>Issued: {issued} pcs</p>
                             <p style={{ fontSize: '12px', fontWeight: '600', color: remaining > 0 ? '#16a34a' : '#dc2626' }}>
-                              Remaining: {remaining} m
+                              Remaining: {remaining} pcs
                             </p>
                           </div>
                         );
@@ -725,7 +766,7 @@ function PPView({ user, onLogout }) {
                     <div className="form-grid">
                       <div className="form-group">
                         <label>Component *</label>
-                        <select value={issueComponent} onChange={e => { setIssueComponent(e.target.value); setMetersToIssue(''); }}>
+                        <select value={issueComponent} onChange={handleIssueComponentSelect}>
                           <option value="">Select component</option>
                           <option value="Shirt">Shirt</option>
                           <option value="Trouser">Trouser</option>
@@ -734,7 +775,7 @@ function PPView({ user, onLogout }) {
                       </div>
 
                       <div className="form-group">
-                        <label>Meters to Issue *</label>
+                        <label>Pieces to Issue *</label>
                         <input
                           type="number"
                           value={metersToIssue}
@@ -751,7 +792,7 @@ function PPView({ user, onLogout }) {
                           const after     = remaining - Number(metersToIssue);
                           return (
                             <p style={{ fontSize: '12px', marginTop: '4px', color: after > 0 ? '#16a34a' : '#dc2626' }}>
-                              After issuance: {after.toFixed(2)} m remaining
+                              After issuance: {after.toFixed(2)} pcs remaining
                             </p>
                           );
                         })()}
@@ -780,8 +821,8 @@ function PPView({ user, onLogout }) {
 
                   <div className="form-group">
                     <label>PO Number *</label>
-                    <div style={{ display: 'flex', alignItems: 'center', border: '2px solid #e8e8e8', borderRadius: '8px', overflow: 'hidden', background: '#fafafa' }}>
-                      <span style={{ padding: '12px 14px', background: '#f0f2f5', color: '#555', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderRight: '2px solid #e8e8e8', userSelect: 'none' }}>PO-</span>
+                    <div style={{ display: 'flex', alignItems: 'center', border: issuePO ? '2px dashed #0f3460' : '2px solid #e8e8e8', borderRadius: '8px', overflow: 'hidden', background: issuePO ? '#f0f6ff' : '#fafafa' }}>
+                      <span style={{ padding: '12px 14px', background: '#f0f2f5', color: '#555', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderRight: issuePO ? '2px dashed #0f3460' : '2px solid #e8e8e8', userSelect: 'none' }}>PO-</span>
                       <input
                         type="text"
                         name="poNumber"
@@ -789,7 +830,8 @@ function PPView({ user, onLogout }) {
                         value={form.poNumber}
                         onChange={handleChange}
                         maxLength={4}
-                        style={{ border: 'none', flex: 1, padding: '12px 10px', outline: 'none', background: 'transparent', fontSize: '15px' }}
+                        disabled={!!issuePO}
+                        style={{ border: 'none', flex: 1, padding: '12px 10px', outline: 'none', background: 'transparent', fontSize: '15px', color: issuePO ? '#0f3460' : 'inherit', cursor: issuePO ? 'not-allowed' : 'text' }}
                       />
                     </div>
                   </div>
@@ -801,7 +843,15 @@ function PPView({ user, onLogout }) {
 
                   <div className="form-group">
                     <label>Article</label>
-                    <input type="text" name="article" placeholder="e.g. Shalwar Kameez" value={form.article} onChange={handleChange} />
+                    <input
+                      type="text"
+                      name="article"
+                      placeholder={issuePO ? '' : 'e.g. Shalwar Kameez'}
+                      value={form.article}
+                      onChange={handleChange}
+                      disabled={!!issuePO}
+                      style={issuePO ? { border: '2px dashed #0f3460', background: '#f0f6ff', color: '#0f3460' } : {}}
+                    />
                   </div>
 
                   <div className="form-group">
@@ -819,20 +869,45 @@ function PPView({ user, onLogout }) {
 
                   <div className="form-group">
                     <label>Garment Type *</label>
-                    <select name="garmentType" value={form.garmentType} onChange={handleChange}>
-                      <option value="">Select type</option>
-                      {dropdowns.garmentTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
+                    {issuePO ? (
+                      <input
+                        type="text"
+                        value={form.garmentType}
+                        disabled
+                        style={{ border: '2px dashed #0f3460', background: '#f0f6ff', color: '#0f3460', width: '100%', padding: '12px 16px', borderRadius: '8px', fontSize: '15px', boxSizing: 'border-box', cursor: 'not-allowed' }}
+                      />
+                    ) : (
+                      <select name="garmentType" value={form.garmentType} onChange={handleChange}>
+                        <option value="">Select type</option>
+                        {dropdowns.garmentTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    )}
                   </div>
 
                   <div className="form-group">
                     <label>Fabric Name *</label>
-                    <input type="text" name="fabricName" placeholder="e.g. Lawn, Khaddar" value={form.fabricName} onChange={handleChange} />
+                    <input
+                      type="text"
+                      name="fabricName"
+                      placeholder={issuePO ? '' : 'e.g. Lawn, Khaddar'}
+                      value={form.fabricName}
+                      onChange={handleChange}
+                      disabled={!!issuePO}
+                      style={issuePO ? { border: '2px dashed #0f3460', background: '#f0f6ff', color: '#0f3460' } : {}}
+                    />
                   </div>
 
                   <div className="form-group">
                     <label>Fabric Color *</label>
-                    <input type="text" name="fabricColor" placeholder="e.g. Navy Blue" value={form.fabricColor} onChange={handleChange} />
+                    <input
+                      type="text"
+                      name="fabricColor"
+                      placeholder={issuePO ? '' : 'e.g. Navy Blue'}
+                      value={form.fabricColor}
+                      onChange={handleChange}
+                      disabled={!!issuePO}
+                      style={issuePO ? { border: '2px dashed #0f3460', background: '#f0f6ff', color: '#0f3460' } : {}}
+                    />
                   </div>
 
                   <div className="form-group">
@@ -1158,9 +1233,9 @@ function PPView({ user, onLogout }) {
                       <p style={{ fontSize: '13px', marginBottom: '4px' }}><span style={{ color: '#888' }}>Colour: </span>{selectedPODetail[`${comp}_colour`] || '—'}</p>
                       <p style={{ fontSize: '13px', marginBottom: '4px' }}><span style={{ color: '#888' }}>Fabric: </span>{selectedPODetail[`${comp}_fabric`] || '—'}</p>
                       <p style={{ fontSize: '13px', marginBottom: '4px' }}><span style={{ color: '#888' }}>Total Qty: </span>{qty} pcs</p>
-                      <p style={{ fontSize: '13px', marginBottom: '4px' }}><span style={{ color: '#888' }}>Issued: </span>{issued} m</p>
+                      <p style={{ fontSize: '13px', marginBottom: '4px' }}><span style={{ color: '#888' }}>Issued: </span>{issued} pcs</p>
                       <p style={{ fontSize: '13px', fontWeight: '600', color: remaining > 0 ? '#16a34a' : '#dc2626' }}>
-                        Remaining: {remaining} m
+                        Remaining: {remaining} pcs
                       </p>
                     </div>
                   );
@@ -1200,14 +1275,14 @@ function PPView({ user, onLogout }) {
                 <div className="table-container">
                   <table>
                     <thead>
-                      <tr><th>Date</th><th>Component</th><th>Meters Issued</th><th>Issued By</th><th>Remarks</th></tr>
+                      <tr><th>Date</th><th>Component</th><th>Pieces Issued</th><th>Issued By</th><th>Remarks</th></tr>
                     </thead>
                     <tbody>
                       {poDetailLog.map((l, i) => (
                         <tr key={i}>
                           <td>{l.issued_at ? new Date(l.issued_at).toLocaleDateString('en-GB') : '—'}</td>
                           <td style={{ textTransform: 'capitalize' }}>{l.component}</td>
-                          <td>{l.meters_issued} m</td>
+                          <td>{l.meters_issued} pcs</td>
                           <td>{l.issued_by}</td>
                           <td>{l.remarks || '—'}</td>
                         </tr>
