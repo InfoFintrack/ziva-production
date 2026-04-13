@@ -93,15 +93,15 @@ export const getAllocations = (params = '') => authFetch(`/api/allocations${para
 export const createAllocation = (data) => post('/api/allocations', data);
 export const updateAllocation = (data) => authFetch('/api/allocations', { method: 'PUT', body: JSON.stringify(data) });
 
-// PO Accessories
+// PO Accessories (merged into po-master via ?type=accessories)
 export const getPoAccessories = (poNumber) =>
-  authFetch(`/api/po-accessories?po_number=${encodeURIComponent(poNumber)}`);
-export const addPoAccessory = (data) => post('/api/po-accessories', data);
+  authFetch(`/api/po-master?type=accessories&po_number=${encodeURIComponent(poNumber)}`);
+export const addPoAccessory = (data) => post('/api/po-master?type=accessories', data);
 
-// Fabric Issuance Log
+// Fabric Issuance Log (merged into po-master via ?type=issuance_log)
 export const getFabricIssuanceLog = (poNumber) =>
-  authFetch(`/api/fabric-issuance-log?po_number=${encodeURIComponent(poNumber)}`);
-export const logFabricIssuance = (data) => post('/api/fabric-issuance-log', data);
+  authFetch(`/api/po-master?type=issuance_log&po_number=${encodeURIComponent(poNumber)}`);
+export const logFabricIssuance = (data) => post('/api/po-master?type=issuance_log', data);
 
 // CMT Payments
 export const getCMTPayments = (params = '') => authFetch(`/api/cmt-payments${params}`);

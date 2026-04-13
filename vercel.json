@@ -8,9 +8,5 @@
         { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" }
       ]
     }
-  ],
-  "routes": [
-    { "src": "/api/po-accessories", "dest": "/api/po-accessories.js" },
-    { "src": "/api/fabric-issuance-log", "dest": "/api/fabric-issuance-log.js" }
   ]
 }

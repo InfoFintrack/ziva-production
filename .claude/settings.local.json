@@ -6,7 +6,8 @@
       "Bash(node -e \"require\\('./server.js'\\)\")",
       "Bash(curl -s http://localhost:3001/api/dropdowns)",
       "Bash(printf:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(grep -v \"^_lib$\")"
     ]
   }
 }
