@@ -1,6 +1,8 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from 'react';
 import { getPOs, getCMTRates, getStitchers, logPaymentEntry, getPaymentEntries } from '../api';
+import ProdFlowLogo from '../components/ProdFlowLogo';
+import PoweredByFintrack from '../components/PoweredByFintrack';
 
 const TODAY = new Date().toISOString().split('T')[0];
 
@@ -228,7 +230,7 @@ function StitchingView({ user, onLogout }) {
   return (
     <div className="app-container">
       <nav className="navbar">
-        <h2>ZIVA — Stitching Dashboard</h2>
+        <ProdFlowLogo height={32} />
         <div className="user-info">
           <span>Welcome, {user.name}</span>
           <span className="role-badge">Stitching</span>
@@ -450,6 +452,7 @@ function StitchingView({ user, onLogout }) {
           </div>
         )}
 
+        <PoweredByFintrack />
       </div>
     </div>
   );

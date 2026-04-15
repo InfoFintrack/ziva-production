@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { submitAcceptance, getRecords, getDropdowns, getPOs, submitCMTRate, getCMTRates, approveCMTRate, getStitchers, createStitcher, logPaymentEntry, getPaymentEntries } from '../api';
 import { ColourInput } from './PPView';
+import ProdFlowLogo from '../components/ProdFlowLogo';
+import PoweredByFintrack from '../components/PoweredByFintrack';
 
 // ── CMT Rate form constants ──────────────────────────────────────────────────
 
@@ -682,7 +684,7 @@ function CuttingView({ user, onLogout }) {
   return (
     <div className="app-container">
       <nav className="navbar">
-        <h2>ZIVA — Fabric Acceptance</h2>
+        <ProdFlowLogo height={32} />
         <div className="user-info">
           <span>Welcome, {user.name}</span>
           <span className="role-badge">Cutting Department</span>
@@ -1696,6 +1698,7 @@ function CuttingView({ user, onLogout }) {
           </>
         )}
 
+        <PoweredByFintrack />
       </div>
     </div>
   );

@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { getCMTRates, approveCMTRate, getPaymentEntries, getAdvances, addAdvance, updatePayment, getStitchers } from '../api';
+import ProdFlowLogo from '../components/ProdFlowLogo';
+import PoweredByFintrack from '../components/PoweredByFintrack';
 
 // ── Rate field definitions ────────────────────────────────────────────────────
 const ALL_RATE_KEYS = [
@@ -693,7 +695,7 @@ function AccountsView({ user, onLogout }) {
   return (
     <div className="app-container">
       <nav className="navbar">
-        <h2>ZIVA — Accounts Dashboard</h2>
+        <ProdFlowLogo height={32} />
         <div className="user-info">
           <span>Welcome, {user.name}</span>
           <span className="role-badge">Accounts</span>
@@ -1073,6 +1075,7 @@ function AccountsView({ user, onLogout }) {
           </>
         )}
 
+        <PoweredByFintrack />
       </div>
 
       {renderRateModal()}

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getRecords, adminOverride } from '../api';
+import ProdFlowLogo from '../components/ProdFlowLogo';
+import PoweredByFintrack from '../components/PoweredByFintrack';
 
 function AdminView({ user, onLogout }) {
   const navigate = useNavigate();
@@ -100,7 +102,7 @@ function AdminView({ user, onLogout }) {
   return (
     <div className="app-container">
       <nav className="navbar">
-        <h2>ZIVA — Admin Dashboard</h2>
+        <ProdFlowLogo height={32} />
         <div className="user-info">
           <span>Welcome, {user.name}</span>
           <span className="role-badge">Admin</span>
@@ -289,6 +291,7 @@ function AdminView({ user, onLogout }) {
             </div>
           )}
         </div>
+        <PoweredByFintrack />
       </div>
 
       {/* OVERRIDE MODAL */}

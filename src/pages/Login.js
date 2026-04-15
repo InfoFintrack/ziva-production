@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { loginUser } from '../api';
+import ProdFlowLogo from '../components/ProdFlowLogo';
+import PoweredByFintrack from '../components/PoweredByFintrack';
 
 function Login({ onLogin }) {
   const [name, setName] = useState('');
@@ -33,8 +35,7 @@ function Login({ onLogin }) {
     <div className="login-container">
       <div className="login-card">
         <div className="logo">
-          <h1>ZIVA</h1>
-          <p>Production Management System</p>
+          <ProdFlowLogo height={48} />
         </div>
 
         {error && <div className="alert alert-error">{error}</div>}
@@ -105,6 +106,7 @@ function Login({ onLogin }) {
           </button>
         </form>
 
+        <PoweredByFintrack />
       </div>
     </div>
   );

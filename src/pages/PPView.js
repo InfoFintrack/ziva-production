@@ -1,6 +1,8 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
+import ProdFlowLogo from '../components/ProdFlowLogo';
+import PoweredByFintrack from '../components/PoweredByFintrack';
 import {
   submitIssuance, getRecords, getDropdowns, getPOs, createPO, updatePO,
   getPoAccessories, addPoAccessory, getFabricIssuanceLog, logFabricIssuance,
@@ -676,7 +678,7 @@ function PPView({ user, onLogout }) {
   return (
     <div className="app-container">
       <nav className="navbar">
-        <h2>ZIVA — Fabric Issuance</h2>
+        <ProdFlowLogo height={32} />
         <div className="user-info">
           <span>Welcome, {user.name}</span>
           <span className="role-badge">PP Department</span>
@@ -1180,6 +1182,7 @@ function PPView({ user, onLogout }) {
           </>
         )}
 
+        <PoweredByFintrack />
       </div>
 
       {/* ── PO Detail Modal (portal — direct child of body for print) ──── */}

@@ -1,6 +1,8 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from 'react';
 import { getPOs, getCMTRates, getStitchers, getAllocations, createAllocation, updateAllocation } from '../api';
+import ProdFlowLogo from '../components/ProdFlowLogo';
+import PoweredByFintrack from '../components/PoweredByFintrack';
 
 const TODAY = new Date().toISOString().split('T')[0];
 const COMPONENTS = ['Shirt', 'Trouser', 'Dupatta'];
@@ -250,7 +252,7 @@ function SupervisorView({ user, onLogout }) {
   return (
     <div className="app-container">
       <nav className="navbar">
-        <h2>ZIVA — Supervisor Dashboard</h2>
+        <ProdFlowLogo height={32} />
         <div className="user-info">
           <span>Welcome, {user.name}</span>
           <span className="role-badge">Supervisor</span>
@@ -514,6 +516,7 @@ function SupervisorView({ user, onLogout }) {
             )}
           </>
         )}
+        <PoweredByFintrack />
       </div>
 
       {/* ── Update Modal ──────────────────────────────────────────────────────── */}
