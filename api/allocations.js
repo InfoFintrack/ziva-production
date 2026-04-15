@@ -3,9 +3,6 @@ const { authenticateToken } = require('./_lib/auth');
 
 const ALLOWED_ROLES = ['Supervisor', 'Admin', 'Accounts'];
 
-// Whitelist of updatable quantity/remark fields
-const ALLOWED_UPDATE_FIELDS = ['qty_returned', 'qty_accepted', 'qty_rework', 'qty_rejected', 'remarks'];
-
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
@@ -26,6 +23,10 @@ export default async function handler(req, res) {
       if (req.query.po_number) {
         conditions.push(`po_number = $${paramIdx++}`);
         values.push(req.query.po_number);
+      }
+      if (req.query.stitcher_code) {
+        conditions.push(`stitcher_code = $${paramIdx++}`);
+        values.push(req.query.stitcher_code);
       }
       if (req.query.status) {
         conditions.push(`status = $${paramIdx++}`);
@@ -79,7 +80,7 @@ export default async function handler(req, res) {
            (allocation_date, po_number, component, stitcher_id, stitcher_code, stitcher_name,
             qty_allocated, qty_returned, qty_accepted, qty_rework, qty_rejected,
             status, remarks, allocated_by, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, 0, 0, 'Pending', $8, $9, NOW())
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, 0, 0, 'In Progress', $8, $9, NOW())
          RETURNING *`,
         [
           allocation_date || new Date().toISOString().split('T')[0],
@@ -105,15 +106,15 @@ export default async function handler(req, res) {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
 
-    const { id, ...body } = req.body;
+    const { id, qty_returned_delta, qty_accepted_delta, qty_rework_delta, qty_rejected_delta, remarks } = req.body;
     if (!id) {
       return res.json({ success: false, message: 'id is required.' });
     }
 
     try {
-      // Fetch current row to validate against qty_allocated
+      // Fetch current row
       const { rows: current } = await pool.query(
-        `SELECT qty_allocated, qty_returned, qty_accepted, qty_rework, qty_rejected
+        `SELECT qty_allocated, qty_returned, qty_accepted, qty_rework, qty_rejected, allocation_date
          FROM stitcher_allocations WHERE id = $1`,
         [id]
       );
@@ -122,56 +123,59 @@ export default async function handler(req, res) {
       }
 
       const row = current[0];
+      const deltaReturned = Number(qty_returned_delta  || 0);
+      const deltaAccepted = Number(qty_accepted_delta  || 0);
+      const deltaRework   = Number(qty_rework_delta    || 0);
+      const deltaRejected = Number(qty_rejected_delta  || 0);
 
-      // Resolve new values (provided value or current value)
-      const newQtyReturned = body.qty_returned  !== undefined ? Number(body.qty_returned)  : Number(row.qty_returned  || 0);
-      const newQtyAccepted = body.qty_accepted  !== undefined ? Number(body.qty_accepted)  : Number(row.qty_accepted  || 0);
-      const newQtyRework   = body.qty_rework    !== undefined ? Number(body.qty_rework)    : Number(row.qty_rework    || 0);
-      const newQtyRejected = body.qty_rejected  !== undefined ? Number(body.qty_rejected)  : Number(row.qty_rejected  || 0);
+      const newQtyReturned = Number(row.qty_returned || 0) + deltaReturned;
 
       if (newQtyReturned > Number(row.qty_allocated)) {
-        return res.json({ success: false, message: 'qty_returned cannot exceed qty_allocated.' });
+        return res.status(400).json({ success: false, message: 'Returned quantity would exceed allocated quantity.' });
       }
-      if (newQtyAccepted + newQtyRework + newQtyRejected !== newQtyReturned) {
-        return res.json({ success: false, message: 'qty_accepted + qty_rework + qty_rejected must equal qty_returned.' });
-      }
-
-      // Build parameterized update from whitelisted fields
-      const setClauses = [];
-      const values = [];
-      let paramIdx = 1;
-
-      for (const field of ALLOWED_UPDATE_FIELDS) {
-        if (body[field] !== undefined) {
-          setClauses.push(`${field} = $${paramIdx++}`);
-          values.push(body[field]);
-        }
+      if (deltaAccepted + deltaRework + deltaRejected !== deltaReturned) {
+        return res.json({ success: false, message: 'qty_accepted + qty_rework + qty_rejected must equal qty_returned delta.' });
       }
 
-      if (setClauses.length === 0) {
-        return res.json({ success: false, message: 'No valid fields to update.' });
+      // Delta update — accumulate into existing values
+      const setClauses = [
+        `qty_returned = qty_returned + $1`,
+        `qty_accepted = qty_accepted + $2`,
+        `qty_rework   = qty_rework   + $3`,
+        `qty_rejected = qty_rejected + $4`,
+        `last_updated_by = $5`,
+        `last_updated_at = NOW()`,
+      ];
+      const values = [deltaReturned, deltaAccepted, deltaRework, deltaRejected, user.name];
+
+      if (remarks !== undefined) {
+        values.push(remarks);
+        setClauses.push(`remarks = $${values.length}`);
       }
 
-      setClauses.push(`last_updated_by = $${paramIdx++}`);
-      values.push(user.name);
-      setClauses.push(`last_updated_at = NOW()`);
       values.push(id);
+      const whereParam = `$${values.length}`;
 
-      const { rows: updated } = await pool.query(
-        `UPDATE stitcher_allocations
-         SET ${setClauses.join(', ')}
-         WHERE id = $${paramIdx}
-         RETURNING qty_remaining`,
+      await pool.query(
+        `UPDATE stitcher_allocations SET ${setClauses.join(', ')} WHERE id = ${whereParam}`,
         values
       );
 
-      // If qty_remaining is 0 (generated column), mark Complete
-      if (updated.length && Number(updated[0].qty_remaining) === 0) {
-        await pool.query(
-          `UPDATE stitcher_allocations SET status = 'Complete' WHERE id = $1`,
-          [id]
-        );
+      // Auto-update status based on new remaining quantity
+      const newRemaining = Number(row.qty_allocated) - newQtyReturned;
+      let newStatus;
+      if (newRemaining === 0) {
+        newStatus = 'Complete';
+      } else {
+        const allocationDate = new Date(row.allocation_date);
+        const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+        newStatus = allocationDate < twoDaysAgo ? 'Overdue' : 'In Progress';
       }
+
+      await pool.query(
+        `UPDATE stitcher_allocations SET status = $1 WHERE id = $2`,
+        [newStatus, id]
+      );
 
       return res.json({ success: true });
     } catch (err) {

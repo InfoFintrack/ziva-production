@@ -1,6 +1,252 @@
-import React from 'react';
+/* eslint-disable react-hooks/exhaustive-deps */
+import React, { useState, useEffect } from 'react';
+import { getPOs, getCMTRates, getStitchers, getAllocations, createAllocation, updateAllocation } from '../api';
+
+const TODAY = new Date().toISOString().split('T')[0];
+const COMPONENTS = ['Shirt', 'Trouser', 'Dupatta'];
+
+const EMPTY_FORM = {
+  allocation_date: TODAY,
+  po_number: '',
+  component: '',
+  stitcher_code: '',
+  qty_allocated: '',
+  remarks: '',
+};
+
+const EMPTY_DELTA = {
+  qty_returned_delta: '',
+  qty_accepted_delta: '',
+  qty_rework_delta:   '',
+  qty_rejected_delta: '',
+  remarks: '',
+};
+
+function validateDelta(df, alloc) {
+  const deltaRet  = Number(df.qty_returned_delta  || 0);
+  const deltaAcc  = Number(df.qty_accepted_delta  || 0);
+  const deltaRwk  = Number(df.qty_rework_delta    || 0);
+  const deltaRej  = Number(df.qty_rejected_delta  || 0);
+  const existing  = Number(alloc.qty_returned     || 0);
+  const allocated = Number(alloc.qty_allocated    || 0);
+
+  if (deltaAcc + deltaRwk + deltaRej !== deltaRet) {
+    return 'Accepted + Rework + Rejected must equal Additional Returned.';
+  }
+  if (existing + deltaRet > allocated) {
+    return `Returned quantity would exceed allocated quantity (${allocated - existing} pieces remaining).`;
+  }
+  return '';
+}
+
+function rowBg(status) {
+  if (status === 'Complete')   return '#f0fdf4';
+  if (status === 'Overdue')    return '#fff7ed';
+  return '#eff6ff';
+}
+
+function StatusBadge({ status }) {
+  const display = status === 'Pending' ? 'In Progress' : status;
+  const colors  = { Complete: '#16a34a', Overdue: '#f97316', 'In Progress': '#3b82f6' };
+  const bg      = colors[display] || '#3b82f6';
+  return (
+    <span style={{
+      padding: '3px 10px', borderRadius: '20px', fontSize: '12px',
+      fontWeight: '700', textTransform: 'uppercase', background: bg, color: 'white',
+    }}>
+      {display}
+    </span>
+  );
+}
 
 function SupervisorView({ user, onLogout }) {
+  const [activeTab, setActiveTab] = useState('new');
+
+  // Dropdown data
+  const [pos,         setPos]         = useState([]);
+  const [approvedSet, setApprovedSet] = useState(new Set());
+  const [stitchers,   setStitchers]   = useState([]);
+  const [dataLoading, setDataLoading] = useState(false);
+
+  // New Allocation form
+  const [form,        setForm]        = useState(EMPTY_FORM);
+  const [submitting,  setSubmitting]  = useState(false);
+  const [formMsg,     setFormMsg]     = useState(null);
+
+  // Live Tracker
+  const [allocations,    setAllocations]    = useState([]);
+  const [trackerLoading, setTrackerLoading] = useState(false);
+  const [search,         setSearch]         = useState('');
+  const [statusFilter,   setStatusFilter]   = useState('All');
+  const [trackerMsg,     setTrackerMsg]     = useState(null);
+
+  // Update modal
+  const [updateModal, setUpdateModal] = useState(null);
+  const [deltaForm,   setDeltaForm]   = useState(EMPTY_DELTA);
+  const [modalError,  setModalError]  = useState('');
+  const [saving,      setSaving]      = useState(false);
+
+  useEffect(() => {
+    loadDropdowns();
+    loadAllocations();
+  }, []);
+
+  const loadDropdowns = async () => {
+    setDataLoading(true);
+    try {
+      const [posRes, ratesRes, stitchersRes] = await Promise.all([
+        getPOs(),
+        getCMTRates('?status=Approved'),
+        getStitchers(true),
+      ]);
+      if (posRes.success)      setPos(posRes.pos);
+      if (ratesRes.success)    setApprovedSet(new Set(ratesRes.rates.map(r => r.po_number)));
+      if (stitchersRes.success) setStitchers(stitchersRes.stitchers);
+    } catch { /* silently fail */ }
+    setDataLoading(false);
+  };
+
+  const loadAllocations = async () => {
+    setTrackerLoading(true);
+    try {
+      const res = await getAllocations();
+      if (res.success) setAllocations(res.allocations);
+    } catch { /* silently fail */ }
+    setTrackerLoading(false);
+  };
+
+  // Only Active POs that have at least one approved CMT rate
+  const eligiblePOs = pos.filter(p => p.status === 'Active' && approvedSet.has(p.po_number));
+
+  // ── Form handlers ────────────────────────────────────────────────────────────
+
+  const handleFormChange = (e) => {
+    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    if (formMsg) setFormMsg(null);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.po_number || !form.component || !form.stitcher_code || !form.qty_allocated) {
+      setFormMsg({ type: 'error', text: 'All required fields must be filled.' });
+      return;
+    }
+    setSubmitting(true);
+    setFormMsg(null);
+    try {
+      const res = await createAllocation({
+        po_number:       form.po_number,
+        component:       form.component.toLowerCase(),
+        stitcher_code:   form.stitcher_code,
+        qty_allocated:   Number(form.qty_allocated),
+        allocation_date: form.allocation_date || TODAY,
+        ...(form.remarks ? { remarks: form.remarks } : {}),
+      });
+      if (res.success) {
+        setFormMsg({ type: 'success', text: 'Allocation created successfully.' });
+        setForm(EMPTY_FORM);
+        loadAllocations();
+      } else {
+        setFormMsg({ type: 'error', text: res.message || 'Failed to create allocation.' });
+      }
+    } catch {
+      setFormMsg({ type: 'error', text: 'Network error. Please try again.' });
+    }
+    setSubmitting(false);
+  };
+
+  // ── Tracker filtering ────────────────────────────────────────────────────────
+
+  const filtered = allocations.filter(a => {
+    const term = search.toLowerCase();
+    const matchSearch = !term ||
+      (a.po_number     || '').toLowerCase().includes(term) ||
+      (a.stitcher_name || '').toLowerCase().includes(term);
+    const displayStatus = a.status === 'Pending' ? 'In Progress' : a.status;
+    const matchStatus   = statusFilter === 'All' || displayStatus === statusFilter;
+    return matchSearch && matchStatus;
+  });
+
+  // ── Update modal ─────────────────────────────────────────────────────────────
+
+  const openUpdate = (a) => {
+    setUpdateModal(a);
+    setDeltaForm(EMPTY_DELTA);
+    setModalError('');
+  };
+
+  const closeModal = () => {
+    setUpdateModal(null);
+    setModalError('');
+  };
+
+  const handleDeltaChange = (e) => {
+    const updated = { ...deltaForm, [e.target.name]: e.target.value };
+    setDeltaForm(updated);
+    if (updateModal) setModalError(validateDelta(updated, updateModal));
+  };
+
+  const handleModalSave = async () => {
+    const err = validateDelta(deltaForm, updateModal);
+    if (err) { setModalError(err); return; }
+
+    setSaving(true);
+    try {
+      const res = await updateAllocation({
+        id:                  updateModal.id,
+        qty_returned_delta:  Number(deltaForm.qty_returned_delta  || 0),
+        qty_accepted_delta:  Number(deltaForm.qty_accepted_delta  || 0),
+        qty_rework_delta:    Number(deltaForm.qty_rework_delta    || 0),
+        qty_rejected_delta:  Number(deltaForm.qty_rejected_delta  || 0),
+        ...(deltaForm.remarks ? { remarks: deltaForm.remarks } : {}),
+      });
+      if (res.success) {
+        closeModal();
+        setTrackerMsg({ type: 'success', text: 'Allocation updated successfully.' });
+        loadAllocations();
+        setTimeout(() => setTrackerMsg(null), 4000);
+      } else {
+        setModalError(res.message || 'Failed to update allocation.');
+      }
+    } catch {
+      setModalError('Network error. Please try again.');
+    }
+    setSaving(false);
+  };
+
+  // ── Running totals (based on filtered rows) ──────────────────────────────────
+
+  const totalsMap = {};
+  filtered.forEach(a => {
+    const key = a.stitcher_name || a.stitcher_code || 'Unknown';
+    if (!totalsMap[key]) totalsMap[key] = { stitcher: key, allocated: 0, accepted: 0, rework: 0, rejected: 0, remaining: 0 };
+    const rem = a.qty_remaining != null
+      ? Number(a.qty_remaining)
+      : Number(a.qty_allocated || 0) - Number(a.qty_returned || 0);
+    totalsMap[key].allocated += Number(a.qty_allocated || 0);
+    totalsMap[key].accepted  += Number(a.qty_accepted  || 0);
+    totalsMap[key].rework    += Number(a.qty_rework    || 0);
+    totalsMap[key].rejected  += Number(a.qty_rejected  || 0);
+    totalsMap[key].remaining += rem;
+  });
+  const totalsRows = Object.values(totalsMap);
+
+  // ── Tab styles ───────────────────────────────────────────────────────────────
+
+  const tabStyle = (tab) => ({
+    padding: '12px 28px',
+    border: 'none',
+    borderBottom: activeTab === tab ? '3px solid #0f3460' : '3px solid transparent',
+    background: 'none',
+    cursor: 'pointer',
+    fontWeight: activeTab === tab ? '700' : '500',
+    color: activeTab === tab ? '#0f3460' : '#888',
+    fontSize: '15px',
+    transition: 'all 0.15s',
+  });
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+
   return (
     <div className="app-container">
       <nav className="navbar">
@@ -8,19 +254,397 @@ function SupervisorView({ user, onLogout }) {
         <div className="user-info">
           <span>Welcome, {user.name}</span>
           <span className="role-badge">Supervisor</span>
-          <button className="btn btn-danger btn-small" onClick={onLogout}>
-            Logout
-          </button>
+          <button className="btn btn-danger btn-small" onClick={onLogout}>Logout</button>
         </div>
       </nav>
 
-      <div className="main-content">
-        <div className="card" style={{ textAlign: 'center', padding: '48px 24px' }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>📋</div>
-          <h3 style={{ marginBottom: '8px', color: '#0f3460' }}>Supervisor Dashboard</h3>
-          <p style={{ color: '#888', fontSize: '15px' }}>Coming Soon</p>
+      <div className="main-content" style={{ maxWidth: '1200px' }}>
+
+        {/* Tab bar */}
+        <div style={{
+          display: 'flex', background: 'white', borderRadius: '12px 12px 0 0',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: '2px', padding: '0 8px',
+        }}>
+          <button style={tabStyle('new')}     onClick={() => setActiveTab('new')}>New Allocation</button>
+          <button style={tabStyle('tracker')} onClick={() => setActiveTab('tracker')}>Live Tracker</button>
         </div>
+
+        {/* ── Tab 1: New Allocation ─────────────────────────────────────────── */}
+        {activeTab === 'new' && (
+          <div className="card" style={{ borderRadius: '0 0 12px 12px', marginTop: 0 }}>
+            <h3>New Allocation</h3>
+
+            {dataLoading ? (
+              <div className="loading"><div className="spinner" />Loading dropdowns...</div>
+            ) : (
+              <form onSubmit={handleSubmit}>
+                <div className="form-grid">
+
+                  <div className="form-group">
+                    <label>Allocation Date *</label>
+                    <input
+                      type="date"
+                      name="allocation_date"
+                      value={form.allocation_date}
+                      onChange={handleFormChange}
+                      max={TODAY}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Component *</label>
+                    <select name="component" value={form.component} onChange={handleFormChange} required>
+                      <option value="">Select component...</option>
+                      {COMPONENTS.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>PO Number *</label>
+                    <select name="po_number" value={form.po_number} onChange={handleFormChange} required>
+                      <option value="">Select PO...</option>
+                      {eligiblePOs.length === 0
+                        ? <option disabled value="">No POs with approved rates available</option>
+                        : eligiblePOs.map(p => (
+                            <option key={p.po_number} value={p.po_number}>
+                              {p.po_number} — {p.collection_name}
+                            </option>
+                          ))
+                      }
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Stitcher *</label>
+                    <select name="stitcher_code" value={form.stitcher_code} onChange={handleFormChange} required>
+                      <option value="">Select stitcher...</option>
+                      {stitchers.map(s => (
+                        <option key={s.stitcher_code} value={s.stitcher_code}>
+                          {s.stitcher_code} — {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Qty Allocated *</label>
+                    <input
+                      type="number"
+                      name="qty_allocated"
+                      value={form.qty_allocated}
+                      onChange={handleFormChange}
+                      min="1"
+                      required
+                      placeholder="Enter quantity (pieces)"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Remarks</label>
+                    <input
+                      type="text"
+                      name="remarks"
+                      value={form.remarks}
+                      onChange={handleFormChange}
+                      placeholder="Optional notes"
+                    />
+                  </div>
+
+                </div>
+
+                {formMsg && (
+                  <div className={`alert alert-${formMsg.type === 'error' ? 'error' : 'success'}`}
+                       style={{ marginTop: '8px' }}>
+                    {formMsg.text}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={submitting}
+                  style={{ marginTop: '8px' }}
+                >
+                  {submitting ? 'Creating...' : 'Create Allocation'}
+                </button>
+              </form>
+            )}
+          </div>
+        )}
+
+        {/* ── Tab 2: Live Tracker ───────────────────────────────────────────── */}
+        {activeTab === 'tracker' && (
+          <>
+            <div className="card" style={{ borderRadius: '0 0 12px 12px', marginTop: 0 }}>
+
+              {/* Controls */}
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '16px' }}>
+                <input
+                  type="text"
+                  placeholder="Search by PO or stitcher name..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  style={{
+                    flex: '1', minWidth: '200px', padding: '10px 14px',
+                    border: '2px solid #e8e8e8', borderRadius: '8px', fontSize: '14px',
+                  }}
+                />
+                <select
+                  value={statusFilter}
+                  onChange={e => setStatusFilter(e.target.value)}
+                  style={{ padding: '10px 14px', border: '2px solid #e8e8e8', borderRadius: '8px', fontSize: '14px' }}
+                >
+                  <option>All</option>
+                  <option>In Progress</option>
+                  <option>Complete</option>
+                  <option>Overdue</option>
+                </select>
+                <button
+                  className="btn btn-primary btn-small"
+                  onClick={loadAllocations}
+                  disabled={trackerLoading}
+                >
+                  {trackerLoading ? 'Loading...' : 'Refresh'}
+                </button>
+              </div>
+
+              {trackerMsg && (
+                <div className={`alert alert-${trackerMsg.type === 'error' ? 'error' : 'success'}`}>
+                  {trackerMsg.text}
+                </div>
+              )}
+
+              {trackerLoading ? (
+                <div className="loading"><div className="spinner" />Loading allocations...</div>
+              ) : (
+                <div className="table-container">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>PO</th>
+                        <th>Component</th>
+                        <th>Stitcher</th>
+                        <th>Allocated</th>
+                        <th>Returned</th>
+                        <th>Accepted</th>
+                        <th>Rework</th>
+                        <th>Rejected</th>
+                        <th>Remaining</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.length === 0 ? (
+                        <tr>
+                          <td colSpan={12} style={{ textAlign: 'center', color: '#888', padding: '32px' }}>
+                            No allocations found.
+                          </td>
+                        </tr>
+                      ) : filtered.map(a => {
+                        const displayStatus = a.status === 'Pending' ? 'In Progress' : a.status;
+                        const remaining = a.qty_remaining != null
+                          ? Number(a.qty_remaining)
+                          : Number(a.qty_allocated || 0) - Number(a.qty_returned || 0);
+                        return (
+                          <tr key={a.id} style={{ background: rowBg(displayStatus) }}>
+                            <td>{a.allocation_date ? String(a.allocation_date).slice(0, 10) : '—'}</td>
+                            <td>{a.po_number}</td>
+                            <td style={{ textTransform: 'capitalize' }}>{a.component}</td>
+                            <td>{a.stitcher_name || a.stitcher_code}</td>
+                            <td>{a.qty_allocated}</td>
+                            <td>{a.qty_returned  || 0}</td>
+                            <td>{a.qty_accepted  || 0}</td>
+                            <td>{a.qty_rework    || 0}</td>
+                            <td>{a.qty_rejected  || 0}</td>
+                            <td><strong>{remaining}</strong></td>
+                            <td><StatusBadge status={a.status} /></td>
+                            <td>
+                              {displayStatus !== 'Complete' && (
+                                <button
+                                  className="btn btn-small"
+                                  style={{ background: '#0f3460', color: 'white', whiteSpace: 'nowrap' }}
+                                  onClick={() => openUpdate(a)}
+                                >
+                                  Update
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Running Totals */}
+            {totalsRows.length > 0 && (
+              <div className="card">
+                <h3>Running Totals</h3>
+                <div className="table-container">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Stitcher</th>
+                        <th>Total Allocated</th>
+                        <th>Total Accepted</th>
+                        <th>Total Rework</th>
+                        <th>Total Rejected</th>
+                        <th>Total Remaining</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {totalsRows.map(t => (
+                        <tr key={t.stitcher}>
+                          <td>{t.stitcher}</td>
+                          <td>{t.allocated}</td>
+                          <td>{t.accepted}</td>
+                          <td>{t.rework}</td>
+                          <td>{t.rejected}</td>
+                          <td><strong>{t.remaining}</strong></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
+
+      {/* ── Update Modal ──────────────────────────────────────────────────────── */}
+      {updateModal && (
+        <div
+          className="modal-overlay"
+          onClick={e => { if (e.target === e.currentTarget) closeModal(); }}
+        >
+          <div className="modal-card">
+
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#0f3460' }}>
+                Update — {updateModal.stitcher_name} — <span style={{ textTransform: 'capitalize' }}>{updateModal.component}</span>
+              </h3>
+              <button
+                onClick={closeModal}
+                style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#888', lineHeight: 1 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Read-only summary */}
+            <div style={{
+              background: '#f8f9ff', borderRadius: '8px', padding: '14px 16px',
+              marginBottom: '20px', display: 'grid', gridTemplateColumns: '1fr 1fr',
+              gap: '10px', fontSize: '14px',
+            }}>
+              <div><span style={{ color: '#888', fontWeight: '600' }}>PO: </span>{updateModal.po_number}</div>
+              <div><span style={{ color: '#888', fontWeight: '600' }}>Stitcher: </span>{updateModal.stitcher_name}</div>
+              <div style={{ textTransform: 'capitalize' }}>
+                <span style={{ color: '#888', fontWeight: '600' }}>Component: </span>{updateModal.component}
+              </div>
+              <div><span style={{ color: '#888', fontWeight: '600' }}>Allocated: </span>{updateModal.qty_allocated}</div>
+              <div>
+                <span style={{ color: '#888', fontWeight: '600' }}>Total Returned So Far: </span>
+                {updateModal.qty_returned || 0}
+              </div>
+              <div>
+                <span style={{ color: '#888', fontWeight: '600' }}>Remaining: </span>
+                {updateModal.qty_remaining != null
+                  ? Number(updateModal.qty_remaining)
+                  : Number(updateModal.qty_allocated) - Number(updateModal.qty_returned || 0)}
+              </div>
+            </div>
+
+            {/* Delta inputs */}
+            <div className="form-grid">
+              <div className="form-group">
+                <label>Additional Returned (delta)</label>
+                <input
+                  type="number"
+                  name="qty_returned_delta"
+                  value={deltaForm.qty_returned_delta}
+                  onChange={handleDeltaChange}
+                  min="0"
+                  placeholder="Pieces returned today"
+                />
+              </div>
+              <div className="form-group">
+                <label>Of which Accepted</label>
+                <input
+                  type="number"
+                  name="qty_accepted_delta"
+                  value={deltaForm.qty_accepted_delta}
+                  onChange={handleDeltaChange}
+                  min="0"
+                  placeholder="0"
+                />
+              </div>
+              <div className="form-group">
+                <label>Of which Rework</label>
+                <input
+                  type="number"
+                  name="qty_rework_delta"
+                  value={deltaForm.qty_rework_delta}
+                  onChange={handleDeltaChange}
+                  min="0"
+                  placeholder="0"
+                />
+              </div>
+              <div className="form-group">
+                <label>Of which Rejected</label>
+                <input
+                  type="number"
+                  name="qty_rejected_delta"
+                  value={deltaForm.qty_rejected_delta}
+                  onChange={handleDeltaChange}
+                  min="0"
+                  placeholder="0"
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label>Remarks</label>
+              <input
+                type="text"
+                name="remarks"
+                value={deltaForm.remarks}
+                onChange={handleDeltaChange}
+                placeholder="Optional notes"
+              />
+            </div>
+
+            {modalError && (
+              <div className="alert alert-error">{modalError}</div>
+            )}
+
+            <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+              <button
+                className="btn btn-primary"
+                style={{ flex: 1 }}
+                onClick={handleModalSave}
+                disabled={saving || !!modalError}
+              >
+                {saving ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                className="btn btn-small"
+                style={{ background: '#e8e8e8', color: '#555', padding: '12px 24px' }}
+                onClick={closeModal}
+              >
+                Cancel
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }

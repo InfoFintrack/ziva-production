@@ -7,7 +7,8 @@
       "Bash(curl -s http://localhost:3001/api/dropdowns)",
       "Bash(printf:*)",
       "Bash(npm run:*)",
-      "Bash(grep -v \"^_lib$\")"
+      "Bash(grep -v \"^_lib$\")",
+      "Bash(node -e ':*)"
     ]
   }
 }
