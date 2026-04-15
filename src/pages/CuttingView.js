@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
-import { submitAcceptance, getRecords, getDropdowns, getPOs, submitCMTRate, getCMTRates, approveCMTRate, getStitchers, createStitcher } from '../api';
+import { submitAcceptance, getRecords, getDropdowns, getPOs, submitCMTRate, getCMTRates, approveCMTRate, getStitchers, createStitcher, logPaymentEntry, getPaymentEntries } from '../api';
 import { ColourInput } from './PPView';
 
 // ── CMT Rate form constants ──────────────────────────────────────────────────
@@ -59,6 +59,65 @@ const SPECIALIZATIONS = ['Shirt', 'Trouser', 'Dupatta', 'Mixed'];
 const EMPTY_STITCHER_FORM = {
   name: '', phone: '', cnic: '', specialization: '', date_joined: '',
 };
+
+// ── Payment Log constants ────────────────────────────────────────────────────
+
+const PL_TODAY = new Date().toISOString().split('T')[0];
+
+const PL_DEPARTMENTS = ['Stitching', 'Finishing Shirt', 'Finishing Trouser', 'Finishing Dupatta'];
+
+const PL_OPERATION_OPTIONS = {
+  'Stitching':          ['Shirt', 'Trouser', 'Dupatta', 'Patching'],
+  'Finishing Shirt':    ['Clipping', 'Heming', 'Tussling', 'Pressing'],
+  'Finishing Trouser':  ['Clipping', 'Heming', 'Pressing', 'Patching'],
+  'Finishing Dupatta':  ['Heming', 'Tussling', 'Pressing', 'Patching'],
+};
+
+const PL_DEPT_OP_TO_RATE_FIELD = {
+  'Stitching|Shirt':              'shirt',
+  'Stitching|Trouser':            'trouser',
+  'Stitching|Dupatta':            'dupatta',
+  'Stitching|Patching':           'patching',
+  'Finishing Shirt|Clipping':     'fs_clipping',
+  'Finishing Shirt|Heming':       'fs_heming',
+  'Finishing Shirt|Tussling':     'fs_tussling',
+  'Finishing Shirt|Pressing':     'fs_pressing',
+  'Finishing Trouser|Clipping':   'ft_clipping',
+  'Finishing Trouser|Heming':     'ft_heming',
+  'Finishing Trouser|Pressing':   'ft_pressing',
+  'Finishing Trouser|Patching':   'ft_patching',
+  'Finishing Dupatta|Heming':     'fd_heming',
+  'Finishing Dupatta|Tussling':   'fd_tussling',
+  'Finishing Dupatta|Pressing':   'fd_pressing',
+  'Finishing Dupatta|Patching':   'fd_patching',
+};
+
+const PL_EMPTY_FORM = {
+  entry_date:    PL_TODAY,
+  po_number:     '',
+  stitcher_code: '',
+  department:    '',
+  operation:     '',
+  qty_claimed:   '',
+  remarks:       '',
+};
+
+function PaymentStatusBadge({ status }) {
+  const cfg = {
+    Pending:  { bg: '#fef3c7', color: '#92400e' },
+    Verified: { bg: '#dbeafe', color: '#1e40af' },
+    Paid:     { bg: '#dcfce7', color: '#166534' },
+  };
+  const s = cfg[status] || cfg.Pending;
+  return (
+    <span style={{
+      padding: '3px 10px', borderRadius: '20px', fontSize: '12px',
+      fontWeight: '700', textTransform: 'uppercase', background: s.bg, color: s.color,
+    }}>
+      {status || 'Pending'}
+    </span>
+  );
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -149,6 +208,21 @@ function CuttingView({ user, onLogout }) {
   const [stitcherPhoneError, setStitcherPhoneError] = useState('');
   const [stitcherSearch, setStitcherSearch] = useState('');
   const [stitcherStatusFilter, setStitcherStatusFilter] = useState('Active');
+
+  // ── Payment Log state ──────────────────────────────────────────────────
+  const [plPos,            setPlPos]            = useState([]);
+  const [plApprovedSet,    setPlApprovedSet]    = useState(new Set());
+  const [plStitchers,      setPlStitchers]      = useState([]);
+  const [plDataLoading,    setPlDataLoading]    = useState(false);
+  const [plPoRateData,     setPlPoRateData]     = useState(null);
+  const [plRateLoading,    setPlRateLoading]    = useState(false);
+  const [plRateError,      setPlRateError]      = useState('');
+  const [plForm,           setPlForm]           = useState(PL_EMPTY_FORM);
+  const [plSubmitting,     setPlSubmitting]     = useState(false);
+  const [plFormMsg,        setPlFormMsg]        = useState(null);
+  const [plEntries,        setPlEntries]        = useState([]);
+  const [plEntriesLoading, setPlEntriesLoading] = useState(false);
+  const [plSubTab,         setPlSubTab]         = useState('log');
 
   // ── Data loaders ───────────────────────────────────────────────────────
 
@@ -471,6 +545,138 @@ function CuttingView({ user, onLogout }) {
     return matchSearch && matchStatus;
   });
 
+  // ── Payment Log data loaders ──────────────────────────────────────────
+
+  const plLoadDropdowns = async () => {
+    setPlDataLoading(true);
+    try {
+      const [posRes, ratesRes, stitchersRes] = await Promise.all([
+        getPOs(),
+        getCMTRates('?status=Approved'),
+        getStitchers(true),
+      ]);
+      if (posRes.success)       setPlPos(posRes.pos);
+      if (ratesRes.success)     setPlApprovedSet(new Set(ratesRes.rates.map(r => r.po_number)));
+      if (stitchersRes.success) setPlStitchers(stitchersRes.stitchers);
+    } catch { /* silently fail */ }
+    setPlDataLoading(false);
+  };
+
+  const plLoadMyEntries = async () => {
+    setPlEntriesLoading(true);
+    try {
+      const res = await getPaymentEntries(`?submitted_by=${encodeURIComponent(user.name)}`);
+      if (res.success) setPlEntries(res.payments);
+    } catch { /* silently fail */ }
+    setPlEntriesLoading(false);
+  };
+
+  useEffect(() => {
+    plLoadDropdowns();
+    plLoadMyEntries();
+  }, []);
+
+  useEffect(() => {
+    if (!plForm.po_number) {
+      setPlPoRateData(null);
+      setPlRateError('');
+      return;
+    }
+    setPlRateLoading(true);
+    setPlPoRateData(null);
+    setPlRateError('');
+    getCMTRates(`?status=Approved&po_number=${encodeURIComponent(plForm.po_number)}`)
+      .then(res => {
+        if (res.success && res.rates.length > 0) {
+          setPlPoRateData(res.rates[0]);
+        } else {
+          setPlRateError('No approved rate found for this PO');
+        }
+      })
+      .catch(() => setPlRateError('Rate lookup failed'))
+      .finally(() => setPlRateLoading(false));
+  }, [plForm.po_number]);
+
+  // Payment Log derived values
+  const plEligiblePOs = plPos.filter(p => p.status === 'Active' && plApprovedSet.has(p.po_number));
+
+  const plRateField = plForm.department && plForm.operation
+    ? PL_DEPT_OP_TO_RATE_FIELD[`${plForm.department}|${plForm.operation}`]
+    : null;
+
+  const plCurrentRate = plRateField && plPoRateData
+    ? Number(plPoRateData[plRateField] || 0)
+    : null;
+
+  const plCurrentAmount = plCurrentRate !== null && plForm.qty_claimed
+    ? (plCurrentRate * Number(plForm.qty_claimed)).toFixed(2)
+    : '';
+
+  let plRateText = '';
+  let plRateStyle = { color: '#999', fontStyle: 'italic' };
+  if (plRateLoading) {
+    plRateText = 'Loading...';
+  } else if (!plForm.po_number || !plForm.department || !plForm.operation) {
+    plRateText = 'Select PO, Department and Operation to load rate';
+  } else if (plRateError) {
+    plRateText = 'No approved rate found';
+    plRateStyle = { color: '#dc2626', fontWeight: '600' };
+  } else if (plCurrentRate !== null) {
+    plRateText = `PKR ${plCurrentRate.toLocaleString()}`;
+    plRateStyle = { color: '#0f3460', fontWeight: '600' };
+  }
+
+  const plHandleFormChange = (e) => {
+    const { name, value } = e.target;
+    const patch = { [name]: value };
+    if (name === 'department') patch.operation = '';
+    setPlForm(prev => ({ ...prev, ...patch }));
+    if (plFormMsg) setPlFormMsg(null);
+  };
+
+  const plHandleSubmit = async (e) => {
+    e.preventDefault();
+    if (!plForm.po_number || !plForm.stitcher_code || !plForm.department || !plForm.operation || !plForm.qty_claimed) {
+      setPlFormMsg({ type: 'error', text: 'All required fields must be filled.' });
+      return;
+    }
+    if (plRateError || plCurrentRate === null) {
+      setPlFormMsg({ type: 'error', text: 'Cannot submit — no approved rate found for this PO / operation.' });
+      return;
+    }
+    setPlSubmitting(true);
+    setPlFormMsg(null);
+    try {
+      const res = await logPaymentEntry({
+        entry_date:    plForm.entry_date || PL_TODAY,
+        po_number:     plForm.po_number,
+        stitcher_code: plForm.stitcher_code,
+        department:    plForm.department,
+        operation:     plForm.operation,
+        qty_claimed:   Number(plForm.qty_claimed),
+        ...(plForm.remarks ? { remarks: plForm.remarks } : {}),
+      });
+      if (res.success) {
+        setPlFormMsg({ type: 'success', text: 'Entry logged successfully.' });
+        setPlForm(prev => ({ ...PL_EMPTY_FORM, po_number: prev.po_number }));
+        plLoadMyEntries();
+      } else {
+        setPlFormMsg({ type: 'error', text: res.message || 'Failed to log entry.' });
+      }
+    } catch {
+      setPlFormMsg({ type: 'error', text: 'Network error. Please try again.' });
+    }
+    setPlSubmitting(false);
+  };
+
+  const plSubTabStyle = (tab) => ({
+    padding: '10px 24px', border: 'none', background: 'none', cursor: 'pointer',
+    fontSize: '14px', fontWeight: '600',
+    color: plSubTab === tab ? '#0f3460' : '#888',
+    borderBottom: plSubTab === tab ? '3px solid #0f3460' : '3px solid transparent',
+    marginBottom: '-2px', transition: 'color 0.15s',
+  });
+
   // ── Render ─────────────────────────────────────────────────────────────
 
   return (
@@ -499,6 +705,7 @@ function CuttingView({ user, onLogout }) {
             { key: 'acceptance', label: 'Fabric Acceptance' },
             { key: 'cmt',        label: 'CMT Rates' },
             { key: 'stitchers',  label: 'Stitchers' },
+            { key: 'paylog',     label: 'Payment Log' },
           ].map(t => (
             <button
               key={t.key}
@@ -1269,6 +1476,223 @@ function CuttingView({ user, onLogout }) {
                 </div>
               )}
             </div>
+          </>
+        )}
+
+        {/* ── TAB 4: PAYMENT LOG ──────────────────────────────────────── */}
+        {activeTab === 'paylog' && (
+          <>
+            {/* Sub-tab bar */}
+            <div style={{ display: 'flex', gap: '0', marginBottom: '24px', borderBottom: '2px solid #e8e8e8' }}>
+              <button style={plSubTabStyle('log')}     onClick={() => setPlSubTab('log')}>Log Entry</button>
+              <button style={plSubTabStyle('entries')} onClick={() => setPlSubTab('entries')}>My Entries</button>
+            </div>
+
+            {/* ── Sub-tab 1: Log Entry ─────────────────────────────────── */}
+            {plSubTab === 'log' && (
+              <div className="card">
+                <h3>Log Payment Entry</h3>
+
+                {plDataLoading ? (
+                  <div className="loading"><div className="spinner" />Loading...</div>
+                ) : (
+                  <form onSubmit={plHandleSubmit}>
+                    <div className="form-grid">
+
+                      <div className="form-group">
+                        <label>Entry Date *</label>
+                        <input
+                          type="date"
+                          name="entry_date"
+                          value={plForm.entry_date}
+                          onChange={plHandleFormChange}
+                          max={PL_TODAY}
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label>PO Number *</label>
+                        <select name="po_number" value={plForm.po_number} onChange={plHandleFormChange} required>
+                          <option value="">Select PO...</option>
+                          {plEligiblePOs.length === 0
+                            ? <option disabled value="">No POs with approved rates available</option>
+                            : plEligiblePOs.map(p => (
+                                <option key={p.po_number} value={p.po_number}>
+                                  {p.po_number} — {p.collection_name}
+                                </option>
+                              ))
+                          }
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label>Stitcher *</label>
+                        <select name="stitcher_code" value={plForm.stitcher_code} onChange={plHandleFormChange} required>
+                          <option value="">Select stitcher...</option>
+                          {plStitchers.map(s => (
+                            <option key={s.stitcher_code} value={s.stitcher_code}>
+                              {s.stitcher_code} — {s.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label>Department *</label>
+                        <select name="department" value={plForm.department} onChange={plHandleFormChange} required>
+                          <option value="">Select department...</option>
+                          {PL_DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label>Operation *</label>
+                        <select
+                          name="operation"
+                          value={plForm.operation}
+                          onChange={plHandleFormChange}
+                          required
+                          disabled={!plForm.department}
+                        >
+                          <option value="">Select operation...</option>
+                          {(PL_OPERATION_OPTIONS[plForm.department] || []).map(op => (
+                            <option key={op} value={op}>{op}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label>Qty Claimed *</label>
+                        <input
+                          type="number"
+                          name="qty_claimed"
+                          value={plForm.qty_claimed}
+                          onChange={plHandleFormChange}
+                          min="1"
+                          required
+                          placeholder="Pieces"
+                        />
+                      </div>
+
+                      {/* Rate — read-only, auto-fetched */}
+                      <div className="form-group">
+                        <label>Rate (PKR / piece)</label>
+                        <div style={{
+                          padding: '12px 16px', border: '2px dashed #e8e8e8', borderRadius: '8px',
+                          background: '#fafafa', fontSize: '15px', minHeight: '48px',
+                          display: 'flex', alignItems: 'center', ...plRateStyle,
+                        }}>
+                          {plRateText || '\u00A0'}
+                        </div>
+                      </div>
+
+                      {/* Amount — read-only, auto-calculated */}
+                      <div className="form-group">
+                        <label>Amount (PKR)</label>
+                        <input
+                          className="auto-field"
+                          type="text"
+                          readOnly
+                          value={plCurrentAmount ? `PKR ${Number(plCurrentAmount).toLocaleString()}` : '—'}
+                        />
+                      </div>
+
+                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                        <label>Remarks</label>
+                        <input
+                          type="text"
+                          name="remarks"
+                          value={plForm.remarks}
+                          onChange={plHandleFormChange}
+                          placeholder="Optional notes"
+                        />
+                      </div>
+
+                    </div>
+
+                    {plFormMsg && (
+                      <div className={`alert alert-${plFormMsg.type === 'error' ? 'error' : 'success'}`}
+                           style={{ marginTop: '8px' }}>
+                        {plFormMsg.text}
+                      </div>
+                    )}
+
+                    <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <button
+                        type="submit"
+                        className="btn btn-primary"
+                        disabled={plSubmitting || !!plRateError || plCurrentRate === null}
+                        style={{ maxWidth: '200px' }}
+                      >
+                        {plSubmitting ? 'Submitting...' : 'Submit Entry'}
+                      </button>
+                      {plCurrentAmount && (
+                        <span style={{ fontSize: '15px', fontWeight: '700', color: '#0f3460' }}>
+                          Total: PKR {Number(plCurrentAmount).toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                  </form>
+                )}
+              </div>
+            )}
+
+            {/* ── Sub-tab 2: My Entries ────────────────────────────────── */}
+            {plSubTab === 'entries' && (
+              <div className="card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+                  <h3 style={{ margin: 0, borderBottom: 'none', padding: 0 }}>My Entries</h3>
+                  <button
+                    className="btn btn-primary btn-small"
+                    onClick={plLoadMyEntries}
+                    disabled={plEntriesLoading}
+                  >
+                    {plEntriesLoading ? 'Loading...' : 'Refresh'}
+                  </button>
+                </div>
+
+                {plEntriesLoading ? (
+                  <div className="loading"><div className="spinner" />Loading entries...</div>
+                ) : plEntries.length === 0 ? (
+                  <p style={{ color: '#888', textAlign: 'center', padding: '24px' }}>No entries yet.</p>
+                ) : (
+                  <div className="table-container">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>PO</th>
+                          <th>Stitcher</th>
+                          <th>Department</th>
+                          <th>Operation</th>
+                          <th>Qty</th>
+                          <th>Rate</th>
+                          <th>Amount</th>
+                          <th>Week Ending</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {plEntries.map(e => (
+                          <tr key={e.id}>
+                            <td>{e.entry_date ? String(e.entry_date).slice(0, 10) : '—'}</td>
+                            <td>{e.po_number}</td>
+                            <td>{e.stitcher_name || e.stitcher_code}</td>
+                            <td>{e.department}</td>
+                            <td>{e.operation}</td>
+                            <td>{e.qty_claimed}</td>
+                            <td>PKR {Number(e.rate || 0).toLocaleString()}</td>
+                            <td>PKR {Number(e.amount || 0).toLocaleString()}</td>
+                            <td>{e.week_ending ? String(e.week_ending).slice(0, 10) : '—'}</td>
+                            <td><PaymentStatusBadge status={e.payment_status} /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
 
