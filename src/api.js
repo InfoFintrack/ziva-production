@@ -107,3 +107,13 @@ export const logFabricIssuance = (data) => post('/api/po-master?type=issuance_lo
 export const getCMTPayments = (params = '') => authFetch(`/api/cmt-payments${params}`);
 export const submitPayment = (data) => post('/api/cmt-payments', data);
 export const updatePayment = (data) => authFetch('/api/cmt-payments', { method: 'PUT', body: JSON.stringify(data) });
+export const logPaymentEntry = (data) => post('/api/cmt-payments', data);
+export const getPaymentEntries = (params = '') => authFetch(`/api/cmt-payments${params}`);
+
+// Advances (routed via cmt-payments?type=advance)
+export const addAdvance = (data) =>
+  authFetch('/api/cmt-payments?type=advance', { method: 'POST', body: JSON.stringify(data) });
+export const getAdvances = (params = '') => {
+  const q = params.replace(/^\?/, '');
+  return authFetch(`/api/cmt-payments?type=advance${q ? '&' + q : ''}`);
+};

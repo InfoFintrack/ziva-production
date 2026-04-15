@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { getCMTRates, approveCMTRate } from '../api';
+import { getCMTRates, approveCMTRate, getPaymentEntries, getAdvances, addAdvance, updatePayment, getStitchers } from '../api';
 
 // ── Rate field definitions ────────────────────────────────────────────────────
 const ALL_RATE_KEYS = [
@@ -38,7 +38,15 @@ const SEC_C_DUPATTA = [
   { key: 'fd_patching', label: 'Patching' },
 ];
 
-// ── Badge helper ──────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function getUpcomingSaturday() {
+  const d = new Date();
+  const daysUntilSat = (6 - d.getDay() + 7) % 7;
+  d.setDate(d.getDate() + daysUntilSat);
+  return d.toISOString().split('T')[0];
+}
+
 const getCMTStatusBadge = (status) => {
   switch (status) {
     case 'Draft':            return { cls: 'badge badge-pending', style: undefined };
@@ -49,6 +57,23 @@ const getCMTStatusBadge = (status) => {
     default:                 return { cls: 'badge badge-pending', style: undefined };
   }
 };
+
+function PayStatusBadge({ status }) {
+  const cfg = {
+    Pending:  { bg: '#fef3c7', color: '#92400e' },
+    Verified: { bg: '#dbeafe', color: '#1e40af' },
+    Paid:     { bg: '#dcfce7', color: '#166534' },
+  };
+  const s = cfg[status] || cfg.Pending;
+  return (
+    <span style={{
+      padding: '3px 10px', borderRadius: '20px', fontSize: '12px',
+      fontWeight: '700', textTransform: 'uppercase', background: s.bg, color: s.color,
+    }}>
+      {status || 'Pending'}
+    </span>
+  );
+}
 
 // ── Modal sub-components ──────────────────────────────────────────────────────
 const ModalSectionTitle = ({ children }) => (
@@ -85,6 +110,7 @@ const FieldGrid = ({ children, cols = 2 }) => (
 function AccountsView({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState('pending');
 
+  // ── Rates state ────────────────────────────────────────────────────────────
   const [pendingRates, setPendingRates] = useState([]);
   const [pendingLoading, setPendingLoading] = useState(false);
 
@@ -96,14 +122,32 @@ function AccountsView({ user, onLogout }) {
 
   // Modal state
   const [modalRate, setModalRate] = useState(null);
-  const [modalContext, setModalContext] = useState(null); // 'pending' | 'all'
-  const [modalMode, setModalMode] = useState('view');    // 'view' | 'edit'
+  const [modalContext, setModalContext] = useState(null);
+  const [modalMode, setModalMode] = useState('view');
   const [editForm, setEditForm] = useState({});
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [rejectInput, setRejectInput] = useState('');
   const [modalActing, setModalActing] = useState(false);
   const [modalMessage, setModalMessage] = useState(null);
   const [editSubmitting, setEditSubmitting] = useState(false);
+
+  // ── Payments state ─────────────────────────────────────────────────────────
+  const [paySubTab,    setPaySubTab]    = useState('weekly');
+  const [payWeek,      setPayWeek]      = useState(getUpcomingSaturday());
+  const [weekPayments, setWeekPayments] = useState([]);
+  const [weekAdvances, setWeekAdvances] = useState([]);
+  const [payLoading,   setPayLoading]   = useState(false);
+  const [expandedRow,  setExpandedRow]  = useState(null);
+  const [payActing,    setPayActing]    = useState({});
+  const [payMsg,       setPayMsg]       = useState(null);
+
+  // Advances sub-tab
+  const [stitchers,     setStitchers]     = useState([]);
+  const [advForm,       setAdvForm]       = useState({ stitcher_code: '', amount: '', note: '' });
+  const [advSubmitting, setAdvSubmitting] = useState(false);
+  const [advMsg,        setAdvMsg]        = useState(null);
+
+  // ── Rate loaders ───────────────────────────────────────────────────────────
 
   useEffect(() => {
     loadPending();
@@ -134,7 +178,148 @@ function AccountsView({ user, onLogout }) {
     return r.po_number?.toLowerCase().includes(s) || r.submitted_by?.toLowerCase().includes(s);
   });
 
-  // ── Modal helpers ──────────────────────────────────────────────────────────
+  // ── Payments loaders ───────────────────────────────────────────────────────
+
+  const loadWeekData = async (week) => {
+    setPayLoading(true);
+    try {
+      const [paymentsRes, advancesRes] = await Promise.all([
+        getPaymentEntries(`?week_ending=${week}`),
+        getAdvances(`week_ending=${week}`),
+      ]);
+      if (paymentsRes.success) setWeekPayments(paymentsRes.payments);
+      if (advancesRes.success) setWeekAdvances(advancesRes.advances);
+    } catch { /* silently fail */ }
+    setPayLoading(false);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'payments') {
+      loadWeekData(payWeek);
+    }
+  }, [activeTab, payWeek]);
+
+  useEffect(() => {
+    if (activeTab === 'payments' && paySubTab === 'advances' && stitchers.length === 0) {
+      getStitchers(true)
+        .then(res => { if (res.success) setStitchers(res.stitchers); })
+        .catch(() => {});
+    }
+  }, [activeTab, paySubTab]);
+
+  // ── Stitcher groups computed from weekPayments + weekAdvances ──────────────
+
+  const computeGroups = () => {
+    const groups = {};
+    weekPayments.forEach(p => {
+      const k = p.stitcher_code;
+      if (!groups[k]) groups[k] = { code: k, name: p.stitcher_name || k, entries: [], gross: 0, totalPieces: 0, advance: 0 };
+      groups[k].entries.push(p);
+      groups[k].gross       += Number(p.amount     || 0);
+      groups[k].totalPieces += Number(p.qty_claimed || 0);
+    });
+    weekAdvances.forEach(a => {
+      const k = a.stitcher_code;
+      if (!groups[k]) groups[k] = { code: k, name: a.stitcher_name || k, entries: [], gross: 0, totalPieces: 0, advance: 0 };
+      groups[k].advance += Number(a.amount || 0);
+    });
+    Object.values(groups).forEach(g => {
+      g.net = g.gross - g.advance;
+      if (!g.entries.length) { g.status = 'Pending'; return; }
+      const uniq = [...new Set(g.entries.map(e => e.payment_status))];
+      if (uniq.every(s => s === 'Paid'))                         g.status = 'Paid';
+      else if (uniq.every(s => s === 'Verified' || s === 'Paid')) g.status = 'Verified';
+      else                                                         g.status = 'Pending';
+    });
+    return Object.values(groups);
+  };
+
+  // ── Payment handlers ───────────────────────────────────────────────────────
+
+  const handleVerify = async (stitcherCode) => {
+    setPayActing(prev => ({ ...prev, [stitcherCode]: true }));
+    setPayMsg(null);
+    try {
+      const res = await updatePayment({ stitcher_code: stitcherCode, week_ending: payWeek, action: 'verify' });
+      if (res.success) {
+        setPayMsg({ type: 'success', text: `Entries verified for ${stitcherCode}.` });
+        loadWeekData(payWeek);
+      } else {
+        setPayMsg({ type: 'error', text: res.message || 'Verify failed.' });
+      }
+    } catch {
+      setPayMsg({ type: 'error', text: 'Request failed.' });
+    }
+    setPayActing(prev => ({ ...prev, [stitcherCode]: false }));
+  };
+
+  const handleMarkPaid = async (stitcherCode) => {
+    setPayActing(prev => ({ ...prev, [stitcherCode]: true }));
+    setPayMsg(null);
+    try {
+      const res = await updatePayment({ stitcher_code: stitcherCode, week_ending: payWeek, action: 'mark_paid' });
+      if (res.success) {
+        setPayMsg({ type: 'success', text: `Marked as paid for ${stitcherCode}.` });
+        loadWeekData(payWeek);
+      } else {
+        setPayMsg({ type: 'error', text: res.message || 'Mark paid failed.' });
+      }
+    } catch {
+      setPayMsg({ type: 'error', text: 'Request failed.' });
+    }
+    setPayActing(prev => ({ ...prev, [stitcherCode]: false }));
+  };
+
+  const handleAdvanceChange = (e) => setAdvForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
+
+  const handleAdvanceSubmit = async (e) => {
+    e.preventDefault();
+    if (!advForm.stitcher_code || !advForm.amount) {
+      setAdvMsg({ type: 'error', text: 'Stitcher and amount are required.' });
+      return;
+    }
+    setAdvSubmitting(true);
+    setAdvMsg(null);
+    try {
+      const res = await addAdvance({
+        stitcher_code: advForm.stitcher_code,
+        amount:        Number(advForm.amount),
+        week_ending:   payWeek,
+        ...(advForm.note ? { note: advForm.note } : {}),
+      });
+      if (res.success) {
+        setAdvMsg({ type: 'success', text: 'Advance logged.' });
+        setAdvForm({ stitcher_code: '', amount: '', note: '' });
+        loadWeekData(payWeek);
+      } else {
+        setAdvMsg({ type: 'error', text: res.message || 'Failed to log advance.' });
+      }
+    } catch {
+      setAdvMsg({ type: 'error', text: 'Request failed.' });
+    }
+    setAdvSubmitting(false);
+  };
+
+  const handlePaymentExcelExport = () => {
+    const groups = computeGroups();
+    if (!groups.length) return;
+    const rows = groups.map(g => ({
+      'Stitcher Code':    g.code,
+      'Stitcher':         g.name,
+      'Total Pieces':     g.totalPieces,
+      'Gross (PKR)':      g.gross.toFixed(2),
+      'Advance (PKR)':    g.advance.toFixed(2),
+      'Net Payable (PKR)':g.net.toFixed(2),
+      'Status':           g.status,
+      'Week Ending':      payWeek,
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Payment Summary');
+    XLSX.writeFile(wb, `Payment_Summary_${payWeek}.xlsx`);
+  };
+
+  // ── CMT Rate modal helpers ─────────────────────────────────────────────────
 
   const openModal = (r, context) => {
     setModalRate(r);
@@ -232,7 +417,7 @@ function AccountsView({ user, onLogout }) {
     setModalActing(false);
   };
 
-  // ── Excel export ───────────────────────────────────────────────────────────
+  // ── Excel export (CMT Rates) ───────────────────────────────────────────────
 
   const handleExcelExport = () => {
     const today = new Date().toISOString().slice(0, 10);
@@ -268,7 +453,7 @@ function AccountsView({ user, onLogout }) {
     XLSX.writeFile(wb, `CMT_Rates_${today}.xlsx`);
   };
 
-  // ── Modal render helper ────────────────────────────────────────────────────
+  // ── CMT Rate modal render ──────────────────────────────────────────────────
 
   const computeTotal = (src) =>
     ALL_RATE_KEYS.reduce((s, k) => s + (Number(src[k]) || 0), 0);
@@ -303,7 +488,6 @@ function AccountsView({ user, onLogout }) {
             </div>
           )}
 
-          {/* SECTION A */}
           <ModalSectionTitle>Section A — Header</ModalSectionTitle>
           {isEditMode ? (
             <FieldGrid>
@@ -329,7 +513,6 @@ function AccountsView({ user, onLogout }) {
             </FieldGrid>
           )}
 
-          {/* SECTION B */}
           <ModalSectionTitle>Section B — Cutting &amp; Stitching Rates</ModalSectionTitle>
           <FieldGrid>
             {SEC_B.map(({ key, label }) => isEditMode ? (
@@ -343,7 +526,6 @@ function AccountsView({ user, onLogout }) {
             ))}
           </FieldGrid>
 
-          {/* SECTION C */}
           <ModalSectionTitle>Section C — Finishing Rates</ModalSectionTitle>
           <ModalSubTitle>Shirt Finishing</ModalSubTitle>
           <FieldGrid>
@@ -382,7 +564,6 @@ function AccountsView({ user, onLogout }) {
             ))}
           </FieldGrid>
 
-          {/* SECTION D */}
           <ModalSectionTitle>Section D — Overhead</ModalSectionTitle>
           <FieldGrid>
             {isEditMode ? (
@@ -396,15 +577,10 @@ function AccountsView({ user, onLogout }) {
             )}
             <FieldView
               label="Total (PKR)"
-              value={
-                isEditMode
-                  ? computeTotal(editForm).toLocaleString()
-                  : (r.total != null ? Number(r.total).toLocaleString() : '—')
-              }
+              value={isEditMode ? computeTotal(editForm).toLocaleString() : (r.total != null ? Number(r.total).toLocaleString() : '—')}
             />
           </FieldGrid>
 
-          {/* META */}
           <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #f0f2f5' }}>
             <FieldGrid>
               <FieldView label="Submitted By" value={r.submitted_by} />
@@ -415,7 +591,6 @@ function AccountsView({ user, onLogout }) {
             </div>
           </div>
 
-          {/* Rejection remarks */}
           {r.status === 'Rejected' && (r.accounts_remarks || r.ceo_remarks) && (
             <div style={{ marginTop: '12px', padding: '10px 14px', background: '#fef2f2', borderRadius: '8px', border: '1px solid #fecaca' }}>
               {r.accounts_remarks && (
@@ -431,7 +606,6 @@ function AccountsView({ user, onLogout }) {
             </div>
           )}
 
-          {/* Footer buttons */}
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '24px', paddingTop: '16px', borderTop: '2px solid #f0f2f5', flexWrap: 'wrap' }}>
             {modalContext === 'pending' && !isEditMode && (
               <>
@@ -444,46 +618,22 @@ function AccountsView({ user, onLogout }) {
                       onChange={e => setRejectInput(e.target.value)}
                       style={{ flex: 1, minWidth: '180px', padding: '8px 12px', border: '2px solid #e8e8e8', borderRadius: '6px', fontSize: '13px' }}
                     />
-                    <button
-                      className="btn btn-danger btn-small"
-                      onClick={handleModalRejectConfirm}
-                      disabled={modalActing}
-                      style={{ width: 'auto' }}
-                    >
+                    <button className="btn btn-danger btn-small" onClick={handleModalRejectConfirm} disabled={modalActing} style={{ width: 'auto' }}>
                       {modalActing ? '...' : 'Confirm Reject'}
                     </button>
-                    <button
-                      className="btn btn-small"
-                      onClick={() => { setShowRejectInput(false); setRejectInput(''); setModalMessage(null); }}
-                      disabled={modalActing}
-                      style={{ width: 'auto', background: '#e0e7ff', color: '#0f3460' }}
-                    >
+                    <button className="btn btn-small" onClick={() => { setShowRejectInput(false); setRejectInput(''); setModalMessage(null); }} disabled={modalActing} style={{ width: 'auto', background: '#e0e7ff', color: '#0f3460' }}>
                       Cancel
                     </button>
                   </>
                 ) : (
                   <>
-                    <button
-                      className="btn btn-success btn-small"
-                      onClick={handleModalApprove}
-                      disabled={modalActing}
-                      style={{ width: 'auto' }}
-                    >
+                    <button className="btn btn-success btn-small" onClick={handleModalApprove} disabled={modalActing} style={{ width: 'auto' }}>
                       {modalActing ? '...' : 'Approve'}
                     </button>
-                    <button
-                      className="btn btn-danger btn-small"
-                      onClick={() => { setShowRejectInput(true); setModalMessage(null); }}
-                      disabled={modalActing}
-                      style={{ width: 'auto' }}
-                    >
+                    <button className="btn btn-danger btn-small" onClick={() => { setShowRejectInput(true); setModalMessage(null); }} disabled={modalActing} style={{ width: 'auto' }}>
                       Reject
                     </button>
-                    <button
-                      className="btn btn-small"
-                      onClick={closeModal}
-                      style={{ width: 'auto', background: '#e0e7ff', color: '#0f3460' }}
-                    >
+                    <button className="btn btn-small" onClick={closeModal} style={{ width: 'auto', background: '#e0e7ff', color: '#0f3460' }}>
                       Close
                     </button>
                   </>
@@ -495,58 +645,48 @@ function AccountsView({ user, onLogout }) {
               <>
                 {isEditMode ? (
                   <>
-                    <button
-                      className="btn btn-primary btn-small"
-                      onClick={handleEditSave}
-                      disabled={editSubmitting}
-                      style={{ width: 'auto' }}
-                    >
+                    <button className="btn btn-primary btn-small" onClick={handleEditSave} disabled={editSubmitting} style={{ width: 'auto' }}>
                       {editSubmitting ? 'Saving...' : 'Save'}
                     </button>
-                    <button
-                      className="btn btn-small"
-                      onClick={() => { setModalMode('view'); setModalMessage(null); }}
-                      disabled={editSubmitting}
-                      style={{ width: 'auto', background: '#e0e7ff', color: '#0f3460' }}
-                    >
+                    <button className="btn btn-small" onClick={() => { setModalMode('view'); setModalMessage(null); }} disabled={editSubmitting} style={{ width: 'auto', background: '#e0e7ff', color: '#0f3460' }}>
                       Cancel
                     </button>
                   </>
                 ) : (
                   <>
-                    <button
-                      className="btn btn-small"
-                      onClick={enterEditMode}
-                      style={{ width: 'auto', background: '#0f3460', color: 'white' }}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="btn btn-small"
-                      onClick={closeModal}
-                      style={{ width: 'auto', background: '#e0e7ff', color: '#0f3460' }}
-                    >
-                      Close
-                    </button>
+                    <button className="btn btn-small" onClick={enterEditMode} style={{ width: 'auto', background: '#0f3460', color: 'white' }}>Edit</button>
+                    <button className="btn btn-small" onClick={closeModal} style={{ width: 'auto', background: '#e0e7ff', color: '#0f3460' }}>Close</button>
                   </>
                 )}
               </>
             )}
 
             {modalContext === 'pending' && isEditMode && (
-              <button
-                className="btn btn-small"
-                onClick={closeModal}
-                style={{ width: 'auto', background: '#e0e7ff', color: '#0f3460' }}
-              >
-                Close
-              </button>
+              <button className="btn btn-small" onClick={closeModal} style={{ width: 'auto', background: '#e0e7ff', color: '#0f3460' }}>Close</button>
             )}
           </div>
         </div>
       </div>
     );
   };
+
+  // ── Shared tab button style ────────────────────────────────────────────────
+
+  const tabBtnStyle = (tab) => ({
+    padding: '10px 24px', border: 'none', background: 'none', cursor: 'pointer',
+    fontSize: '14px', fontWeight: '600',
+    color: activeTab === tab ? '#0f3460' : '#888',
+    borderBottom: activeTab === tab ? '3px solid #0f3460' : '3px solid transparent',
+    marginBottom: '-2px', transition: 'color 0.15s',
+  });
+
+  const subTabBtnStyle = (tab) => ({
+    padding: '8px 18px', border: 'none', background: 'none', cursor: 'pointer',
+    fontSize: '13px', fontWeight: '600',
+    color: paySubTab === tab ? '#0f3460' : '#888',
+    borderBottom: paySubTab === tab ? '3px solid #0f3460' : '3px solid transparent',
+    marginBottom: '-2px', transition: 'color 0.15s',
+  });
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -557,26 +697,15 @@ function AccountsView({ user, onLogout }) {
         <div className="user-info">
           <span>Welcome, {user.name}</span>
           <span className="role-badge">Accounts</span>
-          <button className="btn btn-danger btn-small" onClick={onLogout}>
-            Logout
-          </button>
+          <button className="btn btn-danger btn-small" onClick={onLogout}>Logout</button>
         </div>
       </nav>
 
       <div className="main-content">
 
-        {/* TAB SWITCHER */}
+        {/* ── MAIN TAB BAR ─────────────────────────────────────────────── */}
         <div style={{ display: 'flex', gap: '0', marginBottom: '24px', borderBottom: '2px solid #e8e8e8' }}>
-          <button
-            onClick={() => setActiveTab('pending')}
-            style={{
-              padding: '10px 24px', border: 'none', background: 'none', cursor: 'pointer',
-              fontSize: '14px', fontWeight: '600',
-              color: activeTab === 'pending' ? '#0f3460' : '#888',
-              borderBottom: activeTab === 'pending' ? '3px solid #0f3460' : '3px solid transparent',
-              marginBottom: '-2px', transition: 'color 0.15s',
-            }}
-          >
+          <button onClick={() => setActiveTab('pending')} style={tabBtnStyle('pending')}>
             Pending Rates
             {pendingRates.length > 0 && (
               <span style={{ background: '#dc2626', color: 'white', borderRadius: '10px', fontSize: '11px', fontWeight: '700', padding: '1px 7px', marginLeft: '8px', verticalAlign: 'middle' }}>
@@ -584,17 +713,11 @@ function AccountsView({ user, onLogout }) {
               </span>
             )}
           </button>
-          <button
-            onClick={() => setActiveTab('all')}
-            style={{
-              padding: '10px 24px', border: 'none', background: 'none', cursor: 'pointer',
-              fontSize: '14px', fontWeight: '600',
-              color: activeTab === 'all' ? '#0f3460' : '#888',
-              borderBottom: activeTab === 'all' ? '3px solid #0f3460' : '3px solid transparent',
-              marginBottom: '-2px', transition: 'color 0.15s',
-            }}
-          >
+          <button onClick={() => setActiveTab('all')} style={tabBtnStyle('all')}>
             All Rates
+          </button>
+          <button onClick={() => setActiveTab('payments')} style={tabBtnStyle('payments')}>
+            Payments
           </button>
         </div>
 
@@ -693,9 +816,7 @@ function AccountsView({ user, onLogout }) {
                           <td>{r.total != null ? Number(r.total).toLocaleString() : '—'}</td>
                           <td>{r.submitted_by}</td>
                           <td>{r.submitted_at ? new Date(r.submitted_at).toLocaleDateString('en-GB') : '—'}</td>
-                          <td>
-                            <span className={badge.cls} style={badge.style}>{r.status}</span>
-                          </td>
+                          <td><span className={badge.cls} style={badge.style}>{r.status}</span></td>
                         </tr>
                       );
                     })}
@@ -704,6 +825,252 @@ function AccountsView({ user, onLogout }) {
               </div>
             )}
           </div>
+        )}
+
+        {/* ── TAB 3: PAYMENTS ───────────────────────────────────────────── */}
+        {activeTab === 'payments' && (
+          <>
+            {/* Sub-tab bar */}
+            <div style={{ display: 'flex', gap: '0', marginBottom: '20px', borderBottom: '2px solid #e8e8e8' }}>
+              <button onClick={() => setPaySubTab('weekly')}   style={subTabBtnStyle('weekly')}>Weekly Summary</button>
+              <button onClick={() => setPaySubTab('advances')} style={subTabBtnStyle('advances')}>Advances</button>
+            </div>
+
+            {/* ── Weekly Summary sub-tab ──────────────────────────────────── */}
+            {paySubTab === 'weekly' && (
+              <div className="card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#555', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+                        Week Ending (Saturday)
+                      </label>
+                      <input
+                        type="date"
+                        value={payWeek}
+                        onChange={e => { setPayWeek(e.target.value); setExpandedRow(null); }}
+                        style={{ padding: '8px 12px', border: '2px solid #e8e8e8', borderRadius: '8px', fontSize: '14px' }}
+                      />
+                    </div>
+                    <button
+                      className="btn btn-primary btn-small"
+                      onClick={() => loadWeekData(payWeek)}
+                      disabled={payLoading}
+                      style={{ marginTop: '20px' }}
+                    >
+                      {payLoading ? 'Loading...' : 'Refresh'}
+                    </button>
+                  </div>
+                  <button
+                    className="btn btn-small"
+                    onClick={handlePaymentExcelExport}
+                    disabled={weekPayments.length === 0}
+                    style={{ width: 'auto', background: '#16a34a', color: 'white', whiteSpace: 'nowrap' }}
+                  >
+                    ↓ Excel
+                  </button>
+                </div>
+
+                {payMsg && (
+                  <div className={`alert alert-${payMsg.type === 'error' ? 'error' : 'success'}`}>
+                    {payMsg.text}
+                  </div>
+                )}
+
+                {payLoading ? (
+                  <div className="loading"><div className="spinner" />Loading...</div>
+                ) : (() => {
+                  const groups = computeGroups();
+                  if (!groups.length) {
+                    return <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>No entries for this week.</p>;
+                  }
+                  return (
+                    <div className="table-container">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Code</th>
+                            <th>Stitcher</th>
+                            <th>Total Pieces</th>
+                            <th>Gross (PKR)</th>
+                            <th>Advance (PKR)</th>
+                            <th>Net Payable (PKR)</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {groups.map(g => (
+                            <React.Fragment key={g.code}>
+                              <tr
+                                onClick={() => setExpandedRow(expandedRow === g.code ? null : g.code)}
+                                style={{ cursor: 'pointer', background: expandedRow === g.code ? '#f0f7ff' : undefined }}
+                              >
+                                <td>{g.code}</td>
+                                <td>
+                                  <span style={{ marginRight: '6px', fontSize: '11px', color: '#888' }}>
+                                    {expandedRow === g.code ? '▲' : '▶'}
+                                  </span>
+                                  {g.name}
+                                </td>
+                                <td>{g.totalPieces.toLocaleString()}</td>
+                                <td>PKR {g.gross.toLocaleString()}</td>
+                                <td>PKR {g.advance.toLocaleString()}</td>
+                                <td style={{ fontWeight: '700', color: g.net >= 0 ? '#16a34a' : '#dc2626' }}>
+                                  PKR {g.net.toLocaleString()}
+                                </td>
+                                <td><PayStatusBadge status={g.status} /></td>
+                                <td onClick={e => e.stopPropagation()}>
+                                  <div style={{ display: 'flex', gap: '6px' }}>
+                                    {g.status === 'Pending' && (
+                                      <button
+                                        className="btn btn-small"
+                                        style={{ background: '#3b82f6', color: 'white', whiteSpace: 'nowrap' }}
+                                        onClick={() => handleVerify(g.code)}
+                                        disabled={!!payActing[g.code]}
+                                      >
+                                        {payActing[g.code] ? '...' : 'Verify'}
+                                      </button>
+                                    )}
+                                    {g.status === 'Verified' && (
+                                      <button
+                                        className="btn btn-small"
+                                        style={{ background: '#16a34a', color: 'white', whiteSpace: 'nowrap' }}
+                                        onClick={() => handleMarkPaid(g.code)}
+                                        disabled={!!payActing[g.code]}
+                                      >
+                                        {payActing[g.code] ? '...' : 'Mark Paid'}
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+
+                              {/* Expanded entry breakdown */}
+                              {expandedRow === g.code && g.entries.map(e => (
+                                <tr key={e.id} style={{ background: '#fafbff' }}>
+                                  <td style={{ paddingLeft: '32px', color: '#888', fontSize: '13px' }} colSpan={2}>
+                                    {e.entry_date ? String(e.entry_date).slice(0, 10) : '—'}
+                                    &nbsp;·&nbsp;{e.po_number}
+                                  </td>
+                                  <td style={{ fontSize: '13px', color: '#555' }}>{e.department}</td>
+                                  <td style={{ fontSize: '13px', color: '#555' }}>{e.operation}</td>
+                                  <td style={{ fontSize: '13px' }}>{e.qty_claimed}</td>
+                                  <td style={{ fontSize: '13px' }}>PKR {Number(e.rate || 0).toLocaleString()}</td>
+                                  <td style={{ fontSize: '13px', fontWeight: '600' }} colSpan={2}>
+                                    PKR {Number(e.amount || 0).toLocaleString()}
+                                  </td>
+                                </tr>
+                              ))}
+                            </React.Fragment>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* ── Advances sub-tab ────────────────────────────────────────── */}
+            {paySubTab === 'advances' && (
+              <>
+                <div className="card">
+                  <h3>Log Advance</h3>
+                  <form onSubmit={handleAdvanceSubmit}>
+                    <div className="form-grid">
+                      <div className="form-group">
+                        <label>Stitcher *</label>
+                        <select name="stitcher_code" value={advForm.stitcher_code} onChange={handleAdvanceChange} required>
+                          <option value="">Select stitcher...</option>
+                          {stitchers.map(s => (
+                            <option key={s.stitcher_code} value={s.stitcher_code}>
+                              {s.stitcher_code} — {s.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label>Amount (PKR) *</label>
+                        <input
+                          type="number"
+                          name="amount"
+                          value={advForm.amount}
+                          onChange={handleAdvanceChange}
+                          min="1"
+                          required
+                          placeholder="Enter amount"
+                        />
+                      </div>
+                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                        <label>Note</label>
+                        <input
+                          type="text"
+                          name="note"
+                          value={advForm.note}
+                          onChange={handleAdvanceChange}
+                          placeholder="Optional note"
+                        />
+                      </div>
+                    </div>
+                    {advMsg && (
+                      <div className={`alert alert-${advMsg.type === 'error' ? 'error' : 'success'}`} style={{ marginTop: '8px' }}>
+                        {advMsg.text}
+                      </div>
+                    )}
+                    <button type="submit" className="btn btn-primary" disabled={advSubmitting} style={{ marginTop: '8px', maxWidth: '200px' }}>
+                      {advSubmitting ? 'Logging...' : 'Log Advance'}
+                    </button>
+                  </form>
+                </div>
+
+                <div className="card">
+                  <h3>
+                    Advances — Week of {payWeek}
+                  </h3>
+                  {payLoading ? (
+                    <div className="loading"><div className="spinner" />Loading...</div>
+                  ) : weekAdvances.length === 0 ? (
+                    <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>No advances logged for this week.</p>
+                  ) : (
+                    <>
+                      <div className="table-container">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Code</th>
+                              <th>Stitcher</th>
+                              <th>Amount (PKR)</th>
+                              <th>Note</th>
+                              <th>Added By</th>
+                              <th>Date</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {weekAdvances.map(a => (
+                              <tr key={a.id}>
+                                <td>{a.stitcher_code}</td>
+                                <td>{a.stitcher_name}</td>
+                                <td>PKR {Number(a.amount || 0).toLocaleString()}</td>
+                                <td>{a.note || '—'}</td>
+                                <td>{a.added_by}</td>
+                                <td>{a.created_at ? new Date(a.created_at).toLocaleDateString('en-GB') : '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div style={{ marginTop: '12px', padding: '10px 16px', background: '#f0fdf4', borderRadius: '8px', textAlign: 'right' }}>
+                        <span style={{ fontWeight: '700', color: '#16a34a', fontSize: '15px' }}>
+                          Total advances this week: PKR {weekAdvances.reduce((s, a) => s + Number(a.amount || 0), 0).toLocaleString()}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+          </>
         )}
 
       </div>

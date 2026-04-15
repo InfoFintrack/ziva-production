@@ -1,38 +1,55 @@
 const { getPool } = require('./_lib/db');
 const { authenticateToken } = require('./_lib/auth');
 
-// Maps the 'operation' field value to the corresponding column in cmt_rates
-const OPERATION_TO_RATE_FIELD = {
-  'Shirt':          'shirt',
-  'Trouser':        'trouser',
-  'Dupatta':        'dupatta',
-  'Cutting':        'cutting',
-  'Patching':       'patching',
-  'fs_clipping':    'fs_clipping',
-  'fs_heming':      'fs_heming',
-  'fs_tussling':    'fs_tussling',
-  'fs_pressing':    'fs_pressing',
-  'ft_clipping':    'ft_clipping',
-  'ft_heming':      'ft_heming',
-  'ft_pressing':    'ft_pressing',
-  'ft_patching':    'ft_patching',
-  'fd_heming':      'fd_heming',
-  'fd_tussling':    'fd_tussling',
-  'fd_pressing':    'fd_pressing',
-  'fd_patching':    'fd_patching',
-  'quality_packing':'quality_packing',
+// Maps department|operation → cmt_rates column name (whitelisted — safe to interpolate)
+const DEPT_OP_TO_RATE_FIELD = {
+  'Stitching|Shirt':              'shirt',
+  'Stitching|Trouser':            'trouser',
+  'Stitching|Dupatta':            'dupatta',
+  'Stitching|Patching':           'patching',
+  'Finishing Shirt|Clipping':     'fs_clipping',
+  'Finishing Shirt|Heming':       'fs_heming',
+  'Finishing Shirt|Tussling':     'fs_tussling',
+  'Finishing Shirt|Pressing':     'fs_pressing',
+  'Finishing Trouser|Clipping':   'ft_clipping',
+  'Finishing Trouser|Heming':     'ft_heming',
+  'Finishing Trouser|Pressing':   'ft_pressing',
+  'Finishing Trouser|Patching':   'ft_patching',
+  'Finishing Dupatta|Heming':     'fd_heming',
+  'Finishing Dupatta|Tussling':   'fd_tussling',
+  'Finishing Dupatta|Pressing':   'fd_pressing',
+  'Finishing Dupatta|Patching':   'fd_patching',
 };
 
-/**
- * Returns the next Saturday on or after the given date string.
- * If the given date is already Saturday, returns that same date.
- */
+// Auto-derive component from department + operation
+function deriveComponent(department, operation) {
+  if (department === 'Stitching') return operation.toLowerCase();
+  if (department.includes('Shirt'))   return 'shirt';
+  if (department.includes('Trouser')) return 'trouser';
+  if (department.includes('Dupatta')) return 'dupatta';
+  return null;
+}
+
+// Returns the next Saturday on or after dateStr; if dateStr is Saturday, returns that date.
 function getWeekEnding(dateStr) {
   const d = new Date(dateStr);
   const daysUntilSat = (6 - d.getDay() + 7) % 7;
   d.setDate(d.getDate() + daysUntilSat);
   return d.toISOString().split('T')[0];
 }
+
+const CREATE_ADVANCES_TABLE = `
+  CREATE TABLE IF NOT EXISTS advances (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    stitcher_code CHAR(4),
+    stitcher_name VARCHAR(100),
+    amount        DECIMAL(10,2),
+    week_ending   DATE,
+    added_by      VARCHAR(100),
+    note          TEXT,
+    created_at    TIMESTAMP DEFAULT NOW()
+  )
+`;
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -44,6 +61,94 @@ export default async function handler(req, res) {
   if (!user) return;
 
   const pool = getPool();
+  const { type } = req.query;
+
+  // ── ?type=advance ─────────────────────────────────────────────────────────
+  if (type === 'advance') {
+    await pool.query(CREATE_ADVANCES_TABLE).catch(() => {});
+
+    if (req.method === 'GET') {
+      try {
+        const conditions = [];
+        const values = [];
+        let paramIdx = 1;
+
+        if (req.query.week_ending) {
+          conditions.push(`week_ending = $${paramIdx++}`);
+          values.push(req.query.week_ending);
+        }
+        if (req.query.stitcher_code) {
+          conditions.push(`stitcher_code = $${paramIdx++}`);
+          values.push(req.query.stitcher_code);
+        }
+
+        const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+        const { rows } = await pool.query(
+          `SELECT * FROM advances ${where} ORDER BY created_at DESC`,
+          values
+        );
+        return res.json({ success: true, advances: rows });
+      } catch (err) {
+        console.error('Advances GET error:', err.message);
+        return res.status(500).json({ success: false, message: 'Server error.' });
+      }
+    }
+
+    if (req.method === 'POST') {
+      if (!['Accounts', 'Admin'].includes(user.role)) {
+        return res.status(403).json({ success: false, error: 'Access denied' });
+      }
+      const { stitcher_code, amount, week_ending: weParam, note } = req.body;
+      if (!stitcher_code || amount == null) {
+        return res.json({ success: false, message: 'stitcher_code and amount are required.' });
+      }
+      try {
+        const { rows: stitcherRows } = await pool.query(
+          `SELECT name FROM stitchers WHERE stitcher_code = $1`,
+          [stitcher_code]
+        );
+        const stitcherName = stitcherRows.length ? stitcherRows[0].name : '';
+        const week_ending  = weParam || getWeekEnding(new Date().toISOString().split('T')[0]);
+
+        const { rows } = await pool.query(
+          `INSERT INTO advances (stitcher_code, stitcher_name, amount, week_ending, added_by, note, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING *`,
+          [stitcher_code, stitcherName, Number(amount), week_ending, user.name, note || null]
+        );
+        return res.json({ success: true, advance: rows[0] });
+      } catch (err) {
+        console.error('Advances POST error:', err.message);
+        return res.status(500).json({ success: false, message: 'Server error.' });
+      }
+    }
+
+    return res.status(405).json({ success: false, message: 'Method not allowed.' });
+  }
+
+  // ── ?type=advance_balance ─────────────────────────────────────────────────
+  if (type === 'advance_balance') {
+    await pool.query(CREATE_ADVANCES_TABLE).catch(() => {});
+
+    if (req.method === 'GET') {
+      const { stitcher_code } = req.query;
+      if (!stitcher_code) {
+        return res.json({ success: false, message: 'stitcher_code is required.' });
+      }
+      try {
+        const { rows } = await pool.query(
+          `SELECT COALESCE(SUM(amount), 0) AS balance FROM advances WHERE stitcher_code = $1`,
+          [stitcher_code]
+        );
+        return res.json({ success: true, balance: Number(rows[0].balance) });
+      } catch (err) {
+        console.error('Advance Balance GET error:', err.message);
+        return res.status(500).json({ success: false, message: 'Server error.' });
+      }
+    }
+    return res.status(405).json({ success: false, message: 'Method not allowed.' });
+  }
+
+  // ── Default: cmt_payments GET / POST / PUT ────────────────────────────────
 
   if (req.method === 'GET') {
     try {
@@ -54,6 +159,10 @@ export default async function handler(req, res) {
       if (req.query.week_ending) {
         conditions.push(`week_ending = $${paramIdx++}`);
         values.push(req.query.week_ending);
+      }
+      if (req.query.submitted_by) {
+        conditions.push(`submitted_by = $${paramIdx++}`);
+        values.push(req.query.submitted_by);
       }
       if (req.query.stitcher_code) {
         conditions.push(`stitcher_code = $${paramIdx++}`);
@@ -80,22 +189,21 @@ export default async function handler(req, res) {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
 
-    const {
-      po_number, stitcher_code, component, department,
-      operation, qty_claimed, entry_date, remarks,
-    } = req.body;
+    const { po_number, stitcher_code, department, operation, qty_claimed, entry_date, remarks } = req.body;
 
-    if (!po_number || !stitcher_code || !component || !department || !operation || !qty_claimed) {
-      return res.json({ success: false, message: 'po_number, stitcher_code, component, department, operation, and qty_claimed are required.' });
+    if (!po_number || !stitcher_code || !department || !operation || !qty_claimed) {
+      return res.json({ success: false, message: 'po_number, stitcher_code, department, operation, and qty_claimed are required.' });
     }
 
-    const rateField = OPERATION_TO_RATE_FIELD[operation];
+    const rateField = DEPT_OP_TO_RATE_FIELD[`${department}|${operation}`];
     if (!rateField) {
-      return res.json({ success: false, message: `Unknown operation: "${operation}".` });
+      return res.json({ success: false, message: `Unknown department/operation combination: "${department} / ${operation}".` });
     }
+
+    const component = deriveComponent(department, operation);
 
     try {
-      // Look up stitcher by stitcher_code
+      // Look up stitcher
       const { rows: stitcherRows } = await pool.query(
         `SELECT id, name FROM stitchers WHERE stitcher_code = $1`,
         [stitcher_code]
@@ -105,14 +213,16 @@ export default async function handler(req, res) {
       }
       const stitcher = stitcherRows[0];
 
-      // Look up rate from cmt_rates for this po_number
-      // rateField is from a fixed whitelist — safe to interpolate into column name
+      // Look up approved rate — rateField is from a fixed whitelist, safe to interpolate
       const { rows: rateRows } = await pool.query(
-        `SELECT ${rateField} AS rate FROM cmt_rates WHERE po_number = $1`,
+        `SELECT ${rateField} AS rate FROM cmt_rates WHERE po_number = $1 AND status = 'Approved'`,
         [po_number]
       );
       if (!rateRows.length) {
-        return res.json({ success: false, message: 'CMT rates not found for this PO number.' });
+        return res.status(400).json({
+          success: false,
+          message: `No approved CMT rate found for PO "${po_number}". Rate must be CEO-approved before logging payments.`,
+        });
       }
 
       const rate   = Number(rateRows[0].rate) || 0;
@@ -129,20 +239,12 @@ export default async function handler(req, res) {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'Pending',$13,$14,NOW())
          RETURNING *`,
         [
-          resolvedEntryDate,
-          po_number,
-          stitcher.id,
-          stitcher_code,
-          stitcher.name,
-          component,
-          department,
-          operation,
-          qty_claimed,
-          rate,
-          amount,
+          resolvedEntryDate, po_number,
+          stitcher.id, stitcher_code, stitcher.name,
+          component, department, operation,
+          qty_claimed, rate, amount,
           week_ending,
-          remarks       || null,
-          user.name,
+          remarks || null, user.name,
         ]
       );
 
@@ -157,12 +259,43 @@ export default async function handler(req, res) {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
 
-    const { id, action, payment_date } = req.body;
-    if (!id || !action) {
-      return res.json({ success: false, message: 'id and action are required.' });
+    const { id, stitcher_code, week_ending, action, payment_date } = req.body;
+
+    if (!action) {
+      return res.json({ success: false, message: 'action is required.' });
     }
-    if (!['verify', 'pay'].includes(action)) {
-      return res.json({ success: false, message: 'action must be "verify" or "pay".' });
+    if (!['verify', 'pay', 'mark_paid'].includes(action)) {
+      return res.json({ success: false, message: 'action must be "verify", "pay", or "mark_paid".' });
+    }
+
+    // Bulk update by stitcher_code + week_ending
+    if (stitcher_code && week_ending) {
+      try {
+        if (action === 'verify') {
+          await pool.query(
+            `UPDATE cmt_payments
+             SET payment_status = 'Verified', verified_by = $1, verified_at = NOW()
+             WHERE stitcher_code = $2 AND week_ending = $3`,
+            [user.name, stitcher_code, week_ending]
+          );
+        } else if (action === 'mark_paid') {
+          await pool.query(
+            `UPDATE cmt_payments
+             SET payment_status = 'Paid', payment_date = $1
+             WHERE stitcher_code = $2 AND week_ending = $3`,
+            [new Date().toISOString().split('T')[0], stitcher_code, week_ending]
+          );
+        }
+        return res.json({ success: true });
+      } catch (err) {
+        console.error('CMT Payments bulk PUT error:', err.message);
+        return res.status(500).json({ success: false, message: 'Server error.' });
+      }
+    }
+
+    // Single-record update by id (legacy)
+    if (!id) {
+      return res.json({ success: false, message: 'Either (stitcher_code + week_ending) or id is required.' });
     }
     if (action === 'pay' && !payment_date) {
       return res.json({ success: false, message: 'payment_date is required for action "pay".' });
@@ -172,20 +305,15 @@ export default async function handler(req, res) {
       let result;
       if (action === 'verify') {
         result = await pool.query(
-          `UPDATE cmt_payments
-           SET payment_status = 'Verified', verified_by = $1, verified_at = NOW()
-           WHERE id = $2`,
+          `UPDATE cmt_payments SET payment_status = 'Verified', verified_by = $1, verified_at = NOW() WHERE id = $2`,
           [user.name, id]
         );
       } else {
         result = await pool.query(
-          `UPDATE cmt_payments
-           SET payment_status = 'Paid', payment_date = $1
-           WHERE id = $2`,
-          [payment_date, id]
+          `UPDATE cmt_payments SET payment_status = 'Paid', payment_date = $1 WHERE id = $2`,
+          [payment_date || new Date().toISOString().split('T')[0], id]
         );
       }
-
       if (result.rowCount === 0) {
         return res.json({ success: false, message: 'Payment record not found.' });
       }
