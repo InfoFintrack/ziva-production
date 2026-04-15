@@ -7,7 +7,7 @@ import {
   getStitchers, updateStitcher,
 } from '../api';
 
-const ROLES = ['PP', 'Cutting', 'Admin'];
+const ROLES = ['PP', 'Cutting', 'Admin', 'Accounts', 'CEO', 'Supervisor', 'Stitching'];
 const DROPDOWN_FIELDS = [
   { key: 'garmentTypes',     label: 'Garment Type',      field: 'Garment_Type' },
   { key: 'units',            label: 'Unit',              field: 'Unit' },

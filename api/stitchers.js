@@ -31,16 +31,16 @@ export default async function handler(req, res) {
     }
 
   } else if (req.method === 'POST') {
-    if (!['Admin', 'Accounts', 'Cutting'].includes(user.role)) {
+    if (!['Cutting', 'Admin'].includes(user.role)) {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
 
     const { name, cnic, phone, specialization, status, date_joined } = req.body;
 
-    if (!name || !cnic || !phone || !specialization) {
-      return res.json({ success: false, message: 'name, cnic, phone, and specialization are required.' });
+    if (!name || !phone || !specialization) {
+      return res.json({ success: false, message: 'name, phone, and specialization are required.' });
     }
-    if (!CNIC_REGEX.test(cnic)) {
+    if (cnic && !CNIC_REGEX.test(cnic)) {
       return res.json({ success: false, message: 'Invalid CNIC format. Expected: 00000-0000000-0' });
     }
     if (!PHONE_REGEX.test(phone)) {
@@ -78,7 +78,7 @@ export default async function handler(req, res) {
     }
 
   } else if (req.method === 'PUT') {
-    if (!['Admin', 'Accounts'].includes(user.role)) {
+    if (!['Cutting', 'Admin', 'Accounts'].includes(user.role)) {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
 

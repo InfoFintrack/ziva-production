@@ -1,7 +1,7 @@
 const { getPool } = require('./_lib/db');
 const { authenticateToken } = require('./_lib/auth');
 
-const ALLOWED_ROLES = ['Supervisor', 'Admin', 'Accounts'];
+const ALLOWED_ROLES = ['Supervisor', 'Admin'];
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');

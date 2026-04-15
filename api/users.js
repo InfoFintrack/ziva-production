@@ -24,6 +24,10 @@ export default async function handler(req, res) {
 
   const pool = getPool();
 
+  if (!['Admin', 'Accounts'].includes(user.role)) {
+    return res.status(403).json({ success: false, error: 'Access denied' });
+  }
+
   // ── GET /api/users ──────────────────────────────────────────────────────────
   if (req.method === 'GET') {
     try {
@@ -49,8 +53,8 @@ export default async function handler(req, res) {
     if (!name?.trim() || !passcode?.toString().trim() || !role) {
       return res.json({ success: false, message: 'Name, passcode, and role are required.' });
     }
-    if (!['PP', 'Cutting', 'Admin'].includes(role)) {
-      return res.json({ success: false, message: 'Role must be PP, Cutting, or Admin.' });
+    if (!['PP', 'Cutting', 'Admin', 'Accounts', 'CEO', 'Supervisor', 'Stitching'].includes(role)) {
+      return res.json({ success: false, message: 'Invalid role.' });
     }
     if (!PASSCODE_RE.test(passcode.toString())) {
       return res.json({ success: false, message: PASSCODE_MSG });

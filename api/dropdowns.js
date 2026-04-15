@@ -40,6 +40,9 @@ export default async function handler(req, res) {
 
   // ── POST /api/dropdowns — add a value ──────────────────────────────────────
   if (req.method === 'POST') {
+    if (!['Admin', 'Accounts'].includes(user.role)) {
+      return res.status(403).json({ success: false, error: 'Access denied' });
+    }
     const { field, value } = req.body;
     if (!VALID_DROPDOWN_FIELDS.has(field) || !value?.trim()) {
       return res.json({ success: false, message: 'Valid field and value are required.' });
@@ -65,6 +68,9 @@ export default async function handler(req, res) {
 
   // ── DELETE /api/dropdowns?field=...&value=... — remove a value ─────────────
   if (req.method === 'DELETE') {
+    if (!['Admin', 'Accounts'].includes(user.role)) {
+      return res.status(403).json({ success: false, error: 'Access denied' });
+    }
     const { field, value } = req.query;
     if (!VALID_DROPDOWN_FIELDS.has(field)) {
       return res.json({ success: false, message: 'Invalid field.' });

@@ -21,6 +21,10 @@ export default async function handler(req, res) {
   const user = authenticateToken(req, res);
   if (!user) return;
 
+  if (!['Admin', 'Accounts'].includes(user.role)) {
+    return res.status(403).json({ success: false, error: 'Access denied' });
+  }
+
   const { recordId, field, newValue, adminName } = req.body;
 
   if (!recordId || !field || newValue === undefined || !adminName) {
