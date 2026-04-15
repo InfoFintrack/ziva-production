@@ -33,12 +33,6 @@ const DEPT_OP_TO_RATE_FIELD = {
   'Finishing Dupatta|Patching':   'fd_patching',
 };
 
-function getUpcomingSaturday() {
-  const d = new Date();
-  const daysUntilSat = (6 - d.getDay() + 7) % 7;
-  d.setDate(d.getDate() + daysUntilSat);
-  return d.toISOString().split('T')[0];
-}
 
 const EMPTY_FORM = {
   entry_date:    TODAY,
