@@ -24,15 +24,11 @@ const FABRIC_TYPES = [
   'Grip Silk','Katan Silk','Mixed',
 ];
 
-const PO_ACCESSORY_TYPES = [
-  'Lace','Button','Zip','Thread','Lining','Elastic','Label','Packaging','Other',
-];
-
-const PO_ACCESSORY_UNITS = ['Meters','Pieces','Rolls','Packets'];
-
 const ACCESSORY_UNITS = ['Meters','Yards','Pieces','KG'];
 
 const getEmptyPOForm = () => ({
+  batch_number_b:  '',
+  batch_number_po: '',
   po_number:      '',
   collection_name:'',
   article_name:   '',
@@ -203,6 +199,9 @@ function PPView({ user, onLogout }) {
   const [message, setMessage]   = useState(null);
   const [lotPreview, setLotPreview] = useState('Auto-generated on submit');
 
+  const [issuePOAccessories, setIssuePOAccessories] = useState([]);
+  const [issuePOLog, setIssuePOLog]                 = useState([]);
+
   // New Issue-Fabric PO-link fields
   const [issuePO, setIssuePO]               = useState('');
   const [issuePODetails, setIssuePODetails] = useState(null);
@@ -215,7 +214,7 @@ function PPView({ user, onLogout }) {
 
   // ── PO Management state ────────────────────────────────────────────────
   const [poForm, setPOForm] = useState(getEmptyPOForm());
-  const [poAccessories, setPOAccessories] = useState([{ accessory_type: '', quantity: '', unit: '' }]);
+  const [poAccessories, setPOAccessories] = useState([{ accessory_type: '', quantity: '' }]);
   const [collapsedCards, setCollapsedCards] = useState({ shirt: false, trouser: false, dupatta: false });
   const [pos, setPos]             = useState([]);
   const [poLoading, setPOLoading] = useState(false);
@@ -274,6 +273,11 @@ function PPView({ user, onLogout }) {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    if (name === 'joNumber') {
+      const digits = value.replace(/[^0-9]/g, '').slice(0, 4);
+      setForm(prev => ({ ...prev, joNumber: digits }));
+      return;
+    }
     if (name === 'poNumber') {
       const digits = value.replace(/[^0-9]/g, '').slice(0, 4);
       setForm(prev => ({ ...prev, poNumber: digits }));
@@ -312,11 +316,13 @@ function PPView({ user, onLogout }) {
     setLotPreview('Auto-generated on submit');
   };
 
-  const handleIssuePOSelect = (e) => {
+  const handleIssuePOSelect = async (e) => {
     const po_number = e.target.value;
     setIssuePO(po_number);
     setIssueComponent('');
     setMetersToIssue('');
+    setIssuePOAccessories([]);
+    setIssuePOLog([]);
     if (po_number) {
       const found = pos.find(p => p.po_number === po_number);
       setIssuePODetails(found || null);
@@ -328,6 +334,14 @@ function PPView({ user, onLogout }) {
         fabricColor: '',
         fabricName:  '',
       }));
+      try {
+        const [accRes, logRes] = await Promise.all([
+          getPoAccessories(po_number),
+          getFabricIssuanceLog(po_number),
+        ]);
+        if (accRes.success) setIssuePOAccessories(accRes.accessories);
+        if (logRes.success) setIssuePOLog(logRes.logs);
+      } catch { /* non-critical */ }
     } else {
       setIssuePODetails(null);
       setForm(prev => ({
@@ -345,7 +359,8 @@ function PPView({ user, onLogout }) {
     const comp = e.target.value;
     setIssueComponent(comp);
     setMetersToIssue('');
-    if (comp && issuePODetails) {
+    const isAccessory = comp.endsWith(' (Accessory)');
+    if (comp && issuePODetails && !isAccessory) {
       const compKey = comp.toLowerCase();
       setForm(prev => ({
         ...prev,
@@ -370,13 +385,26 @@ function PPView({ user, onLogout }) {
         setMessage({ type: 'error', text: 'Please enter pieces to issue for the linked PO.' });
         return;
       }
-      const compKey   = issueComponent.toLowerCase();
-      const qty       = Number(issuePODetails?.[`${compKey}_qty`] || 0);
-      const issued    = Number(issuePODetails?.[`${compKey}_meters_issued`] || 0);
-      const remaining = qty - issued;
-      if (Number(metersToIssue) > remaining) {
-        setMessage({ type: 'error', text: `Cannot exceed remaining ${remaining} pcs for ${issueComponent}.` });
-        return;
+      const isAccessory = issueComponent.endsWith(' (Accessory)');
+      if (isAccessory) {
+        const accName     = issueComponent.replace(' (Accessory)', '');
+        const acc         = issuePOAccessories.find(a => a.accessory_type === accName);
+        const totalQty    = Number(acc?.quantity || 0);
+        const issuedSoFar = issuePOLog.filter(l => l.component === accName).reduce((sum, l) => sum + Number(l.meters_issued), 0);
+        const remaining   = totalQty - issuedSoFar;
+        if (Number(metersToIssue) > remaining) {
+          setMessage({ type: 'error', text: `Cannot exceed remaining ${remaining} units for ${accName}.` });
+          return;
+        }
+      } else {
+        const compKey   = issueComponent.toLowerCase();
+        const qty       = Number(issuePODetails?.[`${compKey}_qty`] || 0);
+        const issued    = Number(issuePODetails?.[`${compKey}_meters_issued`] || 0);
+        const remaining = qty - issued;
+        if (Number(metersToIssue) > remaining) {
+          setMessage({ type: 'error', text: `Cannot exceed remaining ${remaining} pcs for ${issueComponent}.` });
+          return;
+        }
       }
     }
 
@@ -399,6 +427,7 @@ function PPView({ user, onLogout }) {
       const result = await submitIssuance({
         ...form,
         poNumber:    `PO-${form.poNumber}`,
+        joNumber:    form.joNumber ? `JO-${form.joNumber}` : '',
         accessories: accessories.length > 0 ? JSON.stringify(accessories) : null,
         laces:       laces.length > 0       ? JSON.stringify(laces)       : null,
         issuedBy:    user.name,
@@ -408,28 +437,46 @@ function PPView({ user, onLogout }) {
         // Log fabric issuance and update PO meters if a PO was linked
         if (issuePO && issueComponent && metersToIssue) {
           try {
-            await Promise.all([
-              logFabricIssuance({
+            const isAccessory   = issueComponent.endsWith(' (Accessory)');
+            const componentName = isAccessory
+              ? issueComponent.replace(' (Accessory)', '')
+              : issueComponent.toLowerCase();
+            if (isAccessory) {
+              await logFabricIssuance({
                 po_number:    issuePO,
-                component:    issueComponent.toLowerCase(),
+                component:    componentName,
                 meters_issued:Number(metersToIssue),
                 issued_by:    user.name,
                 remarks:      issueMetersRemarks || undefined,
-              }),
-              updatePO({
-                po_number:   issuePO,
-                action:      'update_meters',
-                component:   issueComponent.toLowerCase(),
-                meters_delta:Number(metersToIssue),
-              }),
+              });
+            } else {
+              await Promise.all([
+                logFabricIssuance({
+                  po_number:    issuePO,
+                  component:    componentName,
+                  meters_issued:Number(metersToIssue),
+                  issued_by:    user.name,
+                  remarks:      issueMetersRemarks || undefined,
+                }),
+                updatePO({
+                  po_number:   issuePO,
+                  action:      'update_meters',
+                  component:   componentName,
+                  meters_delta:Number(metersToIssue),
+                }),
+              ]);
+            }
+            // Refresh PO list, summary card, and issuance log
+            const [posRes, logRes] = await Promise.all([
+              getPOs(),
+              getFabricIssuanceLog(issuePO),
             ]);
-            // Refresh PO list and update summary card
-            const posRes = await getPOs();
             if (posRes.success) {
               setPos(posRes.pos);
               const updated = posRes.pos.find(p => p.po_number === issuePO);
               setIssuePODetails(updated || null);
             }
+            if (logRes.success) setIssuePOLog(logRes.logs);
           } catch { /* non-critical; main issuance already succeeded */ }
           setIssueComponent('');
           setMetersToIssue('');
@@ -469,9 +516,9 @@ function PPView({ user, onLogout }) {
 
   const handlePOChange = (e) => {
     const { name, value } = e.target;
-    if (name === 'po_number') {
+    if (name === 'po_number' || name === 'batch_number_b' || name === 'batch_number_po') {
       const digits = value.replace(/[^0-9]/g, '').slice(0, 4);
-      setPOForm(prev => ({ ...prev, po_number: digits }));
+      setPOForm(prev => ({ ...prev, [name]: digits }));
       return;
     }
     setPOForm(prev => ({ ...prev, [name]: value }));
@@ -487,7 +534,7 @@ function PPView({ user, onLogout }) {
     setPOAccessories(prev => prev.map((a, idx) => idx === i ? { ...a, [field]: value } : a));
 
   const addPOAccessoryRow = () =>
-    setPOAccessories(prev => [...prev, { accessory_type: '', quantity: '', unit: '' }]);
+    setPOAccessories(prev => [...prev, { accessory_type: '', quantity: '' }]);
 
   const removePOAccessoryRow = (i) =>
     setPOAccessories(prev => prev.filter((_, idx) => idx !== i));
@@ -495,6 +542,12 @@ function PPView({ user, onLogout }) {
   const handlePOSubmit = async (e) => {
     e.preventDefault();
 
+    if (!poForm.batch_number_b.trim()) {
+      setPOMessage({ type: 'error', text: 'Batch Number (B- part) is required.' }); return;
+    }
+    if (!poForm.batch_number_po.trim()) {
+      setPOMessage({ type: 'error', text: 'Batch Number (-PO- part) is required.' }); return;
+    }
     if (!poForm.po_number.trim()) {
       setPOMessage({ type: 'error', text: 'PO Number is required.' }); return;
     }
@@ -538,6 +591,7 @@ function PPView({ user, onLogout }) {
     setPOMessage(null);
     try {
       const res = await createPO({
+        batch_number:   `B-${poForm.batch_number_b}-PO-${poForm.batch_number_po}`,
         po_number:      `PO-${poForm.po_number.trim()}`,
         collection_name:poForm.collection_name,
         article_name:   poForm.article_name   || undefined,
@@ -558,20 +612,19 @@ function PPView({ user, onLogout }) {
 
       if (res.success) {
         // Post filled accessory rows
-        const filled = poAccessories.filter(a => a.accessory_type && a.quantity && a.unit);
+        const filled = poAccessories.filter(a => a.accessory_type && a.quantity);
         for (const acc of filled) {
           try {
             await addPoAccessory({
               po_number:      res.po.po_number,
               accessory_type: acc.accessory_type,
               quantity:       Number(acc.quantity),
-              unit:           acc.unit,
             });
           } catch { /* non-critical */ }
         }
         setPOMessage({ type: 'success', text: `✓ PO ${res.po.po_number} created successfully.` });
         setPOForm(getEmptyPOForm());
-        setPOAccessories([{ accessory_type: '', quantity: '', unit: '' }]);
+        setPOAccessories([{ accessory_type: '', quantity: '' }]);
         setCollapsedCards({ shirt: false, trouser: false, dupatta: false });
         loadPOs();
       } else {
@@ -773,7 +826,26 @@ function PPView({ user, onLogout }) {
                           <option value="Shirt">Shirt</option>
                           <option value="Trouser">Trouser</option>
                           <option value="Dupatta">Dupatta</option>
+                          {issuePOAccessories.map(a => (
+                            <option key={a.id || a.accessory_type} value={`${a.accessory_type} (Accessory)`}>
+                              {a.accessory_type} (Accessory)
+                            </option>
+                          ))}
                         </select>
+                        {issueComponent.endsWith(' (Accessory)') && (() => {
+                          const accName     = issueComponent.replace(' (Accessory)', '');
+                          const acc         = issuePOAccessories.find(a => a.accessory_type === accName);
+                          const totalQty    = Number(acc?.quantity || 0);
+                          const issuedSoFar = issuePOLog.filter(l => l.component === accName).reduce((sum, l) => sum + Number(l.meters_issued), 0);
+                          const remaining   = totalQty - issuedSoFar;
+                          return (
+                            <div style={{ marginTop: '8px' }}>
+                              <input type="text" value={`Total Qty: ${totalQty} units`} className="auto-field" readOnly style={{ width: '100%', padding: '8px 12px', fontSize: '13px', borderRadius: '6px', marginBottom: '4px', boxSizing: 'border-box' }} />
+                              <p style={{ fontSize: '12px', color: '#666', margin: '2px 0' }}>Issued So Far: {issuedSoFar} units</p>
+                              <p style={{ fontSize: '12px', fontWeight: '600', margin: '2px 0', color: remaining > 0 ? '#16a34a' : '#dc2626' }}>Remaining: {remaining} units</p>
+                            </div>
+                          );
+                        })()}
                       </div>
 
                       <div className="form-group">
@@ -786,15 +858,28 @@ function PPView({ user, onLogout }) {
                           step="0.01"
                           placeholder="e.g. 250"
                         />
-                        {issueComponent && metersToIssue && issuePODetails && (() => {
+                        {issueComponent && !issueComponent.endsWith(' (Accessory)') && metersToIssue && issuePODetails && (() => {
                           const compKey   = issueComponent.toLowerCase();
                           const qty       = Number(issuePODetails[`${compKey}_qty`] || 0);
                           const issued    = Number(issuePODetails[`${compKey}_meters_issued`] || 0);
                           const remaining = qty - issued;
                           const after     = remaining - Number(metersToIssue);
                           return (
-                            <p style={{ fontSize: '12px', marginTop: '4px', color: after > 0 ? '#16a34a' : '#dc2626' }}>
+                            <p style={{ fontSize: '12px', marginTop: '4px', color: after >= 0 ? '#16a34a' : '#dc2626' }}>
                               After issuance: {after.toFixed(2)} pcs remaining
+                            </p>
+                          );
+                        })()}
+                        {issueComponent.endsWith(' (Accessory)') && metersToIssue && (() => {
+                          const accName     = issueComponent.replace(' (Accessory)', '');
+                          const acc         = issuePOAccessories.find(a => a.accessory_type === accName);
+                          const totalQty    = Number(acc?.quantity || 0);
+                          const issuedSoFar = issuePOLog.filter(l => l.component === accName).reduce((sum, l) => sum + Number(l.meters_issued), 0);
+                          const remaining   = totalQty - issuedSoFar;
+                          const after       = remaining - Number(metersToIssue);
+                          return (
+                            <p style={{ fontSize: '12px', marginTop: '4px', color: after >= 0 ? '#16a34a' : '#dc2626' }}>
+                              After issuance: {after.toFixed(0)} units remaining
                             </p>
                           );
                         })()}
@@ -840,7 +925,18 @@ function PPView({ user, onLogout }) {
 
                   <div className="form-group">
                     <label>JO Number *</label>
-                    <input type="text" name="joNumber" placeholder="e.g. JO-001" value={form.joNumber} onChange={handleChange} />
+                    <div style={{ display: 'flex', alignItems: 'center', border: '2px solid #e8e8e8', borderRadius: '8px', overflow: 'hidden', background: '#fafafa' }}>
+                      <span style={{ padding: '12px 14px', background: '#f0f2f5', color: '#555', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderRight: '2px solid #e8e8e8', userSelect: 'none' }}>JO-</span>
+                      <input
+                        type="text"
+                        name="joNumber"
+                        placeholder="001"
+                        value={form.joNumber}
+                        onChange={handleChange}
+                        maxLength={4}
+                        style={{ border: 'none', flex: 1, padding: '12px 10px', outline: 'none', background: 'transparent', fontSize: '15px' }}
+                      />
+                    </div>
                   </div>
 
                   <div className="form-group">
@@ -1046,6 +1142,32 @@ function PPView({ user, onLogout }) {
                 </div>
                 <div className="form-grid">
                   <div className="form-group">
+                    <label>Batch Number *</label>
+                    <div style={{ display: 'flex', alignItems: 'center', border: '2px dashed #0f3460', borderRadius: '8px', overflow: 'hidden', background: '#f0f6ff' }}>
+                      <span style={{ padding: '12px 12px', background: '#e0e7ff', color: '#0f3460', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderRight: '2px dashed #0f3460', userSelect: 'none' }}>B-</span>
+                      <input
+                        type="text"
+                        name="batch_number_b"
+                        placeholder="1"
+                        value={poForm.batch_number_b}
+                        onChange={handlePOChange}
+                        maxLength={4}
+                        style={{ border: 'none', width: '48px', padding: '12px 8px', outline: 'none', background: 'transparent', fontSize: '15px', textAlign: 'center' }}
+                      />
+                      <span style={{ padding: '12px 10px', background: '#e0e7ff', color: '#0f3460', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderLeft: '2px dashed #0f3460', borderRight: '2px dashed #0f3460', userSelect: 'none' }}>-PO-</span>
+                      <input
+                        type="text"
+                        name="batch_number_po"
+                        placeholder="001"
+                        value={poForm.batch_number_po}
+                        onChange={handlePOChange}
+                        maxLength={4}
+                        style={{ border: 'none', flex: 1, padding: '12px 8px', outline: 'none', background: 'transparent', fontSize: '15px' }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-group">
                     <label>PO Number *</label>
                     <div style={{ display: 'flex', alignItems: 'center', border: '2px solid #e8e8e8', borderRadius: '8px', overflow: 'hidden', background: '#fafafa' }}>
                       <span style={{ padding: '12px 14px', background: '#f0f2f5', color: '#555', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderRight: '2px solid #e8e8e8', userSelect: 'none' }}>PO-</span>
@@ -1112,15 +1234,14 @@ function PPView({ user, onLogout }) {
                 </div>
                 {poAccessories.map((acc, i) => (
                   <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
-                    <select value={acc.accessory_type} onChange={e => handlePOAccessoryChange(i, 'accessory_type', e.target.value)} style={{ flex: 2, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}>
-                      <option value="">Accessory type</option>
-                      {PO_ACCESSORY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
+                    <input
+                      type="text"
+                      placeholder="e.g. Lace, Button, Zip"
+                      value={acc.accessory_type}
+                      onChange={e => handlePOAccessoryChange(i, 'accessory_type', e.target.value)}
+                      style={{ flex: 2, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}
+                    />
                     <input type="number" placeholder="Qty" value={acc.quantity} onChange={e => handlePOAccessoryChange(i, 'quantity', e.target.value)} min="0" style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }} />
-                    <select value={acc.unit} onChange={e => handlePOAccessoryChange(i, 'unit', e.target.value)} style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}>
-                      <option value="">Unit</option>
-                      {PO_ACCESSORY_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                    </select>
                     {poAccessories.length > 1 && (
                       <button type="button" onClick={() => removePOAccessoryRow(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#dc2626', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
                     )}
@@ -1148,7 +1269,7 @@ function PPView({ user, onLogout }) {
                   <table>
                     <thead>
                       <tr>
-                        <th>PO Number</th><th>Collection</th><th>Article</th><th>Type</th>
+                        <th>PO Number</th><th>Batch No.</th><th>Collection</th><th>Article</th><th>Type</th>
                         <th>Shirt Qty</th><th>Trouser Qty</th><th>Dupatta Qty</th>
                         <th>Status</th><th>View</th>
                       </tr>
@@ -1159,6 +1280,7 @@ function PPView({ user, onLogout }) {
                         return (
                           <tr key={i}>
                             <td>{p.po_number}</td>
+                            <td>{p.batch_number || '—'}</td>
                             <td>{p.collection_name || p.buyer_name || '—'}</td>
                             <td>{p.article_name || '—'}</td>
                             <td>{p.garment_type || '—'}</td>
@@ -1202,6 +1324,11 @@ function PPView({ user, onLogout }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
               <div>
                 <h2 style={{ color: '#0f3460', marginBottom: '4px' }}>{selectedPODetail.po_number}</h2>
+                {selectedPODetail.batch_number && (
+                  <p style={{ color: '#0f3460', fontSize: '13px', fontWeight: '600', marginBottom: '2px' }}>
+                    Batch: {selectedPODetail.batch_number}
+                  </p>
+                )}
                 <p style={{ color: '#666', fontSize: '14px' }}>{selectedPODetail.collection_name || selectedPODetail.buyer_name || '—'}</p>
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
@@ -1256,10 +1383,10 @@ function PPView({ user, onLogout }) {
               ) : (
                 <div className="table-container">
                   <table>
-                    <thead><tr><th>Type</th><th>Quantity</th><th>Unit</th></tr></thead>
+                    <thead><tr><th>Type</th><th>Quantity</th></tr></thead>
                     <tbody>
                       {poDetailAccessories.map((a, i) => (
-                        <tr key={i}><td>{a.accessory_type}</td><td>{a.quantity}</td><td>{a.unit}</td></tr>
+                        <tr key={i}><td>{a.accessory_type}</td><td>{a.quantity}</td></tr>
                       ))}
                     </tbody>
                   </table>

@@ -39,14 +39,14 @@ export default async function handler(req, res) {
         return res.status(403).json({ success: false, error: 'Access denied' });
       }
       const { po_number, accessory_type, quantity, unit } = req.body;
-      if (!po_number || !accessory_type || quantity == null || !unit) {
-        return res.json({ success: false, message: 'po_number, accessory_type, quantity, and unit are required.' });
+      if (!po_number || !accessory_type || quantity == null) {
+        return res.json({ success: false, message: 'po_number, accessory_type, and quantity are required.' });
       }
       try {
         const { rows } = await pool.query(
           `INSERT INTO po_accessories (po_number, accessory_type, quantity, unit, created_at)
            VALUES ($1, $2, $3, $4, NOW()) RETURNING *`,
-          [po_number, accessory_type, Number(quantity), unit]
+          [po_number, accessory_type, Number(quantity), unit || null]
         );
         return res.json({ success: true, accessory: rows[0] });
       } catch (err) {
@@ -121,7 +121,7 @@ export default async function handler(req, res) {
 
     const {
       po_number, collection_name, article_name, garment_type,
-      po_date, delivery_date, status, remarks,
+      po_date, delivery_date, status, remarks, batch_number,
       shirt_colour, shirt_fabric, shirt_qty,
       trouser_colour, trouser_fabric, trouser_qty,
       dupatta_colour, dupatta_fabric, dupatta_qty,
@@ -144,13 +144,15 @@ export default async function handler(req, res) {
         `INSERT INTO po_master
            (po_number, collection_name, article_name, garment_type,
             po_date, delivery_date, status, remarks, created_by, created_at,
+            batch_number,
             shirt_colour, shirt_fabric, shirt_qty, shirt_meters_issued,
             trouser_colour, trouser_fabric, trouser_qty, trouser_meters_issued,
             dupatta_colour, dupatta_fabric, dupatta_qty, dupatta_meters_issued)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(),
-                 $10, $11, $12, 0,
-                 $13, $14, $15, 0,
-                 $16, $17, $18, 0)
+                 $10,
+                 $11, $12, $13, 0,
+                 $14, $15, $16, 0,
+                 $17, $18, $19, 0)
          RETURNING *`,
         [
           po_number,
@@ -162,6 +164,7 @@ export default async function handler(req, res) {
           status            || 'Active',
           remarks           || null,
           user.name,
+          batch_number      || null,
           shirt_colour      || null,
           shirt_fabric      || null,
           shirt_qty         != null ? Number(shirt_qty)   : null,
