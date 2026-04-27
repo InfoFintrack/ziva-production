@@ -294,7 +294,11 @@ function PPView({ user, onLogout }) {
   };
   const removeAccessory = (i) => setAccessories(prev => prev.filter((_, idx) => idx !== i));
   const handleAccessoryChange = (i, field, value) =>
-    setAccessories(prev => prev.map((a, idx) => idx === i ? { ...a, [field]: value } : a));
+    setAccessories(prev => prev.map((a, idx) => {
+      if (idx !== i) return a;
+      if (field === 'qty' && a.fromPO) return { ...a, qty: value.replace(/[^0-9]/g, '') };
+      return { ...a, [field]: value };
+    }));
 
   const addLace = () => {
     if (laces.length >= 10) return;
@@ -339,11 +343,17 @@ function PPView({ user, onLogout }) {
           getPoAccessories(po_number),
           getFabricIssuanceLog(po_number),
         ]);
-        if (accRes.success) setIssuePOAccessories(accRes.accessories);
+        if (accRes.success) {
+          setIssuePOAccessories(accRes.accessories);
+          setAccessories(accRes.accessories.map(a => ({
+            type: a.accessory_type, qty: '', unit: '', fromPO: true, poTotalQty: Number(a.quantity),
+          })));
+        }
         if (logRes.success) setIssuePOLog(logRes.logs);
       } catch { /* non-critical */ }
     } else {
       setIssuePODetails(null);
+      setAccessories([]);
       setForm(prev => ({
         ...prev,
         poNumber:    '',
@@ -406,6 +416,16 @@ function PPView({ user, onLogout }) {
           return;
         }
       }
+      // Validate PO-sourced accessories don't exceed remaining
+      for (const acc of accessories) {
+        if (!acc.fromPO || !acc.qty || Number(acc.qty) === 0) continue;
+        const issuedSoFar = issuePOLog.filter(l => l.component === acc.type).reduce((sum, l) => sum + Number(l.meters_issued), 0);
+        const remaining   = acc.poTotalQty - issuedSoFar;
+        if (Number(acc.qty) > remaining) {
+          setMessage({ type: 'error', text: `Cannot issue ${acc.qty} of "${acc.type}" — only ${remaining} remaining.` });
+          return;
+        }
+      }
     }
 
     // Existing validation
@@ -434,7 +454,7 @@ function PPView({ user, onLogout }) {
       });
 
       if (result.success) {
-        // Log fabric issuance and update PO meters if a PO was linked
+        // Log component issuance (shirt/trouser/dupatta or single accessory from Component dropdown)
         if (issuePO && issueComponent && metersToIssue) {
           try {
             const isAccessory   = issueComponent.endsWith(' (Accessory)');
@@ -466,7 +486,30 @@ function PPView({ user, onLogout }) {
                 }),
               ]);
             }
-            // Refresh PO list, summary card, and issuance log
+          } catch { /* non-critical */ }
+          setIssueComponent('');
+          setMetersToIssue('');
+          setIssueMetersRemarks('');
+        }
+
+        // Log PO-accessory issuances from the Accessories section
+        if (issuePO) {
+          for (const acc of accessories) {
+            if (!acc.fromPO || !acc.qty || Number(acc.qty) === 0) continue;
+            try {
+              await logFabricIssuance({
+                po_number:    issuePO,
+                component:    acc.type,
+                meters_issued:Number(acc.qty),
+                issued_by:    user.name,
+              });
+            } catch { /* non-critical */ }
+          }
+        }
+
+        // Refresh PO data and issuance log
+        if (issuePO) {
+          try {
             const [posRes, logRes] = await Promise.all([
               getPOs(),
               getFabricIssuanceLog(issuePO),
@@ -477,10 +520,7 @@ function PPView({ user, onLogout }) {
               setIssuePODetails(updated || null);
             }
             if (logRes.success) setIssuePOLog(logRes.logs);
-          } catch { /* non-critical; main issuance already succeeded */ }
-          setIssueComponent('');
-          setMetersToIssue('');
-          setIssueMetersRemarks('');
+          } catch { /* non-critical */ }
         }
 
         setMessage({
@@ -488,7 +528,7 @@ function PPView({ user, onLogout }) {
           text: `✓ Fabric issued successfully! Record ID: ${result.recordId} | Lot: ${result.lotNumber}`,
         });
         resetForm();
-        // Re-apply PO-level auto-fills (poNumber, garmentType, article) if PO is still linked
+        // Re-apply PO-level auto-fills and re-populate accessories if PO still linked
         if (issuePO && issuePODetails) {
           setForm(prev => ({
             ...prev,
@@ -496,6 +536,11 @@ function PPView({ user, onLogout }) {
             garmentType: issuePODetails.garment_type || '',
             article:     issuePODetails.article_name || '',
           }));
+          if (issuePOAccessories.length > 0) {
+            setAccessories(issuePOAccessories.map(a => ({
+              type: a.accessory_type, qty: '', unit: '', fromPO: true, poTotalQty: Number(a.quantity),
+            })));
+          }
         }
         loadData();
       } else {
@@ -1041,24 +1086,58 @@ function PPView({ user, onLogout }) {
                 <div style={{ marginTop: '24px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
                     <h4 style={{ margin: 0, color: '#0f3460' }}>Accessories</h4>
-                    {accessories.length < 10 && (
+                    {accessories.filter(a => !a.fromPO).length < 10 && (
                       <button type="button" className="btn btn-small" onClick={addAccessory} style={{ background: '#e0e7ff', color: '#0f3460', width: 'auto' }}>+ Add Accessory</button>
                     )}
                   </div>
-                  {accessories.map((acc, i) => (
-                    <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
-                      <select value={acc.type} onChange={e => handleAccessoryChange(i, 'type', e.target.value)} style={{ flex: 2, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}>
-                        <option value="">Select type</option>
-                        {dropdowns.accessoryTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                      <input type="number" placeholder="Qty" value={acc.qty} onChange={e => handleAccessoryChange(i, 'qty', e.target.value)} min="0" style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }} />
-                      <select value={acc.unit} onChange={e => handleAccessoryChange(i, 'unit', e.target.value)} style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}>
-                        <option value="">Unit</option>
-                        {ACCESSORY_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                      </select>
-                      <button type="button" onClick={() => removeAccessory(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#dc2626', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
-                    </div>
-                  ))}
+                  {accessories.map((acc, i) => {
+                    if (acc.fromPO) {
+                      const issuedSoFar = issuePOLog.filter(l => l.component === acc.type).reduce((sum, l) => sum + Number(l.meters_issued), 0);
+                      const remaining   = acc.poTotalQty - issuedSoFar;
+                      const qtyNum      = Number(acc.qty || 0);
+                      const overIssued  = qtyNum > 0 && qtyNum > remaining;
+                      return (
+                        <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '10px', alignItems: 'flex-start' }}>
+                          <div style={{ flex: 2 }}>
+                            <input type="text" value={acc.type} readOnly className="auto-field" style={{ width: '100%', padding: '8px 12px', fontSize: '14px', borderRadius: '6px', boxSizing: 'border-box' }} />
+                            <p style={{ fontSize: '11px', margin: '3px 0 0', fontWeight: '600', color: remaining > 0 ? '#16a34a' : '#dc2626' }}>
+                              Available: {remaining} &nbsp;·&nbsp; Issued: {issuedSoFar} / {acc.poTotalQty}
+                            </p>
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="Qty to issue"
+                              value={acc.qty}
+                              onChange={e => handleAccessoryChange(i, 'qty', e.target.value)}
+                              style={{ width: '100%', padding: '8px', border: `1px solid ${overIssued ? '#dc2626' : '#d1d5db'}`, borderRadius: '6px', background: overIssued ? '#fef2f2' : 'white', boxSizing: 'border-box' }}
+                            />
+                            {overIssued && (
+                              <p style={{ fontSize: '11px', color: '#dc2626', margin: '3px 0 0', fontWeight: '600' }}>
+                                Exceeds by {qtyNum - remaining}
+                              </p>
+                            )}
+                          </div>
+                          <button type="button" onClick={() => removeAccessory(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#dc2626', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
+                        <select value={acc.type} onChange={e => handleAccessoryChange(i, 'type', e.target.value)} style={{ flex: 2, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}>
+                          <option value="">Select type</option>
+                          {dropdowns.accessoryTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                        <input type="number" placeholder="Qty" value={acc.qty} onChange={e => handleAccessoryChange(i, 'qty', e.target.value)} min="0" style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }} />
+                        <select value={acc.unit} onChange={e => handleAccessoryChange(i, 'unit', e.target.value)} style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}>
+                          <option value="">Unit</option>
+                          {ACCESSORY_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                        </select>
+                        <button type="button" onClick={() => removeAccessory(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#dc2626', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
+                      </div>
+                    );
+                  })}
                   {accessories.length === 0 && <p style={{ color: '#aaa', fontSize: '13px', margin: '4px 0 0' }}>No accessories added.</p>}
                 </div>
 
