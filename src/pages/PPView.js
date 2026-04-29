@@ -343,13 +343,18 @@ function PPView({ user, onLogout }) {
           getPoAccessories(po_number),
           getFabricIssuanceLog(po_number),
         ]);
+        const freshLogs = logRes.success ? logRes.logs : [];
+        if (logRes.success) setIssuePOLog(freshLogs);
         if (accRes.success) {
-          setIssuePOAccessories(accRes.accessories);
-          setAccessories(accRes.accessories.map(a => ({
+          const visible = accRes.accessories.filter(a => {
+            const issued = freshLogs.filter(l => l.component === a.accessory_type).reduce((sum, l) => sum + Number(l.meters_issued), 0);
+            return Number(a.quantity) - issued > 0;
+          });
+          setIssuePOAccessories(visible);
+          setAccessories(visible.map(a => ({
             type: a.accessory_type, qty: '', unit: '', fromPO: true, poTotalQty: Number(a.quantity),
           })));
         }
-        if (logRes.success) setIssuePOLog(logRes.logs);
       } catch { /* non-critical */ }
     } else {
       setIssuePODetails(null);
@@ -433,7 +438,7 @@ function PPView({ user, onLogout }) {
       setMessage({ type: 'error', text: 'PO Number digits are required.' });
       return;
     }
-    const required = ['joNumber','receivingVendor','garmentType','fabricName','fabricColor','noOfThaan','qtyIssued','unit'];
+    const required = ['joNumber','receivingVendor','garmentType','fabricName','fabricColor','unit'];
     for (const field of required) {
       if (!form[field].toString().trim()) {
         setMessage({ type: 'error', text: 'Please fill all required fields.' });
@@ -508,11 +513,13 @@ function PPView({ user, onLogout }) {
         }
 
         // Refresh PO data and issuance log
+        let freshAccessories = issuePOAccessories;
         if (issuePO) {
           try {
-            const [posRes, logRes] = await Promise.all([
+            const [posRes, logRes, accRes2] = await Promise.all([
               getPOs(),
               getFabricIssuanceLog(issuePO),
+              getPoAccessories(issuePO),
             ]);
             if (posRes.success) {
               setPos(posRes.pos);
@@ -520,6 +527,14 @@ function PPView({ user, onLogout }) {
               setIssuePODetails(updated || null);
             }
             if (logRes.success) setIssuePOLog(logRes.logs);
+            if (accRes2.success) {
+              const logs = logRes.success ? logRes.logs : issuePOLog;
+              freshAccessories = accRes2.accessories.filter(a => {
+                const issued = logs.filter(l => l.component === a.accessory_type).reduce((sum, l) => sum + Number(l.meters_issued), 0);
+                return Number(a.quantity) - issued > 0;
+              });
+              setIssuePOAccessories(freshAccessories);
+            }
           } catch { /* non-critical */ }
         }
 
@@ -536,8 +551,8 @@ function PPView({ user, onLogout }) {
             garmentType: issuePODetails.garment_type || '',
             article:     issuePODetails.article_name || '',
           }));
-          if (issuePOAccessories.length > 0) {
-            setAccessories(issuePOAccessories.map(a => ({
+          if (freshAccessories.length > 0) {
+            setAccessories(freshAccessories.map(a => ({
               type: a.accessory_type, qty: '', unit: '', fromPO: true, poTotalQty: Number(a.quantity),
             })));
           }
@@ -751,6 +766,7 @@ function PPView({ user, onLogout }) {
                 name={`${compKey}_qty`}
                 value={poForm[`${compKey}_qty`]}
                 onChange={handlePOChange}
+                onWheel={e => e.target.blur()}
                 min="1"
                 placeholder="e.g. 1000"
               />
@@ -899,6 +915,7 @@ function PPView({ user, onLogout }) {
                           type="number"
                           value={metersToIssue}
                           onChange={e => setMetersToIssue(e.target.value)}
+                          onWheel={e => e.target.blur()}
                           min="0.01"
                           step="0.01"
                           placeholder="e.g. 250"
@@ -1054,16 +1071,6 @@ function PPView({ user, onLogout }) {
                   </div>
 
                   <div className="form-group">
-                    <label>No. of Thaan *</label>
-                    <input type="number" name="noOfThaan" placeholder="e.g. 5" value={form.noOfThaan} onChange={handleChange} min="1" />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Quantity Issued *</label>
-                    <input type="number" name="qtyIssued" placeholder="e.g. 250" value={form.qtyIssued} onChange={handleChange} min="1" />
-                  </div>
-
-                  <div className="form-group">
                     <label>Unit *</label>
                     <select name="unit" value={form.unit} onChange={handleChange}>
                       <option value="">Select unit</option>
@@ -1129,7 +1136,7 @@ function PPView({ user, onLogout }) {
                           <option value="">Select type</option>
                           {dropdowns.accessoryTypes.map(t => <option key={t} value={t}>{t}</option>)}
                         </select>
-                        <input type="number" placeholder="Qty" value={acc.qty} onChange={e => handleAccessoryChange(i, 'qty', e.target.value)} min="0" style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }} />
+                        <input type="number" placeholder="Qty" value={acc.qty} onChange={e => handleAccessoryChange(i, 'qty', e.target.value)} onWheel={e => e.target.blur()} min="0" style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }} />
                         <select value={acc.unit} onChange={e => handleAccessoryChange(i, 'unit', e.target.value)} style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}>
                           <option value="">Unit</option>
                           {ACCESSORY_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
@@ -1152,7 +1159,7 @@ function PPView({ user, onLogout }) {
                   {laces.map((lace, i) => (
                     <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
                       <input type="text" placeholder="Lace type" value={lace.laceType} onChange={e => handleLaceChange(i, 'laceType', e.target.value)} style={{ flex: 2, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }} />
-                      <input type="number" placeholder="Qty" value={lace.qty} onChange={e => handleLaceChange(i, 'qty', e.target.value)} min="0" style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }} />
+                      <input type="number" placeholder="Qty" value={lace.qty} onChange={e => handleLaceChange(i, 'qty', e.target.value)} onWheel={e => e.target.blur()} min="0" style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }} />
                       <input type="text" placeholder="Unit" value={lace.unit} onChange={e => handleLaceChange(i, 'unit', e.target.value)} style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }} />
                       <button type="button" onClick={() => removeLace(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#dc2626', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
                     </div>
@@ -1320,7 +1327,7 @@ function PPView({ user, onLogout }) {
                       onChange={e => handlePOAccessoryChange(i, 'accessory_type', e.target.value)}
                       style={{ flex: 2, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}
                     />
-                    <input type="number" placeholder="Qty" value={acc.quantity} onChange={e => handlePOAccessoryChange(i, 'quantity', e.target.value)} min="0" style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }} />
+                    <input type="number" placeholder="Qty" value={acc.quantity} onChange={e => handlePOAccessoryChange(i, 'quantity', e.target.value)} onWheel={e => e.target.blur()} min="0" style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }} />
                     {poAccessories.length > 1 && (
                       <button type="button" onClick={() => removePOAccessoryRow(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#dc2626', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
                     )}
