@@ -433,17 +433,18 @@ function PPView({ user, onLogout }) {
       }
     }
 
-    // Existing validation
-    if (!form.poNumber.trim()) {
+    // Validation — only gate on fields Abubakr fills manually
+    if (!issuePO && !form.poNumber.trim()) {
       setMessage({ type: 'error', text: 'PO Number digits are required.' });
       return;
     }
-    const required = ['joNumber','receivingVendor','garmentType','fabricName','fabricColor','unit'];
-    for (const field of required) {
-      if (!form[field].toString().trim()) {
-        setMessage({ type: 'error', text: 'Please fill all required fields.' });
-        return;
-      }
+    if (!form.joNumber.trim()) {
+      setMessage({ type: 'error', text: 'JO Number is required.' });
+      return;
+    }
+    if (!form.receivingVendor.trim()) {
+      setMessage({ type: 'error', text: 'Receiving Vendor is required.' });
+      return;
     }
 
     setSubmitting(true);
@@ -1068,19 +1069,6 @@ function PPView({ user, onLogout }) {
                       disabled={!!issuePO}
                       style={issuePO ? { border: '2px dashed #0f3460', background: '#f0f6ff', color: '#0f3460' } : {}}
                     />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Unit *</label>
-                    <select name="unit" value={form.unit} onChange={handleChange}>
-                      <option value="">Select unit</option>
-                      {dropdowns.units.map(u => <option key={u} value={u}>{u}</option>)}
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Fabric Width</label>
-                    <input type="text" name="fabricWidth" placeholder='e.g. 40, 50, 40+50' value={form.fabricWidth} onChange={handleChange} />
                   </div>
 
                   <div className="form-group">
