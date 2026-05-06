@@ -50,9 +50,14 @@ export default async function handler(req, res) {
     fabricWidth, accessories, laces,
   } = req.body;
 
-  if (!poNumber || !fabricName || !qtyIssued || !issuedBy) {
-    return res.json({ success: false, message: 'PO number, fabric name, quantity, and issuer are required.' });
+  if (!poNumber || !joNumber || !receivingVendor) {
+    return res.json({ success: false, message: 'PO number, JO number, and receiving vendor are required.' });
   }
+
+  const safeFabricName = fabricName  || '';
+  const safeQtyIssued  = (qtyIssued  !== undefined && qtyIssued  !== '') ? qtyIssued  : 0;
+  const safeUnit       = unit        || '';
+  const safeNoOfThaan  = (noOfThaan  !== undefined && noOfThaan  !== '') ? noOfThaan  : 0;
 
   const pool = getPool();
 
@@ -68,15 +73,15 @@ export default async function handler(req, res) {
           issue_status, created_at)
        VALUES ($1, NOW(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'Issued', NOW())`,
       [recordId, poNumber, joNumber, lotNumber, receivingVendor,
-       garmentType, fabricName, fabricColor, qtyIssued, unit,
-       noOfThaan, issuedBy, issueRemarks, article,
+       garmentType, safeFabricName, fabricColor, safeQtyIssued, safeUnit,
+       safeNoOfThaan, issuedBy, issueRemarks, article,
        fabricWidth || null, accessories || null, laces || null]
     );
 
     await pool.query(
       `INSERT INTO audit_trail (record_id, action, new_value, performed_by, performed_at)
        VALUES ($1, 'Fabric Issued', $2, $3, NOW())`,
-      [recordId, `Lot: ${lotNumber}, Qty: ${qtyIssued} ${unit}`, issuedBy]
+      [recordId, `Lot: ${lotNumber}, Qty: ${safeQtyIssued} ${safeUnit}`, issuedBy]
     );
 
     res.json({ success: true, recordId, lotNumber });

@@ -390,52 +390,9 @@ function PPView({ user, onLogout }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Validate PO-link fields if a PO is linked
-    if (issuePO) {
-      if (!issueComponent) {
-        setMessage({ type: 'error', text: 'Please select a component for the linked PO.' });
-        return;
-      }
-      if (!metersToIssue || Number(metersToIssue) <= 0) {
-        setMessage({ type: 'error', text: 'Please enter pieces to issue for the linked PO.' });
-        return;
-      }
-      const isAccessory = issueComponent.endsWith(' (Accessory)');
-      if (isAccessory) {
-        const accName     = issueComponent.replace(' (Accessory)', '');
-        const acc         = issuePOAccessories.find(a => a.accessory_type === accName);
-        const totalQty    = Number(acc?.quantity || 0);
-        const issuedSoFar = issuePOLog.filter(l => l.component === accName).reduce((sum, l) => sum + Number(l.meters_issued), 0);
-        const remaining   = totalQty - issuedSoFar;
-        if (Number(metersToIssue) > remaining) {
-          setMessage({ type: 'error', text: `Cannot exceed remaining ${remaining} units for ${accName}.` });
-          return;
-        }
-      } else {
-        const compKey   = issueComponent.toLowerCase();
-        const qty       = Number(issuePODetails?.[`${compKey}_qty`] || 0);
-        const issued    = Number(issuePODetails?.[`${compKey}_meters_issued`] || 0);
-        const remaining = qty - issued;
-        if (Number(metersToIssue) > remaining) {
-          setMessage({ type: 'error', text: `Cannot exceed remaining ${remaining} pcs for ${issueComponent}.` });
-          return;
-        }
-      }
-      // Validate PO-sourced accessories don't exceed remaining
-      for (const acc of accessories) {
-        if (!acc.fromPO || !acc.qty || Number(acc.qty) === 0) continue;
-        const issuedSoFar = issuePOLog.filter(l => l.component === acc.type).reduce((sum, l) => sum + Number(l.meters_issued), 0);
-        const remaining   = acc.poTotalQty - issuedSoFar;
-        if (Number(acc.qty) > remaining) {
-          setMessage({ type: 'error', text: `Cannot issue ${acc.qty} of "${acc.type}" — only ${remaining} remaining.` });
-          return;
-        }
-      }
-    }
-
-    // Validation — only gate on fields Abubakr fills manually
-    if (!issuePO && !form.poNumber.trim()) {
-      setMessage({ type: 'error', text: 'PO Number digits are required.' });
+    // Field validation
+    if (!form.issueDate.trim()) {
+      setMessage({ type: 'error', text: 'Issue date is required.' });
       return;
     }
     if (!form.joNumber.trim()) {
@@ -445,6 +402,46 @@ function PPView({ user, onLogout }) {
     if (!form.receivingVendor.trim()) {
       setMessage({ type: 'error', text: 'Receiving Vendor is required.' });
       return;
+    }
+    if (issuePO && issueComponent && (!metersToIssue || Number(metersToIssue) <= 0)) {
+      setMessage({ type: 'error', text: 'Please enter pieces to issue for the linked PO.' });
+      return;
+    }
+
+    // Business logic: don't exceed remaining quantities
+    if (issuePO) {
+      if (issueComponent && metersToIssue) {
+        const isAccessory = issueComponent.endsWith(' (Accessory)');
+        if (isAccessory) {
+          const accName     = issueComponent.replace(' (Accessory)', '');
+          const acc         = issuePOAccessories.find(a => a.accessory_type === accName);
+          const totalQty    = Number(acc?.quantity || 0);
+          const issuedSoFar = issuePOLog.filter(l => l.component === accName).reduce((sum, l) => sum + Number(l.meters_issued), 0);
+          const remaining   = totalQty - issuedSoFar;
+          if (Number(metersToIssue) > remaining) {
+            setMessage({ type: 'error', text: `Cannot exceed remaining ${remaining} units for ${accName}.` });
+            return;
+          }
+        } else {
+          const compKey   = issueComponent.toLowerCase();
+          const qty       = Number(issuePODetails?.[`${compKey}_qty`] || 0);
+          const issued    = Number(issuePODetails?.[`${compKey}_meters_issued`] || 0);
+          const remaining = qty - issued;
+          if (Number(metersToIssue) > remaining) {
+            setMessage({ type: 'error', text: `Cannot exceed remaining ${remaining} pcs for ${issueComponent}.` });
+            return;
+          }
+        }
+      }
+      for (const acc of accessories) {
+        if (!acc.fromPO || !acc.qty || Number(acc.qty) === 0) continue;
+        const issuedSoFar = issuePOLog.filter(l => l.component === acc.type).reduce((sum, l) => sum + Number(l.meters_issued), 0);
+        const remaining   = acc.poTotalQty - issuedSoFar;
+        if (Number(acc.qty) > remaining) {
+          setMessage({ type: 'error', text: `Cannot issue ${acc.qty} of "${acc.type}" — only ${remaining} remaining.` });
+          return;
+        }
+      }
     }
 
     setSubmitting(true);
