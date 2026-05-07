@@ -199,7 +199,8 @@ function PPView({ user, onLogout }) {
   const [message, setMessage]   = useState(null);
   const [lotPreview, setLotPreview] = useState('Auto-generated on submit');
 
-  const [issuePOLog, setIssuePOLog]                 = useState([]);
+  const [issuePOLog, setIssuePOLog]         = useState([]);
+  const [rawPOAccessories, setRawPOAccessories] = useState([]);
 
   // New Issue-Fabric PO-link fields
   const [issuePO, setIssuePO]               = useState('');
@@ -293,6 +294,31 @@ function PPView({ user, onLogout }) {
     loadPOs();
   }, []);
 
+  // Recompute visible fromPO accessories whenever the issuance log or raw list changes.
+  // This is the single source of truth for accessory filtering — never filter accessories
+  // directly in submit handlers.
+  useEffect(() => {
+    if (!issuePO) return;
+    setAccessories(prev => {
+      const manual = prev.filter(a => !a.fromPO);
+      const fromPO = rawPOAccessories
+        .filter(a => {
+          const issued = issuePOLog
+            .filter(l => l.component === a.accessory_type)
+            .reduce((sum, l) => sum + Number(l.meters_issued), 0);
+          return Number(a.quantity) - issued > 0;
+        })
+        .map(a => ({
+          type: a.accessory_type,
+          qty: '',
+          unit: '',
+          fromPO: true,
+          poTotalQty: Number(a.quantity),
+        }));
+      return [...fromPO, ...manual];
+    });
+  }, [issuePOLog, rawPOAccessories]);
+
   // ── Issue Fabric handlers ──────────────────────────────────────────────
 
   const handleChange = (e) => {
@@ -368,18 +394,13 @@ function PPView({ user, onLogout }) {
         ]);
         const freshLogs = logRes.success ? logRes.logs : [];
         if (logRes.success) setIssuePOLog(freshLogs);
-        if (accRes.success) {
-          const visible = accRes.accessories.filter(a => {
-            const issued = freshLogs.filter(l => l.component === a.accessory_type).reduce((sum, l) => sum + Number(l.meters_issued), 0);
-            return Number(a.quantity) - issued > 0;
-          });
-          setAccessories(visible.map(a => ({
-            type: a.accessory_type, qty: '', unit: '', fromPO: true, poTotalQty: Number(a.quantity),
-          })));
-        }
+        // Set raw accessories — useEffect will compute visible filtered list
+        setRawPOAccessories(accRes.success ? accRes.accessories : []);
       } catch { /* non-critical */ }
     } else {
       setIssuePODetails(null);
+      setRawPOAccessories([]);
+      setIssuePOLog([]);
       setAccessories([]);
       setForm(prev => ({
         ...prev,
@@ -489,7 +510,7 @@ function PPView({ user, onLogout }) {
             } catch { /* non-critical */ }
           }
 
-          // Fetch fresh data and recompute — use local vars, not state, for filtering
+          // Fetch fresh data; set issuePOLog + rawPOAccessories — useEffect recomputes accessories
           try {
             const [posRes, logRes, accRes2] = await Promise.all([
               getPOs(),
@@ -500,18 +521,10 @@ function PPView({ user, onLogout }) {
             const freshPos  = posRes.success ? posRes.pos  : pos;
             const updatedPO = freshPos.find(p => p.po_number === issuePO) || issuePODetails;
 
-            const freshAccessories = accRes2.success
-              ? accRes2.accessories.filter(a => {
-                  const issued = freshLogs.filter(l => l.component === a.accessory_type)
-                    .reduce((sum, l) => sum + Number(l.meters_issued), 0);
-                  return Number(a.quantity) - issued > 0;
-                })
-              : [];
-
-            // Set all state together so render sees consistent values
             if (posRes.success) setPos(freshPos);
             setIssuePODetails(updatedPO);
             setIssuePOLog(freshLogs);
+            if (accRes2.success) setRawPOAccessories(accRes2.accessories);
             setCompQtys({ shirt: '', trouser: '', dupatta: '' });
             setIssueSharedRemarks('');
             resetForm();
@@ -521,10 +534,7 @@ function PPView({ user, onLogout }) {
               garmentType: updatedPO?.garment_type || '',
               article:     updatedPO?.article_name || '',
             }));
-            setAccessories(freshAccessories.map(a => ({
-              type: a.accessory_type, qty: '', unit: '', fromPO: true, poTotalQty: Number(a.quantity),
-            })));
-          } catch { /* non-critical — fall back to reset */ }
+          } catch { /* non-critical — state remains; useEffect will still refilter on any partial updates */ }
         } else {
           resetForm();
         }
