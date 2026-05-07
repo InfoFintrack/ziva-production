@@ -199,15 +199,13 @@ function PPView({ user, onLogout }) {
   const [message, setMessage]   = useState(null);
   const [lotPreview, setLotPreview] = useState('Auto-generated on submit');
 
-  const [issuePOAccessories, setIssuePOAccessories] = useState([]);
   const [issuePOLog, setIssuePOLog]                 = useState([]);
 
   // New Issue-Fabric PO-link fields
   const [issuePO, setIssuePO]               = useState('');
   const [issuePODetails, setIssuePODetails] = useState(null);
-  const [issueComponent, setIssueComponent] = useState('');
-  const [metersToIssue, setMetersToIssue]   = useState('');
-  const [issueMetersRemarks, setIssueMetersRemarks] = useState('');
+  const [compQtys, setCompQtys]             = useState({ shirt: '', trouser: '', dupatta: '' });
+  const [issueSharedRemarks, setIssueSharedRemarks] = useState('');
 
   // ── Tab state ──────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState('issue');
@@ -349,9 +347,8 @@ function PPView({ user, onLogout }) {
   const handleIssuePOSelect = async (e) => {
     const po_number = e.target.value;
     setIssuePO(po_number);
-    setIssueComponent('');
-    setMetersToIssue('');
-    setIssuePOAccessories([]);
+    setCompQtys({ shirt: '', trouser: '', dupatta: '' });
+    setIssueSharedRemarks('');
     setIssuePOLog([]);
     if (po_number) {
       const found = pos.find(p => p.po_number === po_number);
@@ -376,7 +373,6 @@ function PPView({ user, onLogout }) {
             const issued = freshLogs.filter(l => l.component === a.accessory_type).reduce((sum, l) => sum + Number(l.meters_issued), 0);
             return Number(a.quantity) - issued > 0;
           });
-          setIssuePOAccessories(visible);
           setAccessories(visible.map(a => ({
             type: a.accessory_type, qty: '', unit: '', fromPO: true, poTotalQty: Number(a.quantity),
           })));
@@ -396,23 +392,6 @@ function PPView({ user, onLogout }) {
     }
   };
 
-  const handleIssueComponentSelect = (e) => {
-    const comp = e.target.value;
-    setIssueComponent(comp);
-    setMetersToIssue('');
-    const isAccessory = comp.endsWith(' (Accessory)');
-    if (comp && issuePODetails && !isAccessory) {
-      const compKey = comp.toLowerCase();
-      setForm(prev => ({
-        ...prev,
-        fabricColor: issuePODetails[`${compKey}_colour`] || '',
-        fabricName:  issuePODetails[`${compKey}_fabric`]  || '',
-      }));
-    } else {
-      setForm(prev => ({ ...prev, fabricColor: '', fabricName: '' }));
-    }
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -429,36 +408,27 @@ function PPView({ user, onLogout }) {
       setMessage({ type: 'error', text: 'Receiving Vendor is required.' });
       return;
     }
-    if (issuePO && issueComponent && (!metersToIssue || Number(metersToIssue) <= 0)) {
-      setMessage({ type: 'error', text: 'Please enter pieces to issue for the linked PO.' });
-      return;
-    }
 
-    // Business logic: don't exceed remaining quantities
+    // Multi-component validation
     if (issuePO) {
-      if (issueComponent && metersToIssue) {
-        const isAccessory = issueComponent.endsWith(' (Accessory)');
-        if (isAccessory) {
-          const accName     = issueComponent.replace(' (Accessory)', '');
-          const acc         = issuePOAccessories.find(a => a.accessory_type === accName);
-          const totalQty    = Number(acc?.quantity || 0);
-          const issuedSoFar = issuePOLog.filter(l => l.component === accName).reduce((sum, l) => sum + Number(l.meters_issued), 0);
-          const remaining   = totalQty - issuedSoFar;
-          if (Number(metersToIssue) > remaining) {
-            setMessage({ type: 'error', text: `Cannot exceed remaining ${remaining} units for ${accName}.` });
-            return;
-          }
-        } else {
-          const compKey   = issueComponent.toLowerCase();
-          const qty       = Number(issuePODetails?.[`${compKey}_qty`] || 0);
-          const issued    = Number(issuePODetails?.[`${compKey}_meters_issued`] || 0);
-          const remaining = qty - issued;
-          if (Number(metersToIssue) > remaining) {
-            setMessage({ type: 'error', text: `Cannot exceed remaining ${remaining} pcs for ${issueComponent}.` });
-            return;
-          }
+      const hasAnyQty = ['shirt','trouser','dupatta'].some(c => Number(compQtys[c]) > 0);
+      if (!hasAnyQty) {
+        setMessage({ type: 'error', text: 'Enter qty to issue for at least one component.' });
+        return;
+      }
+      for (const comp of ['shirt','trouser','dupatta']) {
+        const qty       = Number(compQtys[comp]);
+        if (!qty) continue;
+        const totalQty  = Number(issuePODetails?.[`${comp}_qty`] || 0);
+        const issued    = Number(issuePODetails?.[`${comp}_meters_issued`] || 0);
+        const remaining = totalQty - issued;
+        if (qty > remaining) {
+          const label = comp.charAt(0).toUpperCase() + comp.slice(1);
+          setMessage({ type: 'error', text: `${label}: qty ${qty} exceeds remaining ${remaining} pcs.` });
+          return;
         }
       }
+      // Accessory validation
       for (const acc of accessories) {
         if (!acc.fromPO || !acc.qty || Number(acc.qty) === 0) continue;
         const issuedSoFar = issuePOLog.filter(l => l.component === acc.type).reduce((sum, l) => sum + Number(l.meters_issued), 0);
@@ -483,46 +453,29 @@ function PPView({ user, onLogout }) {
       });
 
       if (result.success) {
-        // Log component issuance (shirt/trouser/dupatta or single accessory from Component dropdown)
-        if (issuePO && issueComponent && metersToIssue) {
-          try {
-            const isAccessory   = issueComponent.endsWith(' (Accessory)');
-            const componentName = isAccessory
-              ? issueComponent.replace(' (Accessory)', '')
-              : issueComponent.toLowerCase();
-            if (isAccessory) {
+        // Log multi-component issuances
+        if (issuePO) {
+          for (const comp of ['shirt','trouser','dupatta']) {
+            const qty = Number(compQtys[comp]);
+            if (!qty) continue;
+            try {
               await logFabricIssuance({
                 po_number:    issuePO,
-                component:    componentName,
-                meters_issued:Number(metersToIssue),
+                component:    comp,
+                meters_issued:qty,
                 issued_by:    user.name,
-                remarks:      issueMetersRemarks || undefined,
+                remarks:      issueSharedRemarks || undefined,
               });
-            } else {
-              await Promise.all([
-                logFabricIssuance({
-                  po_number:    issuePO,
-                  component:    componentName,
-                  meters_issued:Number(metersToIssue),
-                  issued_by:    user.name,
-                  remarks:      issueMetersRemarks || undefined,
-                }),
-                updatePO({
-                  po_number:   issuePO,
-                  action:      'update_meters',
-                  component:   componentName,
-                  meters_delta:Number(metersToIssue),
-                }),
-              ]);
-            }
-          } catch { /* non-critical */ }
-          setIssueComponent('');
-          setMetersToIssue('');
-          setIssueMetersRemarks('');
-        }
+              await updatePO({
+                po_number:   issuePO,
+                action:      'update_meters',
+                component:   comp,
+                meters_delta:qty,
+              });
+            } catch { /* non-critical */ }
+          }
 
-        // Log PO-accessory issuances from the Accessories section
-        if (issuePO) {
+          // Log PO-accessory issuances
           for (const acc of accessories) {
             if (!acc.fromPO || !acc.qty || Number(acc.qty) === 0) continue;
             try {
@@ -531,56 +484,55 @@ function PPView({ user, onLogout }) {
                 component:    acc.type,
                 meters_issued:Number(acc.qty),
                 issued_by:    user.name,
+                remarks:      issueSharedRemarks || undefined,
               });
             } catch { /* non-critical */ }
           }
-        }
 
-        // Refresh PO data and issuance log
-        let freshAccessories = issuePOAccessories;
-        if (issuePO) {
+          // Fetch fresh data and recompute — use local vars, not state, for filtering
           try {
             const [posRes, logRes, accRes2] = await Promise.all([
               getPOs(),
               getFabricIssuanceLog(issuePO),
               getPoAccessories(issuePO),
             ]);
-            if (posRes.success) {
-              setPos(posRes.pos);
-              const updated = posRes.pos.find(p => p.po_number === issuePO);
-              setIssuePODetails(updated || null);
-            }
-            if (logRes.success) setIssuePOLog(logRes.logs);
-            if (accRes2.success) {
-              const logs = logRes.success ? logRes.logs : issuePOLog;
-              freshAccessories = accRes2.accessories.filter(a => {
-                const issued = logs.filter(l => l.component === a.accessory_type).reduce((sum, l) => sum + Number(l.meters_issued), 0);
-                return Number(a.quantity) - issued > 0;
-              });
-              setIssuePOAccessories(freshAccessories);
-            }
-          } catch { /* non-critical */ }
+            const freshLogs = logRes.success ? logRes.logs : [];
+            const freshPos  = posRes.success ? posRes.pos  : pos;
+            const updatedPO = freshPos.find(p => p.po_number === issuePO) || issuePODetails;
+
+            const freshAccessories = accRes2.success
+              ? accRes2.accessories.filter(a => {
+                  const issued = freshLogs.filter(l => l.component === a.accessory_type)
+                    .reduce((sum, l) => sum + Number(l.meters_issued), 0);
+                  return Number(a.quantity) - issued > 0;
+                })
+              : [];
+
+            // Set all state together so render sees consistent values
+            if (posRes.success) setPos(freshPos);
+            setIssuePODetails(updatedPO);
+            setIssuePOLog(freshLogs);
+            setCompQtys({ shirt: '', trouser: '', dupatta: '' });
+            setIssueSharedRemarks('');
+            resetForm();
+            setForm(prev => ({
+              ...prev,
+              poNumber:    issuePO.replace('PO-', ''),
+              garmentType: updatedPO?.garment_type || '',
+              article:     updatedPO?.article_name || '',
+            }));
+            setAccessories(freshAccessories.map(a => ({
+              type: a.accessory_type, qty: '', unit: '', fromPO: true, poTotalQty: Number(a.quantity),
+            })));
+          } catch { /* non-critical — fall back to reset */ }
+        } else {
+          resetForm();
         }
 
         setMessage({
           type: 'success',
           text: `✓ Fabric issued successfully! Record ID: ${result.recordId} | Lot: ${result.lotNumber}`,
         });
-        resetForm();
-        // Re-apply PO-level auto-fills and re-populate accessories if PO still linked
-        if (issuePO && issuePODetails) {
-          setForm(prev => ({
-            ...prev,
-            poNumber:    issuePO.replace('PO-', ''),
-            garmentType: issuePODetails.garment_type || '',
-            article:     issuePODetails.article_name || '',
-          }));
-          if (freshAccessories.length > 0) {
-            setAccessories(freshAccessories.map(a => ({
-              type: a.accessory_type, qty: '', unit: '', fromPO: true, poTotalQty: Number(a.quantity),
-            })));
-          }
-        }
         loadData();
       } else {
         setMessage({ type: 'error', text: result.message });
@@ -1060,118 +1012,72 @@ function PPView({ user, onLogout }) {
                   </select>
                 </div>
 
-                {/* PO Summary Card */}
-                {issuePODetails && (
-                  <div style={{ background: '#f8fafc', border: '1px solid #e8e8e8', borderRadius: '8px', padding: '16px', marginBottom: '20px' }}>
-                    <p style={{ fontWeight: '700', color: '#0f3460', marginBottom: '12px', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      PO Summary — {issuePODetails.collection_name || issuePODetails.po_number}
-                    </p>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                {/* Multi-component issuance card — shown when PO is linked */}
+                {issuePO && issuePODetails && (
+                  <div style={{ border: '1px solid #e0e7ff', borderRadius: '8px', marginBottom: '20px', overflow: 'hidden' }}>
+                    <div style={{ background: '#f0f6ff', padding: '10px 16px', borderBottom: '1px solid #e0e7ff' }}>
+                      <p style={{ fontWeight: '700', color: '#0f3460', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>
+                        Qty to Issue — {issuePODetails.collection_name || issuePODetails.po_number}
+                      </p>
+                    </div>
+                    <div style={{ padding: '12px 16px' }}>
                       {['shirt','trouser','dupatta'].map(comp => {
-                        const qty       = Number(issuePODetails[`${comp}_qty`] || 0);
+                        const totalQty  = Number(issuePODetails[`${comp}_qty`] || 0);
                         const issued    = Number(issuePODetails[`${comp}_meters_issued`] || 0);
-                        const remaining = qty - issued;
+                        const remaining = totalQty - issued;
+                        const inputVal  = compQtys[comp];
+                        const overLimit = inputVal !== '' && Number(inputVal) > remaining;
+                        const label     = comp.charAt(0).toUpperCase() + comp.slice(1);
                         return (
-                          <div key={comp} style={{ background: 'white', borderRadius: '6px', padding: '12px', border: '1px solid #e8e8e8' }}>
-                            <p style={{ fontWeight: '700', color: '#0f3460', marginBottom: '6px', textTransform: 'capitalize', fontSize: '13px' }}>{comp}</p>
-                            <p style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>
+                          <div key={comp} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0', borderBottom: '1px solid #f0f2f5' }}>
+                            <div style={{ width: '72px', fontWeight: '700', color: '#0f3460', fontSize: '14px' }}>{label}</div>
+                            <div style={{ flex: 1, fontSize: '12px', color: '#666' }}>
                               {issuePODetails[`${comp}_colour`] || '—'} · {issuePODetails[`${comp}_fabric`] || '—'}
-                            </p>
-                            <p style={{ fontSize: '12px', marginBottom: '2px' }}>Total Qty: <strong>{qty} pcs</strong></p>
-                            <p style={{ fontSize: '12px', marginBottom: '2px' }}>Issued: {issued} pcs</p>
-                            <p style={{ fontSize: '12px', fontWeight: '600', color: remaining > 0 ? '#16a34a' : '#dc2626' }}>
-                              Remaining: {remaining} pcs
-                            </p>
+                            </div>
+                            <div style={{ minWidth: '100px', textAlign: 'right', fontSize: '12px' }}>
+                              <span>Total: <strong>{totalQty}</strong></span>
+                            </div>
+                            <div style={{ minWidth: '110px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: remaining > 0 ? '#16a34a' : '#9ca3af' }}>
+                              Remaining: {remaining}
+                            </div>
+                            <div style={{ width: '140px' }}>
+                              <input
+                                type="number"
+                                value={inputVal}
+                                onChange={e => setCompQtys(prev => ({ ...prev, [comp]: e.target.value }))}
+                                onWheel={e => e.target.blur()}
+                                min="1"
+                                placeholder="Qty to issue"
+                                disabled={remaining <= 0}
+                                style={{
+                                  width: '100%', padding: '8px 10px', fontSize: '14px',
+                                  border: `1px solid ${overLimit ? '#dc2626' : '#d1d5db'}`,
+                                  borderRadius: '6px',
+                                  background: remaining <= 0 ? '#f9fafb' : overLimit ? '#fef2f2' : 'white',
+                                  color: remaining <= 0 ? '#9ca3af' : 'inherit',
+                                  boxSizing: 'border-box',
+                                }}
+                              />
+                              {overLimit && (
+                                <p style={{ fontSize: '11px', color: '#dc2626', margin: '3px 0 0', fontWeight: '600' }}>
+                                  Exceeds remaining
+                                </p>
+                              )}
+                            </div>
                           </div>
                         );
                       })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Component + Meters fields — shown when PO is linked */}
-                {issuePO && (
-                  <>
-                    <div className="form-grid">
-                      <div className="form-group">
-                        <label>Component *</label>
-                        <select value={issueComponent} onChange={handleIssueComponentSelect}>
-                          <option value="">Select component</option>
-                          <option value="Shirt">Shirt</option>
-                          <option value="Trouser">Trouser</option>
-                          <option value="Dupatta">Dupatta</option>
-                          {issuePOAccessories.map(a => (
-                            <option key={a.id || a.accessory_type} value={`${a.accessory_type} (Accessory)`}>
-                              {a.accessory_type} (Accessory)
-                            </option>
-                          ))}
-                        </select>
-                        {issueComponent.endsWith(' (Accessory)') && (() => {
-                          const accName     = issueComponent.replace(' (Accessory)', '');
-                          const acc         = issuePOAccessories.find(a => a.accessory_type === accName);
-                          const totalQty    = Number(acc?.quantity || 0);
-                          const issuedSoFar = issuePOLog.filter(l => l.component === accName).reduce((sum, l) => sum + Number(l.meters_issued), 0);
-                          const remaining   = totalQty - issuedSoFar;
-                          return (
-                            <div style={{ marginTop: '8px' }}>
-                              <input type="text" value={`Total Qty: ${totalQty} units`} className="auto-field" readOnly style={{ width: '100%', padding: '8px 12px', fontSize: '13px', borderRadius: '6px', marginBottom: '4px', boxSizing: 'border-box' }} />
-                              <p style={{ fontSize: '12px', color: '#666', margin: '2px 0' }}>Issued So Far: {issuedSoFar} units</p>
-                              <p style={{ fontSize: '12px', fontWeight: '600', margin: '2px 0', color: remaining > 0 ? '#16a34a' : '#dc2626' }}>Remaining: {remaining} units</p>
-                            </div>
-                          );
-                        })()}
-                      </div>
-
-                      <div className="form-group">
-                        <label>Pieces to Issue *</label>
-                        <input
-                          type="number"
-                          value={metersToIssue}
-                          onChange={e => setMetersToIssue(e.target.value)}
-                          onWheel={e => e.target.blur()}
-                          min="0.01"
-                          step="0.01"
-                          placeholder="e.g. 250"
-                        />
-                        {issueComponent && !issueComponent.endsWith(' (Accessory)') && metersToIssue && issuePODetails && (() => {
-                          const compKey   = issueComponent.toLowerCase();
-                          const qty       = Number(issuePODetails[`${compKey}_qty`] || 0);
-                          const issued    = Number(issuePODetails[`${compKey}_meters_issued`] || 0);
-                          const remaining = qty - issued;
-                          const after     = remaining - Number(metersToIssue);
-                          return (
-                            <p style={{ fontSize: '12px', marginTop: '4px', color: after >= 0 ? '#16a34a' : '#dc2626' }}>
-                              After issuance: {after.toFixed(2)} pcs remaining
-                            </p>
-                          );
-                        })()}
-                        {issueComponent.endsWith(' (Accessory)') && metersToIssue && (() => {
-                          const accName     = issueComponent.replace(' (Accessory)', '');
-                          const acc         = issuePOAccessories.find(a => a.accessory_type === accName);
-                          const totalQty    = Number(acc?.quantity || 0);
-                          const issuedSoFar = issuePOLog.filter(l => l.component === accName).reduce((sum, l) => sum + Number(l.meters_issued), 0);
-                          const remaining   = totalQty - issuedSoFar;
-                          const after       = remaining - Number(metersToIssue);
-                          return (
-                            <p style={{ fontSize: '12px', marginTop: '4px', color: after >= 0 ? '#16a34a' : '#dc2626' }}>
-                              After issuance: {after.toFixed(0)} units remaining
-                            </p>
-                          );
-                        })()}
-                      </div>
-
-                      <div className="form-group">
+                      <div className="form-group" style={{ marginTop: '12px', marginBottom: 0 }}>
                         <label>Issuance Remarks</label>
                         <input
                           type="text"
-                          value={issueMetersRemarks}
-                          onChange={e => setIssueMetersRemarks(e.target.value)}
-                          placeholder="Optional notes"
+                          value={issueSharedRemarks}
+                          onChange={e => setIssueSharedRemarks(e.target.value)}
+                          placeholder="Optional notes for this issuance"
                         />
                       </div>
                     </div>
-                    <hr style={{ border: 'none', borderTop: '1px solid #e8e8e8', margin: '0 0 20px' }} />
-                  </>
+                  </div>
                 )}
 
                 {/* Existing form fields — unchanged */}
