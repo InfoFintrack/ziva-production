@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from 'react';
-import { getPOs, getCMTRates, getStitchers, getAllocations, createAllocation, updateAllocation } from '../api';
+import * as XLSX from 'xlsx';
+import { getPOs, getCMTRates, getStitchers, getAllocations, createAllocation, updateAllocation, getPaymentEntries } from '../api';
 import ProdFlowLogo from '../components/ProdFlowLogo';
 import PoweredByFintrack from '../components/PoweredByFintrack';
 
@@ -88,6 +89,15 @@ function SupervisorView({ user, onLogout }) {
   const [modalError,  setModalError]  = useState('');
   const [saving,      setSaving]      = useState(false);
 
+  // Stitcher Dashboard
+  const [sdAllStitchers, setSdAllStitchers] = useState([]);
+  const [sdStitcher,     setSdStitcher]     = useState('');
+  const [sdDateFrom,     setSdDateFrom]     = useState('');
+  const [sdDateTo,       setSdDateTo]       = useState('');
+  const [sdLoading,      setSdLoading]      = useState(false);
+  const [sdEntries,      setSdEntries]      = useState([]);
+  const [sdLoaded,       setSdLoaded]       = useState(false);
+
   useEffect(() => {
     loadDropdowns();
     loadAllocations();
@@ -115,6 +125,64 @@ function SupervisorView({ user, onLogout }) {
       if (res.success) setAllocations(res.allocations);
     } catch { /* silently fail */ }
     setTrackerLoading(false);
+  };
+
+  // Load all stitchers lazily when dashboard tab is first opened
+  useEffect(() => {
+    if (activeTab === 'dashboard' && sdAllStitchers.length === 0) {
+      getStitchers().then(r => { if (r.success) setSdAllStitchers(r.stitchers); }).catch(() => {});
+    }
+  }, [activeTab]);
+
+  const sdHandleLoad = async () => {
+    if (!sdStitcher) return;
+    setSdLoading(true);
+    setSdLoaded(false);
+    try {
+      let params = `?stitcher_name=${encodeURIComponent(sdStitcher)}`;
+      if (sdDateFrom) params += `&date_from=${sdDateFrom}`;
+      if (sdDateTo)   params += `&date_to=${sdDateTo}`;
+      const res = await getPaymentEntries(params);
+      setSdEntries(res.success ? res.payments.filter(e => e.stitcher_name === sdStitcher) : []);
+    } catch {
+      setSdEntries([]);
+    }
+    setSdLoading(false);
+    setSdLoaded(true);
+  };
+
+  const sdHandleExport = () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const sorted = [...sdEntries].sort((a, b) => new Date(b.entry_date) - new Date(a.entry_date));
+    const totalQty    = sdEntries.reduce((s, e) => s + Number(e.qty_claimed || 0), 0);
+    const totalAmount = sdEntries.reduce((s, e) => s + Number(e.amount || 0), 0);
+    const wsData = [
+      [`Stitcher: ${sdStitcher}`],
+      [`Period: ${sdDateFrom || 'All'} to ${sdDateTo || 'All'}`],
+      [`Generated: ${today}`],
+      [],
+      ['Date', 'PO Number', 'Collection', 'Component', 'Department', 'Operation', 'Qty Claimed', 'Rate (PKR)', 'Amount (PKR)'],
+      ...sorted.map(e => {
+        const po = pos.find(p => p.po_number === e.po_number);
+        return [
+          e.entry_date ? String(e.entry_date).slice(0, 10) : '',
+          e.po_number,
+          po?.collection_name || '—',
+          e.component || '',
+          e.department || '',
+          e.operation  || '',
+          Number(e.qty_claimed || 0),
+          Number(e.rate        || 0),
+          Number(e.amount      || 0),
+        ];
+      }),
+      [],
+      [`Total Pieces: ${totalQty}`, '', '', '', '', '', '', `Total Amount: PKR ${totalAmount.toLocaleString()}`],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Stitcher Performance');
+    XLSX.writeFile(wb, `${sdStitcher.replace(/\s+/g, '_')}_Performance_${today}.xlsx`);
   };
 
   // Only Active POs that have at least one approved CMT rate
@@ -267,8 +335,9 @@ function SupervisorView({ user, onLogout }) {
           display: 'flex', background: 'white', borderRadius: '12px 12px 0 0',
           boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: '2px', padding: '0 8px',
         }}>
-          <button style={tabStyle('new')}     onClick={() => setActiveTab('new')}>New Allocation</button>
-          <button style={tabStyle('tracker')} onClick={() => setActiveTab('tracker')}>Live Tracker</button>
+          <button style={tabStyle('new')}       onClick={() => setActiveTab('new')}>New Allocation</button>
+          <button style={tabStyle('tracker')}   onClick={() => setActiveTab('tracker')}>Live Tracker</button>
+          <button style={tabStyle('dashboard')} onClick={() => setActiveTab('dashboard')}>Stitcher Dashboard</button>
         </div>
 
         {/* ── Tab 1: New Allocation ─────────────────────────────────────────── */}
@@ -516,6 +585,147 @@ function SupervisorView({ user, onLogout }) {
             )}
           </>
         )}
+        {/* ── Tab 3: Stitcher Dashboard ─────────────────────────────────────── */}
+        {activeTab === 'dashboard' && (
+          <div className="stitcher-dashboard-print">
+            <div className="card" style={{ borderRadius: '0 0 12px 12px', marginTop: 0 }}>
+              <h3>Stitcher Performance Dashboard</h3>
+              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <div className="form-group" style={{ marginBottom: 0, minWidth: '220px' }}>
+                  <label>Select Stitcher</label>
+                  <select value={sdStitcher} onChange={e => setSdStitcher(e.target.value)}>
+                    <option value="">Select stitcher...</option>
+                    {sdAllStitchers.map(s => (
+                      <option key={s.stitcher_code} value={s.name}>
+                        {s.stitcher_code} — {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>Date From</label>
+                  <input type="date" value={sdDateFrom} onChange={e => setSdDateFrom(e.target.value)} />
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>Date To</label>
+                  <input type="date" value={sdDateTo} onChange={e => setSdDateTo(e.target.value)} />
+                </div>
+                <button
+                  className="btn btn-primary btn-small"
+                  onClick={sdHandleLoad}
+                  disabled={!sdStitcher || sdLoading}
+                  style={{ minWidth: '80px' }}
+                >
+                  {sdLoading ? 'Loading...' : 'Load'}
+                </button>
+              </div>
+            </div>
+
+            {!sdStitcher ? (
+              <div className="card">
+                <p style={{ color: '#888', textAlign: 'center', padding: '32px' }}>
+                  Select a stitcher to view their performance
+                </p>
+              </div>
+            ) : sdLoading ? (
+              <div className="loading"><div className="spinner" />Loading...</div>
+            ) : sdLoaded && sdEntries.length === 0 ? (
+              <div className="card">
+                <p style={{ color: '#888', textAlign: 'center', padding: '32px' }}>No entries found for this stitcher.</p>
+              </div>
+            ) : sdLoaded && sdEntries.length > 0 ? (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
+                  {[
+                    { label: 'Total POs',      value: new Set(sdEntries.map(e => e.po_number)).size,                                         color: '#0f3460' },
+                    { label: 'Total Pieces',   value: sdEntries.reduce((s, e) => s + Number(e.qty_claimed || 0), 0).toLocaleString(),        color: '#0f3460' },
+                    { label: 'Total Earnings', value: `PKR ${sdEntries.reduce((s, e) => s + Number(e.amount || 0), 0).toLocaleString()}`,    color: '#16a34a' },
+                  ].map(c => (
+                    <div key={c.label} className="card" style={{ marginBottom: 0, textAlign: 'center' }}>
+                      <p style={{ fontSize: '12px', color: '#888', fontWeight: '600', textTransform: 'uppercase', marginBottom: '8px' }}>{c.label}</p>
+                      <p style={{ fontSize: '26px', fontWeight: '700', color: c.color }}>{c.value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+                    <h3 style={{ margin: 0, borderBottom: 'none', padding: 0 }}>
+                      Breakdown — {sdStitcher}
+                      {(sdDateFrom || sdDateTo) && (
+                        <span style={{ fontSize: '13px', fontWeight: '400', color: '#888', marginLeft: '8px' }}>
+                          {sdDateFrom || 'All'} to {sdDateTo || 'Now'}
+                        </span>
+                      )}
+                    </h3>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        className="btn btn-small"
+                        onClick={sdHandleExport}
+                        style={{ width: 'auto', background: '#16a34a', color: 'white' }}
+                      >
+                        ↓ Excel
+                      </button>
+                      <button
+                        className="btn btn-small"
+                        onClick={() => window.print()}
+                        style={{ width: 'auto', background: '#0f3460', color: 'white' }}
+                      >
+                        Print
+                      </button>
+                    </div>
+                  </div>
+                  <div className="table-container">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Code</th>
+                          <th>Date</th>
+                          <th>PO Number</th>
+                          <th>Collection</th>
+                          <th>Component</th>
+                          <th>Color</th>
+                          <th>Department</th>
+                          <th>Operation</th>
+                          <th>Qty Claimed</th>
+                          <th>Rate (PKR)</th>
+                          <th>Amount (PKR)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...sdEntries].sort((a, b) => new Date(b.entry_date) - new Date(a.entry_date)).map(e => {
+                          const po = pos.find(p => p.po_number === e.po_number);
+                          return (
+                            <tr key={e.id}>
+                              <td>{e.stitcher_code}</td>
+                              <td>{e.entry_date ? String(e.entry_date).slice(0, 10) : '—'}</td>
+                              <td>{e.po_number}</td>
+                              <td>{po?.collection_name || '—'}</td>
+                              <td style={{ textTransform: 'capitalize' }}>{e.component || '—'}</td>
+                              <td>{e.color || '—'}</td>
+                              <td>{e.department}</td>
+                              <td>{e.operation}</td>
+                              <td>{Number(e.qty_claimed || 0).toLocaleString()}</td>
+                              <td>{Number(e.rate || 0).toLocaleString()}</td>
+                              <td>{Number(e.amount || 0).toLocaleString()}</td>
+                            </tr>
+                          );
+                        })}
+                        <tr style={{ fontWeight: '700', background: '#f0f7ff' }}>
+                          <td colSpan={8} style={{ textAlign: 'right' }}>TOTAL</td>
+                          <td>{sdEntries.reduce((s, e) => s + Number(e.qty_claimed || 0), 0).toLocaleString()}</td>
+                          <td>—</td>
+                          <td>{sdEntries.reduce((s, e) => s + Number(e.amount || 0), 0).toLocaleString()}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            ) : null}
+          </div>
+        )}
+
         <PoweredByFintrack />
       </div>
 

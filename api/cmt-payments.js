@@ -150,6 +150,9 @@ export default async function handler(req, res) {
 
   // ── Default: cmt_payments GET / POST / PUT ────────────────────────────────
 
+  // Ensure color column exists (idempotent migration)
+  await pool.query(`ALTER TABLE cmt_payments ADD COLUMN IF NOT EXISTS color VARCHAR(100)`).catch(() => {});
+
   if (req.method === 'GET') {
     try {
       const conditions = [];
@@ -168,9 +171,21 @@ export default async function handler(req, res) {
         conditions.push(`stitcher_code = $${paramIdx++}`);
         values.push(req.query.stitcher_code);
       }
+      if (req.query.stitcher_name) {
+        conditions.push(`stitcher_name = $${paramIdx++}`);
+        values.push(req.query.stitcher_name);
+      }
       if (req.query.payment_status) {
         conditions.push(`payment_status = $${paramIdx++}`);
         values.push(req.query.payment_status);
+      }
+      if (req.query.date_from) {
+        conditions.push(`entry_date >= $${paramIdx++}`);
+        values.push(req.query.date_from);
+      }
+      if (req.query.date_to) {
+        conditions.push(`entry_date <= $${paramIdx++}`);
+        values.push(req.query.date_to);
       }
 
       const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -189,7 +204,7 @@ export default async function handler(req, res) {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
 
-    const { po_number, stitcher_code, department, operation, qty_claimed, entry_date, remarks } = req.body;
+    const { po_number, stitcher_code, department, operation, qty_claimed, entry_date, remarks, color } = req.body;
 
     if (!po_number || !stitcher_code || !department || !operation || !qty_claimed) {
       return res.json({ success: false, message: 'po_number, stitcher_code, department, operation, and qty_claimed are required.' });
@@ -235,8 +250,8 @@ export default async function handler(req, res) {
         `INSERT INTO cmt_payments
            (entry_date, po_number, stitcher_id, stitcher_code, stitcher_name,
             component, department, operation, qty_claimed, rate, amount,
-            week_ending, payment_status, remarks, submitted_by, submitted_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'Pending',$13,$14,NOW())
+            week_ending, payment_status, color, remarks, submitted_by, submitted_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'Pending',$13,$14,$15,NOW())
          RETURNING *`,
         [
           resolvedEntryDate, po_number,
@@ -244,7 +259,7 @@ export default async function handler(req, res) {
           component, department, operation,
           qty_claimed, rate, amount,
           week_ending,
-          remarks || null, user.name,
+          color || null, remarks || null, user.name,
         ]
       );
 

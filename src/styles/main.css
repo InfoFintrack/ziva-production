@@ -346,4 +346,6 @@ tr:hover {
 @media print {
   body > * { display: none !important; }
   .po-detail-modal-print { display: block !important; }
+  .stitcher-dashboard-print { display: block !important; }
+  .stitcher-dashboard-print button { display: none !important; }
 }

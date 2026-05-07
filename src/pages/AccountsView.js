@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { getCMTRates, approveCMTRate, getPaymentEntries, getAdvances, addAdvance, updatePayment, getStitchers } from '../api';
+import { getCMTRates, approveCMTRate, getPaymentEntries, getAdvances, addAdvance, updatePayment, getStitchers, getPOs } from '../api';
 import ProdFlowLogo from '../components/ProdFlowLogo';
 import PoweredByFintrack from '../components/PoweredByFintrack';
 
@@ -149,6 +149,9 @@ function AccountsView({ user, onLogout }) {
   const [advSubmitting, setAdvSubmitting] = useState(false);
   const [advMsg,        setAdvMsg]        = useState(null);
 
+  // PO list for collection_name lookup in payment tables
+  const [pos, setPos] = useState([]);
+
   // ── Rate loaders ───────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -208,6 +211,12 @@ function AccountsView({ user, onLogout }) {
         .catch(() => {});
     }
   }, [activeTab, paySubTab]);
+
+  useEffect(() => {
+    if (activeTab === 'payments' && pos.length === 0) {
+      getPOs().then(r => { if (r.success) setPos(r.pos); }).catch(() => {});
+    }
+  }, [activeTab]);
 
   // ── Stitcher groups computed from weekPayments + weekAdvances ──────────────
 
@@ -949,21 +958,25 @@ function AccountsView({ user, onLogout }) {
                               </tr>
 
                               {/* Expanded entry breakdown */}
-                              {expandedRow === g.code && g.entries.map(e => (
-                                <tr key={e.id} style={{ background: '#fafbff' }}>
-                                  <td style={{ paddingLeft: '32px', color: '#888', fontSize: '13px' }} colSpan={2}>
-                                    {e.entry_date ? String(e.entry_date).slice(0, 10) : '—'}
-                                    &nbsp;·&nbsp;{e.po_number}
-                                  </td>
-                                  <td style={{ fontSize: '13px', color: '#555' }}>{e.department}</td>
-                                  <td style={{ fontSize: '13px', color: '#555' }}>{e.operation}</td>
-                                  <td style={{ fontSize: '13px' }}>{e.qty_claimed}</td>
-                                  <td style={{ fontSize: '13px' }}>PKR {Number(e.rate || 0).toLocaleString()}</td>
-                                  <td style={{ fontSize: '13px', fontWeight: '600' }} colSpan={2}>
-                                    PKR {Number(e.amount || 0).toLocaleString()}
-                                  </td>
-                                </tr>
-                              ))}
+                              {expandedRow === g.code && g.entries.map(e => {
+                                const po = pos.find(p => p.po_number === e.po_number);
+                                return (
+                                  <tr key={e.id} style={{ background: '#fafbff' }}>
+                                    <td style={{ paddingLeft: '32px', color: '#888', fontSize: '13px' }}>
+                                      {e.entry_date ? String(e.entry_date).slice(0, 10) : '—'}
+                                      &nbsp;·&nbsp;{e.po_number}
+                                    </td>
+                                    <td style={{ fontSize: '13px', color: '#555' }}>{po?.collection_name || '—'}</td>
+                                    <td style={{ fontSize: '13px', color: '#555' }}>{e.department}</td>
+                                    <td style={{ fontSize: '13px', color: '#555' }}>{e.operation}</td>
+                                    <td style={{ fontSize: '13px' }}>{e.qty_claimed}</td>
+                                    <td style={{ fontSize: '13px' }}>PKR {Number(e.rate || 0).toLocaleString()}</td>
+                                    <td style={{ fontSize: '13px', fontWeight: '600' }} colSpan={2}>
+                                      PKR {Number(e.amount || 0).toLocaleString()}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
                             </React.Fragment>
                           ))}
                         </tbody>
