@@ -97,6 +97,8 @@ export const updateAllocation = (data) => authFetch('/api/allocations', { method
 export const getPoAccessories = (poNumber) =>
   authFetch(`/api/po-master?type=accessories&po_number=${encodeURIComponent(poNumber)}`);
 export const addPoAccessory = (data) => post('/api/po-master?type=accessories', data);
+export const deletePoAccessories = (poNumber) =>
+  authFetch(`/api/po-master?type=accessories&po_number=${encodeURIComponent(poNumber)}`, { method: 'DELETE' });
 
 // Fabric Issuance Log (merged into po-master via ?type=issuance_log)
 export const getFabricIssuanceLog = (poNumber) =>

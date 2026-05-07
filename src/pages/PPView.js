@@ -5,7 +5,7 @@ import ProdFlowLogo from '../components/ProdFlowLogo';
 import PoweredByFintrack from '../components/PoweredByFintrack';
 import {
   submitIssuance, getRecords, getDropdowns, getPOs, createPO, updatePO,
-  getPoAccessories, addPoAccessory, getFabricIssuanceLog, logFabricIssuance,
+  getPoAccessories, addPoAccessory, deletePoAccessories, getFabricIssuanceLog, logFabricIssuance,
 } from '../api';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -226,6 +226,20 @@ function PPView({ user, onLogout }) {
   const trouserColourRef = useRef(null);
   const dupattaColourRef = useRef(null);
 
+  // ── Edit PO Modal state ────────────────────────────────────────────────
+  const [editPOTarget, setEditPOTarget]         = useState(null);
+  const [editPOForm, setEditPOForm]             = useState({});
+  const [editPOAccessories, setEditPOAccessories] = useState([]);
+  const [editPOSubmitting, setEditPOSubmitting] = useState(false);
+  const [editPOMessage, setEditPOMessage]       = useState(null);
+  const [editCollapsedCards, setEditCollapsedCards] = useState({ shirt: false, trouser: false, dupatta: false });
+  const [poHasIssuance, setPoHasIssuance]       = useState(new Set());
+
+  // ColourInput refs (Edit PO form)
+  const editShirtColourRef   = useRef(null);
+  const editTrouserColourRef = useRef(null);
+  const editDupattaColourRef = useRef(null);
+
   // ── PO Detail Modal state ──────────────────────────────────────────────
   const [selectedPODetail, setSelectedPODetail]     = useState(null);
   const [poDetailAccessories, setPODetailAccessories] = useState([]);
@@ -259,7 +273,19 @@ function PPView({ user, onLogout }) {
     setPOLoading(true);
     try {
       const res = await getPOs();
-      if (res.success) setPos(res.pos);
+      if (res.success) {
+        setPos(res.pos);
+        const logChecks = await Promise.all(
+          res.pos.map(p => getFabricIssuanceLog(p.po_number).catch(() => ({ success: false, logs: [] })))
+        );
+        const hasIssuance = new Set();
+        logChecks.forEach((logRes, idx) => {
+          if (logRes.success && logRes.logs && logRes.logs.length > 0) {
+            hasIssuance.add(res.pos[idx].po_number);
+          }
+        });
+        setPoHasIssuance(hasIssuance);
+      }
     } catch { /* silently fail */ }
     setPOLoading(false);
   };
@@ -716,6 +742,145 @@ function PPView({ user, onLogout }) {
     setPODetailLog([]);
   };
 
+  // ── Edit PO handlers ───────────────────────────────────────────────────
+
+  const openEditPO = async (po) => {
+    // Pre-fill edit form from po_master row
+    const batchRaw = po.batch_number || '';
+    const bMatch   = batchRaw.match(/^B-(\d+)-PO-(\d+)$/);
+    setEditPOForm({
+      batch_number_b:  bMatch ? bMatch[1] : batchRaw,
+      batch_number_po: bMatch ? bMatch[2] : '',
+      po_number:        po.po_number,
+      collection_name:  po.collection_name || '',
+      article_name:     po.article_name    || '',
+      garment_type:     po.garment_type    || '',
+      po_date:          po.po_date    ? po.po_date.split('T')[0]    : '',
+      delivery_date:    po.delivery_date ? po.delivery_date.split('T')[0] : '',
+      remarks:          po.remarks        || '',
+      shirt_colour:     po.shirt_colour   || '',
+      shirt_fabric:     po.shirt_fabric   || '',
+      shirt_qty:        po.shirt_qty      != null ? String(po.shirt_qty)   : '',
+      trouser_colour:   po.trouser_colour || '',
+      trouser_fabric:   po.trouser_fabric || '',
+      trouser_qty:      po.trouser_qty    != null ? String(po.trouser_qty) : '',
+      dupatta_colour:   po.dupatta_colour || '',
+      dupatta_fabric:   po.dupatta_fabric || '',
+      dupatta_qty:      po.dupatta_qty    != null ? String(po.dupatta_qty) : '',
+    });
+    setEditCollapsedCards({ shirt: false, trouser: false, dupatta: false });
+    setEditPOMessage(null);
+    setEditPOTarget(po);
+    try {
+      const accRes = await getPoAccessories(po.po_number);
+      if (accRes.success) {
+        setEditPOAccessories(
+          accRes.accessories.length > 0
+            ? accRes.accessories.map(a => ({ accessory_type: a.accessory_type, quantity: String(a.quantity) }))
+            : [{ accessory_type: '', quantity: '' }]
+        );
+      } else {
+        setEditPOAccessories([{ accessory_type: '', quantity: '' }]);
+      }
+    } catch {
+      setEditPOAccessories([{ accessory_type: '', quantity: '' }]);
+    }
+  };
+
+  const closeEditPO = () => {
+    setEditPOTarget(null);
+    setEditPOForm({});
+    setEditPOAccessories([]);
+    setEditPOMessage(null);
+  };
+
+  const handleEditPOChange = (e) => {
+    const { name, value } = e.target;
+    setEditPOForm(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleEditPOColourChange = (component, value) =>
+    setEditPOForm(prev => ({ ...prev, [`${component}_colour`]: value }));
+
+  const toggleEditCard = (key) =>
+    setEditCollapsedCards(prev => ({ ...prev, [key]: !prev[key] }));
+
+  const handleEditPOAccessoryChange = (i, field, value) =>
+    setEditPOAccessories(prev => prev.map((a, idx) => idx === i ? { ...a, [field]: value } : a));
+
+  const addEditPOAccessoryRow = () =>
+    setEditPOAccessories(prev => [...prev, { accessory_type: '', quantity: '' }]);
+
+  const removeEditPOAccessoryRow = (i) =>
+    setEditPOAccessories(prev => prev.filter((_, idx) => idx !== i));
+
+  const handleEditPOSubmit = async (e) => {
+    e.preventDefault();
+    if (!editPOForm.collection_name?.trim()) {
+      setEditPOMessage({ type: 'error', text: 'Collection Name is required.' }); return;
+    }
+
+    const shirtOk   = editShirtColourRef.current?.validate()   ?? true;
+    const trouserOk = editTrouserColourRef.current?.validate() ?? true;
+    const dupattaOk = editDupattaColourRef.current?.validate() ?? true;
+    if (!shirtOk || !trouserOk || !dupattaOk) {
+      setEditPOMessage({ type: 'error', text: 'Please fix all colour fields.' }); return;
+    }
+
+    setEditPOSubmitting(true);
+    setEditPOMessage(null);
+    try {
+      const batchStr = editPOForm.batch_number_b
+        ? `B-${editPOForm.batch_number_b}-PO-${editPOForm.batch_number_po || '0'}`
+        : (editPOTarget.batch_number || null);
+
+      const detailsRes = await updatePO({
+        action:          'update_details',
+        po_number:        editPOForm.po_number,
+        batch_number:     batchStr,
+        collection_name:  editPOForm.collection_name,
+        article_name:     editPOForm.article_name    || null,
+        garment_type:     editPOForm.garment_type    || null,
+        po_date:          editPOForm.po_date         || null,
+        delivery_date:    editPOForm.delivery_date   || null,
+        remarks:          editPOForm.remarks         || null,
+        shirt_colour:     editPOForm.shirt_colour    || null,
+        shirt_fabric:     editPOForm.shirt_fabric    || null,
+        shirt_qty:        editPOForm.shirt_qty       ? Number(editPOForm.shirt_qty)   : null,
+        trouser_colour:   editPOForm.trouser_colour  || null,
+        trouser_fabric:   editPOForm.trouser_fabric  || null,
+        trouser_qty:      editPOForm.trouser_qty     ? Number(editPOForm.trouser_qty) : null,
+        dupatta_colour:   editPOForm.dupatta_colour  || null,
+        dupatta_fabric:   editPOForm.dupatta_fabric  || null,
+        dupatta_qty:      editPOForm.dupatta_qty     ? Number(editPOForm.dupatta_qty) : null,
+      });
+
+      if (!detailsRes.success) {
+        setEditPOMessage({ type: 'error', text: detailsRes.message || 'Failed to update PO.' });
+        setEditPOSubmitting(false);
+        return;
+      }
+
+      // Replace accessories: delete all then re-insert filled rows
+      await deletePoAccessories(editPOForm.po_number);
+      const filled = editPOAccessories.filter(a => a.accessory_type && a.quantity);
+      for (const acc of filled) {
+        await addPoAccessory({
+          po_number:      editPOForm.po_number,
+          accessory_type: acc.accessory_type,
+          quantity:       Number(acc.quantity),
+        });
+      }
+
+      setEditPOMessage({ type: 'success', text: `✓ PO ${editPOForm.po_number} updated successfully.` });
+      loadPOs();
+      setTimeout(closeEditPO, 1200);
+    } catch {
+      setEditPOMessage({ type: 'error', text: 'Update failed. Please try again.' });
+    }
+    setEditPOSubmitting(false);
+  };
+
   const getPOStatusBadge = (status) => {
     if (status === 'Active')    return { cls: 'badge badge-accepted', style: undefined };
     if (status === 'Cancelled') return { cls: 'badge badge-rejected', style: undefined };
@@ -777,6 +942,56 @@ function PPView({ user, onLogout }) {
                 value={poForm[`${compKey}_remarks`]}
                 onChange={handlePOChange}
                 placeholder="Optional"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const editComponentCard = (compKey, compLabel, colourRef) => (
+    <div key={compKey} style={{ border: '1px solid #e8e8e8', borderRadius: '8px', marginBottom: '12px', overflow: 'hidden' }}>
+      <div
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#f8fafc', cursor: 'pointer' }}
+        onClick={() => toggleEditCard(compKey)}
+      >
+        <span style={{ fontWeight: '700', color: '#0f3460', fontSize: '14px' }}>{compLabel} Details</span>
+        <span style={{ fontSize: '12px', color: '#888' }}>{editCollapsedCards[compKey] ? '▼' : '▲'}</span>
+      </div>
+      {!editCollapsedCards[compKey] && (
+        <div style={{ padding: '16px' }}>
+          <div className="form-grid">
+            <div className="form-group">
+              <label>Colour</label>
+              <ColourInput
+                ref={colourRef}
+                value={editPOForm[`${compKey}_colour`] || ''}
+                onChange={(v) => handleEditPOColourChange(compKey, v)}
+                placeholder="e.g. Navy Blue"
+              />
+            </div>
+            <div className="form-group">
+              <label>Fabric Type</label>
+              <select
+                name={`${compKey}_fabric`}
+                value={editPOForm[`${compKey}_fabric`] || ''}
+                onChange={handleEditPOChange}
+              >
+                <option value="">Select fabric</option>
+                {FABRIC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Quantity (Pieces)</label>
+              <input
+                type="number"
+                name={`${compKey}_qty`}
+                value={editPOForm[`${compKey}_qty`] || ''}
+                onChange={handleEditPOChange}
+                onWheel={e => e.target.blur()}
+                min="1"
+                placeholder="e.g. 1000"
               />
             </div>
           </div>
@@ -1343,7 +1558,7 @@ function PPView({ user, onLogout }) {
                       <tr>
                         <th>PO Number</th><th>Batch No.</th><th>Collection</th><th>Article</th><th>Type</th>
                         <th>Shirt Qty</th><th>Trouser Qty</th><th>Dupatta Qty</th>
-                        <th>Status</th><th>View</th>
+                        <th>Status</th><th>View</th><th>Edit</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1365,6 +1580,15 @@ function PPView({ user, onLogout }) {
                                 View
                               </button>
                             </td>
+                            <td>
+                              {poHasIssuance.has(p.po_number) ? (
+                                <span title="Cannot edit — fabric already issued" style={{ fontSize: '12px', color: '#aaa', cursor: 'not-allowed' }}>Locked</span>
+                              ) : (
+                                <button className="btn btn-small" onClick={() => openEditPO(p)} style={{ background: '#fef3c7', color: '#92400e', width: 'auto' }}>
+                                  Edit
+                                </button>
+                              )}
+                            </td>
                           </tr>
                         );
                       })}
@@ -1378,6 +1602,151 @@ function PPView({ user, onLogout }) {
 
         <PoweredByFintrack />
       </div>
+
+      {/* ── Edit PO Modal ─────────────────────────────────────────────── */}
+      {editPOTarget && ReactDOM.createPortal(
+        <div
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+            zIndex: 1100, overflowY: 'auto', padding: '5vh 16px',
+          }}
+          onClick={e => { if (e.target === e.currentTarget) closeEditPO(); }}
+        >
+          <div style={{ background: 'white', borderRadius: '12px', padding: '32px', maxWidth: '720px', width: '100%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+              <div>
+                <h2 style={{ color: '#0f3460', marginBottom: '4px' }}>Edit PO — {editPOTarget.po_number}</h2>
+                <p style={{ color: '#666', fontSize: '13px' }}>Changes to Batch No., Collection, components, and accessories only. PO Number cannot change.</p>
+              </div>
+              <button className="btn btn-small btn-danger" onClick={closeEditPO} style={{ width: 'auto' }}>Close</button>
+            </div>
+
+            {editPOMessage && <div className={`alert alert-${editPOMessage.type}`}>{editPOMessage.text}</div>}
+
+            <form onSubmit={handleEditPOSubmit}>
+              {/* Section A */}
+              <div style={{ marginBottom: '8px', paddingBottom: '8px', borderBottom: '2px solid #f0f2f5' }}>
+                <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f3460', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 16px' }}>A — Header</p>
+              </div>
+              <div className="form-grid">
+                <div className="form-group">
+                  <label>Batch Number</label>
+                  <div style={{ display: 'flex', alignItems: 'center', border: '2px dashed #0f3460', borderRadius: '8px', overflow: 'hidden', background: '#f0f6ff' }}>
+                    <span style={{ padding: '12px 12px', background: '#e0e7ff', color: '#0f3460', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderRight: '2px dashed #0f3460', userSelect: 'none' }}>B-</span>
+                    <input
+                      type="text"
+                      name="batch_number_b"
+                      value={editPOForm.batch_number_b || ''}
+                      onChange={handleEditPOChange}
+                      maxLength={4}
+                      style={{ border: 'none', width: '48px', padding: '12px 8px', outline: 'none', background: 'transparent', fontSize: '15px', textAlign: 'center' }}
+                    />
+                    <span style={{ padding: '12px 10px', background: '#e0e7ff', color: '#0f3460', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderLeft: '2px dashed #0f3460', borderRight: '2px dashed #0f3460', userSelect: 'none' }}>-PO-</span>
+                    <input
+                      type="text"
+                      name="batch_number_po"
+                      value={editPOForm.batch_number_po || ''}
+                      onChange={handleEditPOChange}
+                      maxLength={4}
+                      style={{ border: 'none', flex: 1, padding: '12px 8px', outline: 'none', background: 'transparent', fontSize: '15px' }}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label>PO Number</label>
+                  <input type="text" value={editPOForm.po_number || ''} disabled style={{ background: '#f0f0f0', color: '#999', width: '100%', padding: '12px 16px', border: '2px solid #e8e8e8', borderRadius: '8px', fontSize: '15px', boxSizing: 'border-box' }} />
+                </div>
+
+                <div className="form-group">
+                  <label>Collection Name *</label>
+                  <input type="text" name="collection_name" value={editPOForm.collection_name || ''} onChange={handleEditPOChange} placeholder="e.g. Linen Collection 2026" />
+                </div>
+
+                <div className="form-group">
+                  <label>Article Name</label>
+                  <input type="text" name="article_name" value={editPOForm.article_name || ''} onChange={handleEditPOChange} placeholder="e.g. 3-Piece Suit" />
+                </div>
+
+                <div className="form-group">
+                  <label>Garment Type</label>
+                  <select name="garment_type" value={editPOForm.garment_type || ''} onChange={handleEditPOChange}>
+                    <option value="">Select type</option>
+                    {dropdowns.garmentTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>PO Date</label>
+                  <input type="date" name="po_date" value={editPOForm.po_date || ''} onChange={handleEditPOChange} />
+                </div>
+
+                <div className="form-group">
+                  <label>Delivery Date</label>
+                  <input type="date" name="delivery_date" value={editPOForm.delivery_date || ''} onChange={handleEditPOChange} />
+                </div>
+
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label>Remarks</label>
+                  <textarea name="remarks" value={editPOForm.remarks || ''} onChange={handleEditPOChange} rows={2} placeholder="Optional notes" />
+                </div>
+              </div>
+
+              {/* Section B: Components */}
+              <div style={{ marginTop: '24px', marginBottom: '8px', paddingBottom: '8px', borderBottom: '2px solid #f0f2f5' }}>
+                <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f3460', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 16px' }}>B — Components</p>
+              </div>
+              {editComponentCard('shirt',   'Shirt',   editShirtColourRef)}
+              {editComponentCard('trouser', 'Trouser', editTrouserColourRef)}
+              {editComponentCard('dupatta', 'Dupatta', editDupattaColourRef)}
+
+              {/* Section C: Accessories */}
+              <div style={{ marginTop: '24px', marginBottom: '8px', paddingBottom: '8px', borderBottom: '2px solid #f0f2f5' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f3460', textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>C — Accessories</p>
+                  <button type="button" className="btn btn-small" onClick={addEditPOAccessoryRow} style={{ background: '#e0e7ff', color: '#0f3460', width: 'auto' }}>+ Add</button>
+                </div>
+              </div>
+              {editPOAccessories.map((acc, i) => (
+                <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    placeholder="e.g. Lace, Button, Zip"
+                    value={acc.accessory_type}
+                    onChange={e => handleEditPOAccessoryChange(i, 'accessory_type', e.target.value)}
+                    style={{ flex: 2, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}
+                  />
+                  <input
+                    type="number"
+                    placeholder="Qty"
+                    value={acc.quantity}
+                    onChange={e => handleEditPOAccessoryChange(i, 'quantity', e.target.value)}
+                    onWheel={e => e.target.blur()}
+                    min="0"
+                    style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}
+                  />
+                  {editPOAccessories.length > 1 && (
+                    <button type="button" onClick={() => removeEditPOAccessoryRow(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#dc2626', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
+                  )}
+                </div>
+              ))}
+              <p style={{ color: '#aaa', fontSize: '12px', margin: '4px 0 16px' }}>Accessories will be replaced entirely on save. Leave rows blank to remove all.</p>
+
+              <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+                <button type="submit" className="btn btn-primary" disabled={editPOSubmitting} style={{ flex: 1 }}>
+                  {editPOSubmitting ? 'Saving...' : 'Save Changes'}
+                </button>
+                <button type="button" className="btn" onClick={closeEditPO} style={{ flex: 1, background: '#f0f2f5', color: '#333' }}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* ── PO Detail Modal (portal — direct child of body for print) ──── */}
       {selectedPODetail && ReactDOM.createPortal(

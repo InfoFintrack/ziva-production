@@ -5,7 +5,7 @@ const VALID_COMPONENTS = ['shirt', 'trouser', 'dupatta'];
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -51,6 +51,23 @@ export default async function handler(req, res) {
         return res.json({ success: true, accessory: rows[0] });
       } catch (err) {
         console.error('PO Accessories POST error:', err.message);
+        return res.status(500).json({ success: false, message: 'Server error.' });
+      }
+    }
+
+    if (req.method === 'DELETE') {
+      if (!['PP', 'Admin'].includes(user.role)) {
+        return res.status(403).json({ success: false, error: 'Access denied' });
+      }
+      const { po_number } = req.query;
+      if (!po_number) {
+        return res.json({ success: false, message: 'po_number query parameter is required.' });
+      }
+      try {
+        await pool.query('DELETE FROM po_accessories WHERE po_number = $1', [po_number]);
+        return res.json({ success: true });
+      } catch (err) {
+        console.error('PO Accessories DELETE error:', err.message);
         return res.status(500).json({ success: false, message: 'Server error.' });
       }
     }
@@ -209,6 +226,47 @@ export default async function handler(req, res) {
         return res.json({ success: true });
       } catch (err) {
         console.error('PO Master PUT update_meters error:', err.message);
+        return res.status(500).json({ success: false, message: 'Server error.' });
+      }
+
+    } else if (action === 'update_details') {
+      if (!['PP', 'Admin'].includes(user.role)) {
+        return res.status(403).json({ success: false, error: 'Access denied' });
+      }
+      const {
+        po_number, collection_name, article_name, garment_type,
+        po_date, delivery_date, remarks, batch_number,
+        shirt_colour, shirt_fabric, shirt_qty,
+        trouser_colour, trouser_fabric, trouser_qty,
+        dupatta_colour, dupatta_fabric, dupatta_qty,
+      } = req.body;
+      if (!po_number) {
+        return res.json({ success: false, message: 'po_number is required.' });
+      }
+      try {
+        const result = await pool.query(
+          `UPDATE po_master SET
+             collection_name = $1, article_name = $2, garment_type = $3,
+             po_date = $4, delivery_date = $5, remarks = $6, batch_number = $7,
+             shirt_colour = $8, shirt_fabric = $9, shirt_qty = $10,
+             trouser_colour = $11, trouser_fabric = $12, trouser_qty = $13,
+             dupatta_colour = $14, dupatta_fabric = $15, dupatta_qty = $16
+           WHERE po_number = $17`,
+          [
+            collection_name || null, article_name || null, garment_type || null,
+            po_date || null, delivery_date || null, remarks || null, batch_number || null,
+            shirt_colour || null, shirt_fabric || null, shirt_qty != null ? Number(shirt_qty) : null,
+            trouser_colour || null, trouser_fabric || null, trouser_qty != null ? Number(trouser_qty) : null,
+            dupatta_colour || null, dupatta_fabric || null, dupatta_qty != null ? Number(dupatta_qty) : null,
+            po_number,
+          ]
+        );
+        if (result.rowCount === 0) {
+          return res.json({ success: false, message: 'PO not found.' });
+        }
+        return res.json({ success: true });
+      } catch (err) {
+        console.error('PO Master PUT update_details error:', err.message);
         return res.status(500).json({ success: false, message: 'Server error.' });
       }
 
