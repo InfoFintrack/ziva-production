@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { submitAcceptance, getRecords, getDropdowns, getPOs, submitCMTRate, getCMTRates, approveCMTRate, getStitchers, createStitcher, logPaymentEntry, getPaymentEntries } from '../api';
+import { submitAcceptance, getRecords, getDropdowns, getPOs, submitCMTRate, getCMTRates, approveCMTRate, getStitchers, createStitcher, logPaymentEntry, getPaymentEntries, getAllocations } from '../api';
 import { ColourInput } from './PPView';
 import ProdFlowLogo from '../components/ProdFlowLogo';
 import PoweredByFintrack from '../components/PoweredByFintrack';
@@ -119,6 +119,25 @@ function deriveColor(pos, po_number, department, operation) {
   if (department.includes('Trouser')) return po.trouser_colour || '';
   if (department.includes('Dupatta')) return po.dupatta_colour || '';
   return '';
+}
+
+function deriveComponent(department, operation) {
+  if (!department || !operation) return '';
+  if (department === 'Stitching') return operation.toLowerCase();
+  if (department.includes('Shirt'))   return 'shirt';
+  if (department.includes('Trouser')) return 'trouser';
+  if (department.includes('Dupatta')) return 'dupatta';
+  return '';
+}
+
+function componentToDeptOp(component) {
+  switch ((component || '').toLowerCase()) {
+    case 'shirt':    return { dept: 'Stitching', op: 'Shirt' };
+    case 'trouser':  return { dept: 'Stitching', op: 'Trouser' };
+    case 'dupatta':  return { dept: 'Stitching', op: 'Dupatta' };
+    case 'patching': return { dept: 'Stitching', op: 'Patching' };
+    default:         return { dept: '', op: '' };
+  }
 }
 
 function PaymentStatusBadge({ status }) {
@@ -250,6 +269,18 @@ function CuttingView({ user, onLogout }) {
   const [sdLoading,   setSdLoading]   = useState(false);
   const [sdEntries,   setSdEntries]   = useState([]);
   const [sdLoaded,    setSdLoaded]    = useState(false);
+
+  // ── Allocation cap state (single entry) ───────────────────────────────
+  const [plAllocations,  setPlAllocations]  = useState([]);
+
+  // ── Bulk Entry state ───────────────────────────────────────────────────
+  const [plEntryMode,    setPlEntryMode]    = useState('single');
+  const [bulkStitcher,   setBulkStitcher]   = useState('');
+  const [bulkLoading,    setBulkLoading]    = useState(false);
+  const [bulkRows,       setBulkRows]       = useState([]);
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const [bulkMsg,        setBulkMsg]        = useState(null);
+  const [bulkProgress,   setBulkProgress]   = useState('');
 
   // ── Data loaders ───────────────────────────────────────────────────────
 
@@ -624,6 +655,25 @@ function CuttingView({ user, onLogout }) {
       .finally(() => setPlRateLoading(false));
   }, [plForm.po_number]);
 
+  useEffect(() => {
+    if (!plForm.stitcher_code || !plForm.po_number) {
+      setPlAllocations([]);
+      return;
+    }
+    getAllocations(`?stitcher_code=${encodeURIComponent(plForm.stitcher_code)}&po_number=${encodeURIComponent(plForm.po_number)}`)
+      .then(res => setPlAllocations(res.success ? res.allocations : []))
+      .catch(() => setPlAllocations([]));
+  }, [plForm.stitcher_code, plForm.po_number]);
+
+  useEffect(() => {
+    if (!plForm.department || !plForm.operation || plAllocations.length === 0) return;
+    const comp = deriveComponent(plForm.department, plForm.operation);
+    const matched = comp ? plAllocations.find(a => a.component?.toLowerCase() === comp) : null;
+    if (matched && Number(matched.qty_accepted) > 0) {
+      setPlForm(prev => ({ ...prev, qty_claimed: String(Number(matched.qty_accepted)) }));
+    }
+  }, [plAllocations, plForm.department, plForm.operation]);
+
   // Payment Log derived values
   const plEligiblePOs = plPos.filter(p => p.status === 'Active' && plApprovedSet.has(p.po_number));
 
@@ -675,6 +725,12 @@ function CuttingView({ user, onLogout }) {
     }
     if (plRateError || plCurrentRate === null) {
       setPlFormMsg({ type: 'error', text: 'Cannot submit — no approved rate found for this PO / operation.' });
+      return;
+    }
+    const _comp = deriveComponent(plForm.department, plForm.operation);
+    const _matched = _comp ? plAllocations.find(a => a.component?.toLowerCase() === _comp) : null;
+    if (_matched && Number(plForm.qty_claimed) > Number(_matched.qty_accepted || 0)) {
+      setPlFormMsg({ type: 'error', text: `Cannot exceed ${Number(_matched.qty_accepted || 0)} accepted pieces from allocation.` });
       return;
     }
     setPlSubmitting(true);
@@ -754,6 +810,128 @@ function CuttingView({ user, onLogout }) {
     XLSX.writeFile(wb, `${sdStitcher.replace(/\s+/g, '_')}_Performance_${today}.xlsx`);
   };
 
+  const loadBulkRows = async (stitcherCode) => {
+    setBulkLoading(true);
+    setBulkRows([]);
+    setBulkMsg(null);
+    try {
+      const allocRes = await getAllocations(
+        `?stitcher_code=${encodeURIComponent(stitcherCode)}&status=In Progress`
+      );
+      if (!allocRes.success || !allocRes.allocations.length) {
+        setBulkMsg({ type: 'warning', text: 'No in-progress allocations found for this stitcher.' });
+        setBulkLoading(false);
+        return;
+      }
+      const uniquePOs = [...new Set(allocRes.allocations.map(a => a.po_number))];
+      const rateMap = {};
+      await Promise.all(uniquePOs.map(async (po) => {
+        const r = await getCMTRates(`?status=Approved&po_number=${encodeURIComponent(po)}`);
+        if (r.success && r.rates.length > 0) rateMap[po] = r.rates[0];
+      }));
+      const loggedSet = new Set(
+        plEntries
+          .filter(e => e.stitcher_code === stitcherCode)
+          .map(e => `${e.po_number}|${(e.component || '').toLowerCase()}`)
+      );
+      const rows = allocRes.allocations.map(a => {
+        const { dept, op } = componentToDeptOp(a.component);
+        const rateField = dept && op ? PL_DEPT_OP_TO_RATE_FIELD[`${dept}|${op}`] : null;
+        const rateObj = rateMap[a.po_number] || null;
+        const rate = rateField && rateObj ? Number(rateObj[rateField] || 0) : null;
+        const qty = Number(a.qty_accepted || 0);
+        return {
+          allocationId: a.id,
+          po_number:    a.po_number,
+          component:    a.component,
+          stitcher_code: a.stitcher_code,
+          stitcher_name: a.stitcher_name,
+          qty_accepted: qty,
+          department:   dept,
+          operation:    op,
+          qty_claimed:  String(qty),
+          rate,
+          rateObj,
+          amount:       rate ? qty * rate : 0,
+          alreadyLogged: loggedSet.has(`${a.po_number}|${(a.component || '').toLowerCase()}`),
+        };
+      });
+      setBulkRows(rows);
+    } catch {
+      setBulkMsg({ type: 'error', text: 'Failed to load allocations.' });
+    }
+    setBulkLoading(false);
+  };
+
+  const bulkHandleRowChange = (index, field, value) => {
+    setBulkRows(prev => {
+      const rows = [...prev];
+      const row = { ...rows[index], [field]: value };
+      if (field === 'department') {
+        row.operation = '';
+        row.rate = null;
+        row.amount = 0;
+      }
+      if (field === 'operation') {
+        const rateKey = `${row.department}|${value}`;
+        const rateField = PL_DEPT_OP_TO_RATE_FIELD[rateKey];
+        row.rate = rateField && row.rateObj ? Number(row.rateObj[rateField] || 0) : null;
+        const qty = Number(row.qty_claimed) || 0;
+        row.amount = row.rate ? qty * row.rate : 0;
+      }
+      if (field === 'qty_claimed') {
+        const qty = Number(value) || 0;
+        row.amount = row.rate ? qty * row.rate : 0;
+      }
+      rows[index] = row;
+      return rows;
+    });
+  };
+
+  const bulkHandleSubmitAll = async () => {
+    const toSubmit = bulkRows.filter(r =>
+      r.qty_claimed && Number(r.qty_claimed) > 0 && r.department && r.operation && r.rate
+    );
+    if (!toSubmit.length) {
+      setBulkMsg({ type: 'error', text: 'No valid rows to submit. Ensure department, operation, and qty are filled.' });
+      return;
+    }
+    setBulkSubmitting(true);
+    setBulkMsg(null);
+    let submitted = 0;
+    let failed = 0;
+    for (let i = 0; i < toSubmit.length; i++) {
+      setBulkProgress(`${i + 1}/${toSubmit.length}`);
+      const row = toSubmit[i];
+      try {
+        const color = deriveColor(plPos, row.po_number, row.department, row.operation);
+        const res = await logPaymentEntry({
+          entry_date:    PL_TODAY,
+          po_number:     row.po_number,
+          stitcher_code: row.stitcher_code,
+          department:    row.department,
+          operation:     row.operation,
+          qty_claimed:   Number(row.qty_claimed),
+          ...(color ? { color } : {}),
+        });
+        if (res.success) submitted++;
+        else failed++;
+      } catch {
+        failed++;
+      }
+    }
+    setBulkSubmitting(false);
+    setBulkProgress('');
+    setBulkMsg({
+      type: failed === 0 ? 'success' : 'warning',
+      text: `${submitted} entr${submitted === 1 ? 'y' : 'ies'} submitted${failed > 0 ? `, ${failed} failed` : ''}.`,
+    });
+    if (submitted > 0) {
+      plLoadMyEntries();
+      loadBulkRows(bulkStitcher);
+    }
+  };
+
   const plSubTabStyle = (tab) => ({
     padding: '10px 24px', border: 'none', background: 'none', cursor: 'pointer',
     fontSize: '14px', fontWeight: '600',
@@ -761,6 +939,16 @@ function CuttingView({ user, onLogout }) {
     borderBottom: plSubTab === tab ? '3px solid #0f3460' : '3px solid transparent',
     marginBottom: '-2px', transition: 'color 0.15s',
   });
+
+  // ── Allocation cap derived values ──────────────────────────────────────
+  const plDerivedComponent = deriveComponent(plForm.department, plForm.operation);
+  const plMatchedAlloc = plDerivedComponent
+    ? plAllocations.find(a => a.component?.toLowerCase() === plDerivedComponent)
+    : null;
+  const plAllocCap = plMatchedAlloc ? Number(plMatchedAlloc.qty_accepted || 0) : null;
+  const plQtyCapError = plAllocCap !== null && plForm.qty_claimed && Number(plForm.qty_claimed) > plAllocCap
+    ? `Cannot exceed ${plAllocCap} accepted pieces from allocation`
+    : '';
 
   // ── Render ─────────────────────────────────────────────────────────────
 
@@ -1576,17 +1764,42 @@ function CuttingView({ user, onLogout }) {
 
             {/* ── Sub-tab 1: Log Entry ─────────────────────────────────── */}
             {plSubTab === 'log' && (
-              <div className="card">
-                <h3>Log Payment Entry</h3>
+              <>
+                {/* Single / Bulk toggle */}
+                <div style={{ display: 'flex', gap: '0', marginBottom: '16px', borderBottom: '2px solid #e8e8e8' }}>
+                  {[
+                    { key: 'single', label: 'Single Entry' },
+                    { key: 'bulk',   label: 'Bulk Entry'   },
+                  ].map(m => (
+                    <button
+                      key={m.key}
+                      onClick={() => setPlEntryMode(m.key)}
+                      style={{
+                        padding: '8px 20px', border: 'none', background: 'none', cursor: 'pointer',
+                        fontSize: '14px', fontWeight: '600',
+                        color: plEntryMode === m.key ? '#0f3460' : '#888',
+                        borderBottom: plEntryMode === m.key ? '3px solid #0f3460' : '3px solid transparent',
+                        marginBottom: '-2px',
+                      }}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
 
-                {plDataLoading ? (
-                  <div className="loading"><div className="spinner" />Loading...</div>
-                ) : (
-                  <form onSubmit={plHandleSubmit}>
-                    <div className="form-grid">
+                {/* ── SINGLE ENTRY FORM ── */}
+                {plEntryMode === 'single' && (
+                  <div className="card">
+                    <h3>Log Payment Entry</h3>
 
-                      <div className="form-group">
-                        <label>Entry Date *</label>
+                    {plDataLoading ? (
+                      <div className="loading"><div className="spinner" />Loading...</div>
+                    ) : (
+                      <form onSubmit={plHandleSubmit}>
+                        <div className="form-grid">
+
+                          <div className="form-group">
+                            <label>Entry Date *</label>
                         <input
                           type="date"
                           name="entry_date"
@@ -1668,7 +1881,18 @@ function CuttingView({ user, onLogout }) {
                           min="1"
                           required
                           placeholder="Pieces"
+                          style={plQtyCapError ? { borderColor: '#dc2626' } : {}}
                         />
+                        {plMatchedAlloc && (
+                          <p style={{ fontSize: '12px', color: '#0f3460', marginTop: '4px', fontWeight: '600' }}>
+                            Accepted by Supervisor: {Number(plMatchedAlloc.qty_accepted || 0)} pcs
+                          </p>
+                        )}
+                        {plQtyCapError && (
+                          <p style={{ fontSize: '12px', color: '#dc2626', marginTop: '4px', fontWeight: '600' }}>
+                            {plQtyCapError}
+                          </p>
+                        )}
                       </div>
 
                       {/* Rate — read-only, auto-fetched */}
@@ -1718,7 +1942,7 @@ function CuttingView({ user, onLogout }) {
                       <button
                         type="submit"
                         className="btn btn-primary"
-                        disabled={plSubmitting || !!plRateError || plCurrentRate === null}
+                        disabled={plSubmitting || !!plRateError || plCurrentRate === null || !!plQtyCapError}
                         style={{ maxWidth: '200px' }}
                       >
                         {plSubmitting ? 'Submitting...' : 'Submit Entry'}
@@ -1730,8 +1954,152 @@ function CuttingView({ user, onLogout }) {
                       )}
                     </div>
                   </form>
+                    )}
+                  </div>
                 )}
-              </div>
+
+                {/* ── BULK ENTRY ── */}
+                {plEntryMode === 'bulk' && (
+                  <div className="card">
+                    <h3>Bulk Entry</h3>
+
+                    <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-end', marginBottom: '20px', flexWrap: 'wrap' }}>
+                      <div className="form-group" style={{ marginBottom: 0, minWidth: '220px' }}>
+                        <label>Select Stitcher</label>
+                        <select value={bulkStitcher} onChange={e => setBulkStitcher(e.target.value)}>
+                          <option value="">Select stitcher...</option>
+                          {plStitchers.map(s => (
+                            <option key={s.stitcher_code} value={s.stitcher_code}>
+                              {s.stitcher_code} — {s.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <button
+                        className="btn btn-primary btn-small"
+                        onClick={() => loadBulkRows(bulkStitcher)}
+                        disabled={!bulkStitcher || bulkLoading}
+                        style={{ minWidth: '80px' }}
+                      >
+                        {bulkLoading ? 'Loading...' : 'Load'}
+                      </button>
+                    </div>
+
+                    {bulkMsg && (
+                      <div className={`alert alert-${bulkMsg.type}`} style={{ marginBottom: '16px' }}>
+                        {bulkMsg.text}
+                      </div>
+                    )}
+
+                    {bulkLoading ? (
+                      <div className="loading"><div className="spinner" />Loading allocations...</div>
+                    ) : bulkRows.length > 0 ? (
+                      <>
+                        <div className="table-container" style={{ marginBottom: '16px' }}>
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>PO</th>
+                                <th>Component</th>
+                                <th>Department</th>
+                                <th>Operation</th>
+                                <th>Accepted</th>
+                                <th>Qty to Pay</th>
+                                <th>Rate (PKR)</th>
+                                <th>Amount (PKR)</th>
+                                <th>Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {bulkRows.map((row, i) => (
+                                <tr key={i} style={row.alreadyLogged ? { background: '#fffbeb' } : {}}>
+                                  <td>{row.po_number}</td>
+                                  <td style={{ textTransform: 'capitalize' }}>{row.component}</td>
+                                  <td>
+                                    <select
+                                      value={row.department}
+                                      onChange={e => bulkHandleRowChange(i, 'department', e.target.value)}
+                                      style={{ padding: '4px 8px', fontSize: '13px', border: '1px solid #e8e8e8', borderRadius: '6px', minWidth: '150px' }}
+                                    >
+                                      <option value="">Select...</option>
+                                      {PL_DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                                    </select>
+                                  </td>
+                                  <td>
+                                    <select
+                                      value={row.operation}
+                                      onChange={e => bulkHandleRowChange(i, 'operation', e.target.value)}
+                                      disabled={!row.department}
+                                      style={{ padding: '4px 8px', fontSize: '13px', border: '1px solid #e8e8e8', borderRadius: '6px', minWidth: '120px' }}
+                                    >
+                                      <option value="">Select...</option>
+                                      {(PL_OPERATION_OPTIONS[row.department] || []).map(op => (
+                                        <option key={op} value={op}>{op}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  <td style={{ textAlign: 'right' }}>{row.qty_accepted}</td>
+                                  <td>
+                                    <input
+                                      type="number"
+                                      value={row.qty_claimed}
+                                      onChange={e => bulkHandleRowChange(i, 'qty_claimed', e.target.value)}
+                                      min="0"
+                                      max={row.qty_accepted}
+                                      style={{ width: '80px', padding: '4px 8px', border: '1px solid #e8e8e8', borderRadius: '6px', fontSize: '13px' }}
+                                    />
+                                  </td>
+                                  <td style={{ textAlign: 'right' }}>
+                                    {row.rate !== null ? Number(row.rate).toLocaleString() : '—'}
+                                  </td>
+                                  <td style={{ textAlign: 'right', fontWeight: '600' }}>
+                                    {row.rate !== null ? Number(row.amount || 0).toLocaleString() : '—'}
+                                  </td>
+                                  <td>
+                                    {row.alreadyLogged ? (
+                                      <span style={{ padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '700', background: '#fef3c7', color: '#92400e' }}>
+                                        Already Logged
+                                      </span>
+                                    ) : (
+                                      <span style={{ padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '700', background: '#dcfce7', color: '#166534' }}>
+                                        Pending
+                                      </span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot>
+                              <tr style={{ fontWeight: '700', background: '#f0f7ff' }}>
+                                <td colSpan={5} style={{ textAlign: 'right' }}>TOTAL</td>
+                                <td style={{ textAlign: 'right' }}>
+                                  {bulkRows.reduce((s, r) => s + (Number(r.qty_claimed) || 0), 0).toLocaleString()}
+                                </td>
+                                <td>—</td>
+                                <td style={{ textAlign: 'right' }}>
+                                  {bulkRows.reduce((s, r) => s + (Number(r.amount) || 0), 0).toLocaleString()}
+                                </td>
+                                <td />
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                          <button
+                            className="btn btn-primary"
+                            onClick={bulkHandleSubmitAll}
+                            disabled={bulkSubmitting}
+                            style={{ maxWidth: '180px' }}
+                          >
+                            {bulkSubmitting ? `Submitting ${bulkProgress}...` : 'Submit All'}
+                          </button>
+                        </div>
+                      </>
+                    ) : null}
+                  </div>
+                )}
+              </>
             )}
 
             {/* ── Sub-tab 3: Stitcher Dashboard ────────────────────────── */}

@@ -28,6 +28,10 @@ export default async function handler(req, res) {
         conditions.push(`stitcher_code = $${paramIdx++}`);
         values.push(req.query.stitcher_code);
       }
+      if (req.query.stitcher_name) {
+        conditions.push(`stitcher_name = $${paramIdx++}`);
+        values.push(req.query.stitcher_name);
+      }
       if (req.query.status) {
         conditions.push(`status = $${paramIdx++}`);
         values.push(req.query.status);
