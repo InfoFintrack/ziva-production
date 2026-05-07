@@ -1086,6 +1086,7 @@ function PPView({ user, onLogout }) {
                     if (acc.fromPO) {
                       const issuedSoFar = issuePOLog.filter(l => l.component === acc.type).reduce((sum, l) => sum + Number(l.meters_issued), 0);
                       const remaining   = acc.poTotalQty - issuedSoFar;
+                      if (remaining <= 0) return null;
                       const qtyNum      = Number(acc.qty || 0);
                       const overIssued  = qtyNum > 0 && qtyNum > remaining;
                       return (
