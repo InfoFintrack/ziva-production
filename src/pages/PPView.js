@@ -304,7 +304,7 @@ function PPView({ user, onLogout }) {
       const fromPO = rawPOAccessories
         .filter(a => {
           const issued = issuePOLog
-            .filter(l => l.component === a.accessory_type)
+            .filter(l => l.component.trim().toLowerCase() === a.accessory_type.trim().toLowerCase())
             .reduce((sum, l) => sum + Number(l.meters_issued), 0);
           return Number(a.quantity) - issued > 0;
         })
@@ -452,7 +452,7 @@ function PPView({ user, onLogout }) {
       // Accessory validation
       for (const acc of accessories) {
         if (!acc.fromPO || !acc.qty || Number(acc.qty) === 0) continue;
-        const issuedSoFar = issuePOLog.filter(l => l.component === acc.type).reduce((sum, l) => sum + Number(l.meters_issued), 0);
+        const issuedSoFar = issuePOLog.filter(l => l.component.trim().toLowerCase() === acc.type.trim().toLowerCase()).reduce((sum, l) => sum + Number(l.meters_issued), 0);
         const remaining   = acc.poTotalQty - issuedSoFar;
         if (Number(acc.qty) > remaining) {
           setMessage({ type: 'error', text: `Cannot issue ${acc.qty} of "${acc.type}" — only ${remaining} remaining.` });
@@ -464,14 +464,41 @@ function PPView({ user, onLogout }) {
     setSubmitting(true);
     setMessage(null);
     try {
-      const result = await submitIssuance({
-        ...form,
-        poNumber:    `PO-${form.poNumber}`,
-        joNumber:    form.joNumber ? `JO-${form.joNumber}` : '',
-        accessories: accessories.length > 0 ? JSON.stringify(accessories) : null,
-        laces:       laces.length > 0       ? JSON.stringify(laces)       : null,
-        issuedBy:    user.name,
-      });
+      let result;
+      if (issuePO) {
+        const activeComponents = ['shirt', 'trouser', 'dupatta'].filter(c => Number(compQtys[c]) > 0);
+        result = { success: true, recordId: null, lotNumber: null };
+        for (const comp of activeComponents) {
+          const compResult = await submitIssuance({
+            poNumber:        issuePO,
+            joNumber:        form.joNumber ? `JO-${form.joNumber}` : '',
+            receivingVendor: form.receivingVendor,
+            garmentType:     issuePODetails?.garment_type || form.garmentType,
+            article:         issuePODetails?.article_name || form.article,
+            fabricName:      issuePODetails?.[`${comp}_fabric`] || '',
+            fabricColor:     issuePODetails?.[`${comp}_colour`] || '',
+            qtyIssued:       Number(compQtys[comp]),
+            unit:            form.unit || 'Pieces',
+            noOfThaan:       0,
+            fabricWidth:     '',
+            issueRemarks:    issueSharedRemarks || '',
+            issuedBy:        user.name,
+            accessories:     null,
+            laces:           null,
+          });
+          if (!compResult.success) { result = compResult; break; }
+          if (!result.recordId) result = compResult;
+        }
+      } else {
+        result = await submitIssuance({
+          ...form,
+          poNumber:    `PO-${form.poNumber}`,
+          joNumber:    form.joNumber ? `JO-${form.joNumber}` : '',
+          accessories: accessories.length > 0 ? JSON.stringify(accessories) : null,
+          laces:       laces.length > 0       ? JSON.stringify(laces)       : null,
+          issuedBy:    user.name,
+        });
+      }
 
       if (result.success) {
         // Log multi-component issuances
@@ -1215,7 +1242,7 @@ function PPView({ user, onLogout }) {
                   </div>
                   {accessories.map((acc, i) => {
                     if (acc.fromPO) {
-                      const issuedSoFar = issuePOLog.filter(l => l.component === acc.type).reduce((sum, l) => sum + Number(l.meters_issued), 0);
+                      const issuedSoFar = issuePOLog.filter(l => l.component.trim().toLowerCase() === acc.type.trim().toLowerCase()).reduce((sum, l) => sum + Number(l.meters_issued), 0);
                       const remaining   = acc.poTotalQty - issuedSoFar;
                       if (remaining <= 0) return null;
                       const qtyNum      = Number(acc.qty || 0);
