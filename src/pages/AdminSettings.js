@@ -7,7 +7,7 @@ import {
   getStitchers, updateStitcher,
 } from '../api';
 
-const ROLES = ['PP', 'Cutting', 'Admin', 'Accounts', 'CEO', 'Supervisor', 'Stitching'];
+const ROLES = ['PP', 'Cutting', 'Admin', 'Accounts', 'CEO', 'Supervisor', 'Stitching', 'Finishing'];
 const DROPDOWN_FIELDS = [
   { key: 'garmentTypes',     label: 'Garment Type',      field: 'Garment_Type' },
   { key: 'units',            label: 'Unit',              field: 'Unit' },
@@ -17,7 +17,7 @@ const DROPDOWN_FIELDS = [
 const SPECIALIZATIONS = ['Shirt', 'Trouser', 'Dupatta', 'Mixed'];
 
 const EMPTY_USER_FORM = { name: '', passcode: '', role: 'PP' };
-const EMPTY_STITCHER_EDIT = { name: '', phone: '', cnic: '', specialization: '', group_parent: '', status: 'Active' };
+const EMPTY_STITCHER_EDIT = { name: '', phone: '', cnic: '', specialization: '', group_parent: '', status: 'Active', worker_type: '' };
 
 const PHONE_REGEX = /^\d{4}-\d{7}$/;
 const CNIC_REGEX  = /^[0-9]{5}-[0-9]{7}-[0-9]{1}$/;
@@ -262,6 +262,7 @@ function AdminSettings({ user, onLogout }) {
       specialization: s.specialization || '',
       group_parent:   s.group_parent || '',
       status:         s.status || 'Active',
+      worker_type:    s.worker_type || '',
     });
     setEditErrors({});
     setEditModal(s);
@@ -308,6 +309,7 @@ function AdminSettings({ user, onLogout }) {
         specialization: editForm.specialization,
         group_parent:   editForm.group_parent || null,
         status:         editForm.status,
+        worker_type:    editForm.worker_type || null,
       });
       if (res.success) {
         setStitcherMessage({ type: 'success', text: `✓ Stitcher "${editForm.name}" updated successfully.` });
@@ -565,6 +567,7 @@ function AdminSettings({ user, onLogout }) {
                         <th>Code</th>
                         <th>Name</th>
                         <th>Specialization</th>
+                        <th>Worker Type</th>
                         <th>Group</th>
                         <th>Phone</th>
                         <th>CNIC</th>
@@ -578,6 +581,7 @@ function AdminSettings({ user, onLogout }) {
                           <td>{s.stitcher_code}</td>
                           <td>{s.name}</td>
                           <td>{s.specialization}</td>
+                          <td>{s.worker_type || 'Stitching'}</td>
                           <td>{s.group_parent || '—'}</td>
                           <td>{s.phone}</td>
                           <td>
@@ -723,6 +727,16 @@ function AdminSettings({ user, onLogout }) {
                   <option value="Inactive">Inactive</option>
                 </select>
               </div>
+            </div>
+
+            <div className="form-group">
+              <label>Worker Type</label>
+              <select name="worker_type" value={editForm.worker_type} onChange={handleEditFormChange}>
+                <option value="">Stitching (default)</option>
+                <option value="Stitching">Stitching</option>
+                <option value="Finishing_InHouse">Finishing — In-House</option>
+                <option value="Finishing_OutOfFactory">Finishing — Out of Factory</option>
+              </select>
             </div>
 
             <div className="form-group">

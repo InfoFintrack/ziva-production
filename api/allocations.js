@@ -1,7 +1,7 @@
 const { getPool } = require('./_lib/db');
 const { authenticateToken } = require('./_lib/auth');
 
-const ALLOWED_ROLES = ['Supervisor', 'Admin'];
+const ALLOWED_ROLES = ['Supervisor', 'Admin', 'Finishing'];
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -15,6 +15,7 @@ export default async function handler(req, res) {
   const pool = getPool();
 
   if (req.method === 'GET') {
+    await pool.query(`ALTER TABLE stitcher_allocations ADD COLUMN IF NOT EXISTS module_type VARCHAR(50) DEFAULT 'Stitching'`).catch(() => {});
     try {
       const conditions = [];
       const values = [];
@@ -36,6 +37,10 @@ export default async function handler(req, res) {
         conditions.push(`status = $${paramIdx++}`);
         values.push(req.query.status);
       }
+      if (req.query.module_type) {
+        conditions.push(`module_type = $${paramIdx++}`);
+        values.push(req.query.module_type);
+      }
 
       const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
       const { rows } = await pool.query(
@@ -53,7 +58,7 @@ export default async function handler(req, res) {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
 
-    const { po_number, component, stitcher_code, qty_allocated, allocation_date, remarks } = req.body;
+    const { po_number, component, stitcher_code, qty_allocated, allocation_date, remarks, module_type } = req.body;
 
     if (!po_number || !component || !stitcher_code || !qty_allocated) {
       return res.json({ success: false, message: 'po_number, component, stitcher_code, and qty_allocated are required.' });
@@ -83,8 +88,8 @@ export default async function handler(req, res) {
         `INSERT INTO stitcher_allocations
            (allocation_date, po_number, component, stitcher_id, stitcher_code, stitcher_name,
             qty_allocated, qty_returned, qty_accepted, qty_rework, qty_rejected,
-            status, remarks, allocated_by, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, 0, 0, 'In Progress', $8, $9, NOW())
+            status, remarks, allocated_by, module_type, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, 0, 0, 'In Progress', $8, $9, $10, NOW())
          RETURNING *`,
         [
           allocation_date || new Date().toISOString().split('T')[0],
@@ -96,6 +101,7 @@ export default async function handler(req, res) {
           qty_allocated,
           remarks || null,
           user.name,
+          module_type || 'Stitching',
         ]
       );
 

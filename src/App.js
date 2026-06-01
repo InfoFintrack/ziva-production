@@ -9,12 +9,14 @@ import StitchingView from './pages/StitchingView';
 import SupervisorView from './pages/SupervisorView';
 import AccountsView from './pages/AccountsView';
 import CEOView from './pages/CEOView';
+import FinishingView from './pages/FinishingView';
 
 const ROLE_HOME = {
   PP:         '/issue',
   Cutting:    '/accept',
   Stitching:  '/stitching',
   Supervisor: '/supervisor',
+  Finishing:  '/finishing',
   Accounts:   '/accounts',
   CEO:        '/ceo',
   Admin:      '/admin',
@@ -70,6 +72,12 @@ function App() {
         <Route path="/supervisor" element={
           user.role === 'Supervisor'
             ? <SupervisorView user={user} onLogout={handleLogout} />
+            : <Navigate to={home} />
+        } />
+
+        <Route path="/finishing" element={
+          user.role === 'Finishing'
+            ? <FinishingView user={user} onLogout={handleLogout} />
             : <Navigate to={home} />
         } />
 

@@ -78,14 +78,19 @@ export default async function handler(req, res) {
   // ── ?type=issuance_log ───────────────────────────────────────────────────
   if (type === 'issuance_log') {
     if (req.method === 'GET') {
-      const { po_number } = req.query;
-      if (!po_number) {
-        return res.json({ success: false, message: 'po_number query parameter is required.' });
+      const { po_number, issued_by } = req.query;
+      if (!po_number && !issued_by) {
+        return res.json({ success: false, message: 'po_number or issued_by query parameter is required.' });
       }
       try {
+        const conditions = [];
+        const values = [];
+        let paramIdx = 1;
+        if (po_number) { conditions.push(`po_number = $${paramIdx++}`); values.push(po_number); }
+        if (issued_by) { conditions.push(`issued_by = $${paramIdx++}`); values.push(issued_by); }
         const { rows } = await pool.query(
-          `SELECT * FROM fabric_issuance_log WHERE po_number = $1 ORDER BY issued_at DESC`,
-          [po_number]
+          `SELECT * FROM fabric_issuance_log WHERE ${conditions.join(' AND ')} ORDER BY issued_at DESC`,
+          values
         );
         return res.json({ success: true, logs: rows });
       } catch (err) {
@@ -95,7 +100,7 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      if (user.role !== 'PP') {
+      if (!['PP', 'Finishing'].includes(user.role)) {
         return res.status(403).json({ success: false, error: 'Access denied' });
       }
       const { po_number, component, meters_issued, issued_by, remarks } = req.body;

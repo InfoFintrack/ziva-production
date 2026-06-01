@@ -222,13 +222,15 @@ function AccountsView({ user, onLogout }) {
 
   const computeGroups = () => {
     const groups = {};
-    weekPayments.forEach(p => {
-      const k = p.stitcher_code;
-      if (!groups[k]) groups[k] = { code: k, name: p.stitcher_name || k, entries: [], gross: 0, totalPieces: 0, advance: 0 };
-      groups[k].entries.push(p);
-      groups[k].gross       += Number(p.amount     || 0);
-      groups[k].totalPieces += Number(p.qty_claimed || 0);
-    });
+    weekPayments
+      .filter(p => !p.worker_type || p.worker_type === 'Stitching')
+      .forEach(p => {
+        const k = p.stitcher_code;
+        if (!groups[k]) groups[k] = { code: k, name: p.stitcher_name || k, entries: [], gross: 0, totalPieces: 0, advance: 0 };
+        groups[k].entries.push(p);
+        groups[k].gross       += Number(p.amount     || 0);
+        groups[k].totalPieces += Number(p.qty_claimed || 0);
+      });
     weekAdvances.forEach(a => {
       const k = a.stitcher_code;
       if (!groups[k]) groups[k] = { code: k, name: a.stitcher_name || k, entries: [], gross: 0, totalPieces: 0, advance: 0 };
@@ -241,6 +243,27 @@ function AccountsView({ user, onLogout }) {
       if (uniq.every(s => s === 'Paid'))                         g.status = 'Paid';
       else if (uniq.every(s => s === 'Verified' || s === 'Paid')) g.status = 'Verified';
       else                                                         g.status = 'Pending';
+    });
+    return Object.values(groups);
+  };
+
+  const computeFinishingGroups = () => {
+    const groups = {};
+    weekPayments
+      .filter(p => p.worker_type === 'Finishing_InHouse' || p.worker_type === 'Finishing_OutOfFactory')
+      .forEach(p => {
+        const k = p.stitcher_code;
+        if (!groups[k]) groups[k] = { code: k, name: p.stitcher_name || k, entries: [], gross: 0, totalPieces: 0, worker_type: p.worker_type };
+        groups[k].entries.push(p);
+        groups[k].gross       += Number(p.amount     || 0);
+        groups[k].totalPieces += Number(p.qty_claimed || 0);
+      });
+    Object.values(groups).forEach(g => {
+      if (!g.entries.length) { g.status = 'Pending'; return; }
+      const uniq = [...new Set(g.entries.map(e => e.payment_status))];
+      if (uniq.every(s => s === 'Paid'))                          g.status = 'Paid';
+      else if (uniq.every(s => s === 'Verified' || s === 'Paid')) g.status = 'Verified';
+      else                                                          g.status = 'Pending';
     });
     return Object.values(groups);
   };
@@ -279,6 +302,23 @@ function AccountsView({ user, onLogout }) {
       setPayMsg({ type: 'error', text: 'Request failed.' });
     }
     setPayActing(prev => ({ ...prev, [stitcherCode]: false }));
+  };
+
+  const handleMarkPaidFlexible = async (id) => {
+    setPayActing(prev => ({ ...prev, [id]: true }));
+    setPayMsg(null);
+    try {
+      const res = await updatePayment({ action: 'mark_paid_flexible', id });
+      if (res.success) {
+        setPayMsg({ type: 'success', text: 'Payment marked as paid.' });
+        loadWeekData(payWeek);
+      } else {
+        setPayMsg({ type: 'error', text: res.message || 'Mark paid failed.' });
+      }
+    } catch {
+      setPayMsg({ type: 'error', text: 'Request failed.' });
+    }
+    setPayActing(prev => ({ ...prev, [id]: false }));
   };
 
   const handleAdvanceChange = (e) => setAdvForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -892,96 +932,214 @@ function AccountsView({ user, onLogout }) {
                   <div className="loading"><div className="spinner" />Loading...</div>
                 ) : (() => {
                   const groups = computeGroups();
-                  if (!groups.length) {
-                    return <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>No entries for this week.</p>;
-                  }
+                  const fGroups = computeFinishingGroups();
                   return (
-                    <div className="table-container">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Code</th>
-                            <th>Stitcher</th>
-                            <th>Total Pieces</th>
-                            <th>Gross (PKR)</th>
-                            <th>Advance (PKR)</th>
-                            <th>Net Payable (PKR)</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {groups.map(g => (
-                            <React.Fragment key={g.code}>
-                              <tr
-                                onClick={() => setExpandedRow(expandedRow === g.code ? null : g.code)}
-                                style={{ cursor: 'pointer', background: expandedRow === g.code ? '#f0f7ff' : undefined }}
-                              >
-                                <td>{g.code}</td>
-                                <td>
-                                  <span style={{ marginRight: '6px', fontSize: '11px', color: '#888' }}>
-                                    {expandedRow === g.code ? '▲' : '▶'}
-                                  </span>
-                                  {g.name}
-                                </td>
-                                <td>{g.totalPieces.toLocaleString()}</td>
-                                <td>PKR {g.gross.toLocaleString()}</td>
-                                <td>PKR {g.advance.toLocaleString()}</td>
-                                <td style={{ fontWeight: '700', color: g.net >= 0 ? '#16a34a' : '#dc2626' }}>
-                                  PKR {g.net.toLocaleString()}
-                                </td>
-                                <td><PayStatusBadge status={g.status} /></td>
-                                <td onClick={e => e.stopPropagation()}>
-                                  <div style={{ display: 'flex', gap: '6px' }}>
-                                    {g.status === 'Pending' && (
-                                      <button
-                                        className="btn btn-small"
-                                        style={{ background: '#3b82f6', color: 'white', whiteSpace: 'nowrap' }}
-                                        onClick={() => handleVerify(g.code)}
-                                        disabled={!!payActing[g.code]}
-                                      >
-                                        {payActing[g.code] ? '...' : 'Verify'}
-                                      </button>
-                                    )}
-                                    {g.status === 'Verified' && (
-                                      <button
-                                        className="btn btn-small"
-                                        style={{ background: '#16a34a', color: 'white', whiteSpace: 'nowrap' }}
-                                        onClick={() => handleMarkPaid(g.code)}
-                                        disabled={!!payActing[g.code]}
-                                      >
-                                        {payActing[g.code] ? '...' : 'Mark Paid'}
-                                      </button>
-                                    )}
-                                  </div>
-                                </td>
+                    <>
+                      {groups.length === 0 ? (
+                        <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>No stitching entries for this week.</p>
+                      ) : (
+                        <div className="table-container">
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>Code</th>
+                                <th>Stitcher</th>
+                                <th>Total Pieces</th>
+                                <th>Gross (PKR)</th>
+                                <th>Advance (PKR)</th>
+                                <th>Net Payable (PKR)</th>
+                                <th>Status</th>
+                                <th>Actions</th>
                               </tr>
-
-                              {/* Expanded entry breakdown */}
-                              {expandedRow === g.code && g.entries.map(e => {
-                                const po = pos.find(p => p.po_number === e.po_number);
-                                return (
-                                  <tr key={e.id} style={{ background: '#fafbff' }}>
-                                    <td style={{ paddingLeft: '32px', color: '#888', fontSize: '13px' }}>
-                                      {e.entry_date ? String(e.entry_date).slice(0, 10) : '—'}
-                                      &nbsp;·&nbsp;{e.po_number}
+                            </thead>
+                            <tbody>
+                              {groups.map(g => (
+                                <React.Fragment key={g.code}>
+                                  <tr
+                                    onClick={() => setExpandedRow(expandedRow === g.code ? null : g.code)}
+                                    style={{ cursor: 'pointer', background: expandedRow === g.code ? '#f0f7ff' : undefined }}
+                                  >
+                                    <td>{g.code}</td>
+                                    <td>
+                                      <span style={{ marginRight: '6px', fontSize: '11px', color: '#888' }}>
+                                        {expandedRow === g.code ? '▲' : '▶'}
+                                      </span>
+                                      {g.name}
                                     </td>
-                                    <td style={{ fontSize: '13px', color: '#555' }}>{po?.collection_name || '—'}</td>
-                                    <td style={{ fontSize: '13px', color: '#555' }}>{e.department}</td>
-                                    <td style={{ fontSize: '13px', color: '#555' }}>{e.operation}</td>
-                                    <td style={{ fontSize: '13px' }}>{e.qty_claimed}</td>
-                                    <td style={{ fontSize: '13px' }}>PKR {Number(e.rate || 0).toLocaleString()}</td>
-                                    <td style={{ fontSize: '13px', fontWeight: '600' }} colSpan={2}>
-                                      PKR {Number(e.amount || 0).toLocaleString()}
+                                    <td>{g.totalPieces.toLocaleString()}</td>
+                                    <td>PKR {g.gross.toLocaleString()}</td>
+                                    <td>PKR {g.advance.toLocaleString()}</td>
+                                    <td style={{ fontWeight: '700', color: g.net >= 0 ? '#16a34a' : '#dc2626' }}>
+                                      PKR {g.net.toLocaleString()}
+                                    </td>
+                                    <td><PayStatusBadge status={g.status} /></td>
+                                    <td onClick={e => e.stopPropagation()}>
+                                      <div style={{ display: 'flex', gap: '6px' }}>
+                                        {g.status === 'Pending' && (
+                                          <button
+                                            className="btn btn-small"
+                                            style={{ background: '#3b82f6', color: 'white', whiteSpace: 'nowrap' }}
+                                            onClick={() => handleVerify(g.code)}
+                                            disabled={!!payActing[g.code]}
+                                          >
+                                            {payActing[g.code] ? '...' : 'Verify'}
+                                          </button>
+                                        )}
+                                        {g.status === 'Verified' && (
+                                          <button
+                                            className="btn btn-small"
+                                            style={{ background: '#16a34a', color: 'white', whiteSpace: 'nowrap' }}
+                                            onClick={() => handleMarkPaid(g.code)}
+                                            disabled={!!payActing[g.code]}
+                                          >
+                                            {payActing[g.code] ? '...' : 'Mark Paid'}
+                                          </button>
+                                        )}
+                                      </div>
                                     </td>
                                   </tr>
-                                );
-                              })}
-                            </React.Fragment>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                                  {expandedRow === g.code && g.entries.map(e => {
+                                    const po = pos.find(p => p.po_number === e.po_number);
+                                    return (
+                                      <tr key={e.id} style={{ background: '#fafbff' }}>
+                                        <td style={{ paddingLeft: '32px', color: '#888', fontSize: '13px' }}>
+                                          {e.entry_date ? String(e.entry_date).slice(0, 10) : '—'}
+                                          &nbsp;·&nbsp;{e.po_number}
+                                        </td>
+                                        <td style={{ fontSize: '13px', color: '#555' }}>{po?.collection_name || '—'}</td>
+                                        <td style={{ fontSize: '13px', color: '#555' }}>{e.department}</td>
+                                        <td style={{ fontSize: '13px', color: '#555' }}>{e.operation}</td>
+                                        <td style={{ fontSize: '13px' }}>{e.qty_claimed}</td>
+                                        <td style={{ fontSize: '13px' }}>PKR {Number(e.rate || 0).toLocaleString()}</td>
+                                        <td style={{ fontSize: '13px', fontWeight: '600' }} colSpan={2}>
+                                          PKR {Number(e.amount || 0).toLocaleString()}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </React.Fragment>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      {/* ── Finishing Payments ── */}
+                      <div style={{ marginTop: '32px' }}>
+                        <h4 style={{ color: '#0f3460', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid #e0e7ff', fontSize: '15px', fontWeight: '700' }}>
+                          Finishing Payments
+                        </h4>
+                        {fGroups.length === 0 ? (
+                          <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>No finishing entries for this week.</p>
+                        ) : (
+                          <div className="table-container">
+                            <table>
+                              <thead>
+                                <tr>
+                                  <th>Code</th>
+                                  <th>Worker</th>
+                                  <th>Type</th>
+                                  <th>Total Pieces</th>
+                                  <th>Gross (PKR)</th>
+                                  <th>Status</th>
+                                  <th>Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {fGroups.map(g => {
+                                  const isFlexible = g.worker_type === 'Finishing_OutOfFactory';
+                                  const expandKey = `f_${g.code}`;
+                                  return (
+                                    <React.Fragment key={g.code}>
+                                      <tr
+                                        onClick={() => setExpandedRow(expandedRow === expandKey ? null : expandKey)}
+                                        style={{ cursor: 'pointer', background: expandedRow === expandKey ? '#f0f7ff' : undefined }}
+                                      >
+                                        <td>{g.code}</td>
+                                        <td>
+                                          <span style={{ marginRight: '6px', fontSize: '11px', color: '#888' }}>
+                                            {expandedRow === expandKey ? '▲' : '▶'}
+                                          </span>
+                                          {g.name}
+                                        </td>
+                                        <td>
+                                          {isFlexible ? (
+                                            <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', background: '#fdf4ff', color: '#7c3aed' }}>
+                                              Flexible
+                                            </span>
+                                          ) : (
+                                            <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', background: '#eff6ff', color: '#1e40af' }}>
+                                              In-House
+                                            </span>
+                                          )}
+                                        </td>
+                                        <td>{g.totalPieces.toLocaleString()}</td>
+                                        <td>PKR {g.gross.toLocaleString()}</td>
+                                        <td><PayStatusBadge status={g.status} /></td>
+                                        <td onClick={e => e.stopPropagation()}>
+                                          {!isFlexible && (
+                                            <div style={{ display: 'flex', gap: '6px' }}>
+                                              {g.status === 'Pending' && (
+                                                <button
+                                                  className="btn btn-small"
+                                                  style={{ background: '#3b82f6', color: 'white', whiteSpace: 'nowrap' }}
+                                                  onClick={() => handleVerify(g.code)}
+                                                  disabled={!!payActing[g.code]}
+                                                >
+                                                  {payActing[g.code] ? '...' : 'Verify'}
+                                                </button>
+                                              )}
+                                              {g.status === 'Verified' && (
+                                                <button
+                                                  className="btn btn-small"
+                                                  style={{ background: '#16a34a', color: 'white', whiteSpace: 'nowrap' }}
+                                                  onClick={() => handleMarkPaid(g.code)}
+                                                  disabled={!!payActing[g.code]}
+                                                >
+                                                  {payActing[g.code] ? '...' : 'Mark Paid'}
+                                                </button>
+                                              )}
+                                            </div>
+                                          )}
+                                        </td>
+                                      </tr>
+                                      {expandedRow === expandKey && g.entries.map(e => {
+                                        const po = pos.find(p => p.po_number === e.po_number);
+                                        return (
+                                          <tr key={e.id} style={{ background: '#fafbff' }}>
+                                            <td style={{ paddingLeft: '32px', color: '#888', fontSize: '13px' }}>
+                                              {e.entry_date ? String(e.entry_date).slice(0, 10) : '—'}
+                                              &nbsp;·&nbsp;{e.po_number}
+                                            </td>
+                                            <td style={{ fontSize: '13px', color: '#555' }}>{po?.collection_name || '—'}</td>
+                                            <td style={{ fontSize: '13px', color: '#555' }}>{e.department}</td>
+                                            <td style={{ fontSize: '13px' }}>{e.qty_claimed}</td>
+                                            <td style={{ fontSize: '13px' }}>PKR {Number(e.amount || 0).toLocaleString()}</td>
+                                            <td><PayStatusBadge status={e.payment_status} /></td>
+                                            <td>
+                                              {isFlexible && e.payment_status !== 'Paid' && (
+                                                <button
+                                                  className="btn btn-small"
+                                                  style={{ background: '#16a34a', color: 'white', whiteSpace: 'nowrap' }}
+                                                  onClick={() => handleMarkPaidFlexible(e.id)}
+                                                  disabled={!!payActing[e.id]}
+                                                >
+                                                  {payActing[e.id] ? '...' : 'Mark Paid'}
+                                                </button>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </React.Fragment>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    </>
                   );
                 })()}
               </div>

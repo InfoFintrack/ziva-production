@@ -150,8 +150,10 @@ export default async function handler(req, res) {
 
   // ── Default: cmt_payments GET / POST / PUT ────────────────────────────────
 
-  // Ensure color column exists (idempotent migration)
+  // Idempotent column migrations
   await pool.query(`ALTER TABLE cmt_payments ADD COLUMN IF NOT EXISTS color VARCHAR(100)`).catch(() => {});
+  await pool.query(`ALTER TABLE cmt_payments ADD COLUMN IF NOT EXISTS worker_type VARCHAR(50)`).catch(() => {});
+  await pool.query(`ALTER TABLE cmt_payments ADD COLUMN IF NOT EXISTS flexible_payment BOOLEAN DEFAULT FALSE`).catch(() => {});
 
   if (req.method === 'GET') {
     try {
@@ -187,6 +189,10 @@ export default async function handler(req, res) {
         conditions.push(`entry_date <= $${paramIdx++}`);
         values.push(req.query.date_to);
       }
+      if (req.query.worker_type) {
+        conditions.push(`worker_type = $${paramIdx++}`);
+        values.push(req.query.worker_type);
+      }
 
       const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
       const { rows } = await pool.query(
@@ -200,11 +206,11 @@ export default async function handler(req, res) {
     }
 
   } else if (req.method === 'POST') {
-    if (!['Stitching', 'Cutting', 'Admin'].includes(user.role)) {
+    if (!['Stitching', 'Cutting', 'Admin', 'Finishing'].includes(user.role)) {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
 
-    const { po_number, stitcher_code, department, operation, qty_claimed, entry_date, remarks, color } = req.body;
+    const { po_number, stitcher_code, department, operation, qty_claimed, entry_date, remarks, color, worker_type, flexible_payment } = req.body;
 
     if (!po_number || !stitcher_code || !department || !operation || !qty_claimed) {
       return res.json({ success: false, message: 'po_number, stitcher_code, department, operation, and qty_claimed are required.' });
@@ -250,8 +256,9 @@ export default async function handler(req, res) {
         `INSERT INTO cmt_payments
            (entry_date, po_number, stitcher_id, stitcher_code, stitcher_name,
             component, department, operation, qty_claimed, rate, amount,
-            week_ending, payment_status, color, remarks, submitted_by, submitted_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'Pending',$13,$14,$15,NOW())
+            week_ending, payment_status, color, remarks, submitted_by, submitted_at,
+            worker_type, flexible_payment)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'Pending',$13,$14,$15,NOW(),$16,$17)
          RETURNING *`,
         [
           resolvedEntryDate, po_number,
@@ -260,6 +267,8 @@ export default async function handler(req, res) {
           qty_claimed, rate, amount,
           week_ending,
           color || null, remarks || null, user.name,
+          worker_type || null,
+          flexible_payment === true || flexible_payment === 'true' ? true : false,
         ]
       );
 
@@ -279,8 +288,26 @@ export default async function handler(req, res) {
     if (!action) {
       return res.json({ success: false, message: 'action is required.' });
     }
-    if (!['verify', 'pay', 'mark_paid'].includes(action)) {
-      return res.json({ success: false, message: 'action must be "verify", "pay", or "mark_paid".' });
+    if (!['verify', 'pay', 'mark_paid', 'mark_paid_flexible'].includes(action)) {
+      return res.json({ success: false, message: 'action must be "verify", "pay", "mark_paid", or "mark_paid_flexible".' });
+    }
+
+    // mark_paid_flexible — marks a single payment record as Paid by id only (no week_ending restriction)
+    if (action === 'mark_paid_flexible') {
+      if (!id) return res.json({ success: false, message: 'id is required for mark_paid_flexible.' });
+      try {
+        const result = await pool.query(
+          `UPDATE cmt_payments SET payment_status = 'Paid', payment_date = $1 WHERE id = $2`,
+          [new Date().toISOString().split('T')[0], id]
+        );
+        if (result.rowCount === 0) {
+          return res.json({ success: false, message: 'Payment record not found.' });
+        }
+        return res.json({ success: true });
+      } catch (err) {
+        console.error('CMT Payments mark_paid_flexible error:', err.message);
+        return res.status(500).json({ success: false, message: 'Server error.' });
+      }
     }
 
     // Bulk update by stitcher_code + week_ending

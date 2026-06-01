@@ -84,7 +84,12 @@ export const submitCMTRate = (data) => post('/api/cmt-rates', data);
 export const approveCMTRate = (data) => authFetch('/api/cmt-rates', { method: 'PUT', body: JSON.stringify(data) });
 
 // Stitchers
-export const getStitchers = (activeOnly = false) => authFetch(`/api/stitchers${activeOnly ? '?active=true' : ''}`);
+export const getStitchers = (queryOrActiveOnly = '') => {
+  let qs = '';
+  if (queryOrActiveOnly === true) qs = '?active=true';
+  else if (typeof queryOrActiveOnly === 'string') qs = queryOrActiveOnly;
+  return authFetch(`/api/stitchers${qs}`);
+};
 export const createStitcher = (data) => post('/api/stitchers', data);
 export const updateStitcher = (data) => authFetch('/api/stitchers', { method: 'PUT', body: JSON.stringify(data) });
 
@@ -103,6 +108,8 @@ export const deletePoAccessories = (poNumber) =>
 // Fabric Issuance Log (merged into po-master via ?type=issuance_log)
 export const getFabricIssuanceLog = (poNumber) =>
   authFetch(`/api/po-master?type=issuance_log&po_number=${encodeURIComponent(poNumber)}`);
+export const getFinishingIntakeLog = (params = '') =>
+  authFetch(`/api/po-master?type=issuance_log${params}`);
 export const logFabricIssuance = (data) => post('/api/po-master?type=issuance_log', data);
 
 // CMT Payments

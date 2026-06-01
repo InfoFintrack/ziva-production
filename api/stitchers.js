@@ -5,7 +5,7 @@ const CNIC_REGEX  = /^[0-9]{5}-[0-9]{7}-[0-9]{1}$/;
 const PHONE_REGEX = /^[0-9]{4}-[0-9]{7}$/;
 
 // Whitelist of fields that may be updated (excludes id and stitcher_code)
-const ALLOWED_UPDATE_FIELDS = ['name', 'cnic', 'phone', 'specialization', 'status', 'date_joined', 'group_parent'];
+const ALLOWED_UPDATE_FIELDS = ['name', 'cnic', 'phone', 'specialization', 'status', 'date_joined', 'group_parent', 'worker_type'];
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -19,10 +19,23 @@ export default async function handler(req, res) {
   const pool = getPool();
 
   if (req.method === 'GET') {
+    await pool.query(`ALTER TABLE stitchers ADD COLUMN IF NOT EXISTS worker_type VARCHAR(50)`).catch(() => {});
     try {
-      const where = req.query.active === 'true' ? `WHERE status = 'Active'` : '';
+      const conditions = [];
+      const values = [];
+      let paramIdx = 1;
+      if (req.query.active === 'true') {
+        conditions.push(`status = $${paramIdx++}`);
+        values.push('Active');
+      }
+      if (req.query.worker_type) {
+        conditions.push(`worker_type = $${paramIdx++}`);
+        values.push(req.query.worker_type);
+      }
+      const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
       const { rows } = await pool.query(
-        `SELECT * FROM stitchers ${where} ORDER BY stitcher_code ASC`
+        `SELECT * FROM stitchers ${where} ORDER BY stitcher_code ASC`,
+        values
       );
       return res.json({ success: true, stitchers: rows });
     } catch (err) {
