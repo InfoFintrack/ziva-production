@@ -53,7 +53,7 @@ export default async function handler(req, res) {
     if (!name?.trim() || !passcode?.toString().trim() || !role) {
       return res.json({ success: false, message: 'Name, passcode, and role are required.' });
     }
-    if (!['PP', 'Cutting', 'Admin', 'Accounts', 'CEO', 'Supervisor', 'Stitching'].includes(role)) {
+    if (!['PP', 'Cutting', 'Admin', 'Accounts', 'CEO', 'Supervisor', 'Stitching', 'Finishing'].includes(role)) {
       return res.json({ success: false, message: 'Invalid role.' });
     }
     if (!PASSCODE_RE.test(passcode.toString())) {
