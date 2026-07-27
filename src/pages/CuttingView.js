@@ -692,14 +692,6 @@ function CuttingView({ user, onLogout }) {
   });
   const plCombinedTotal = plOpRates.reduce((s, r) => s + r.amount, 0);
 
-  // Keep legacy single-op derived values for allocation cap check (use first selected op)
-  const plFirstOp = plSelectedOps[0] || '';
-  const plRateField = plForm.department && plFirstOp
-    ? PL_DEPT_OP_TO_RATE_FIELD[`${plForm.department}|${plFirstOp}`]
-    : null;
-  const plCurrentRate = plRateField && plPoRateData
-    ? Number(plPoRateData[plRateField] || 0)
-    : null;
 
   const plHandleFormChange = (e) => {
     const { name, value } = e.target;
