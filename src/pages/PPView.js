@@ -634,11 +634,12 @@ function PPView({ user, onLogout }) {
       setPOMessage({ type: 'error', text: 'Garment Type is required.' }); return;
     }
 
-    // Validate component required fields
+    // Validate component required fields (dupatta skipped for Kids garments)
+    const isKids = poForm.garment_type === 'Kids';
     const components = [
       { key: 'shirt',   label: 'Shirt' },
       { key: 'trouser', label: 'Trouser' },
-      { key: 'dupatta', label: 'Dupatta' },
+      ...(!isKids ? [{ key: 'dupatta', label: 'Dupatta' }] : []),
     ];
     for (const { key, label } of components) {
       if (!poForm[`${key}_colour`].trim()) {
@@ -655,7 +656,7 @@ function PPView({ user, onLogout }) {
     // Validate colour inputs
     const shirtOk   = shirtColourRef.current?.validate()   ?? true;
     const trouserOk = trouserColourRef.current?.validate() ?? true;
-    const dupattaOk = dupattaColourRef.current?.validate() ?? true;
+    const dupattaOk = isKids ? true : (dupattaColourRef.current?.validate() ?? true);
     if (!shirtOk || !trouserOk || !dupattaOk) {
       setPOMessage({ type: 'error', text: 'Please fix all colour fields.' }); return;
     }
@@ -809,9 +810,10 @@ function PPView({ user, onLogout }) {
       setEditPOMessage({ type: 'error', text: 'Collection Name is required.' }); return;
     }
 
+    const isEditKids = editPOForm.garment_type === 'Kids';
     const shirtOk   = editShirtColourRef.current?.validate()   ?? true;
     const trouserOk = editTrouserColourRef.current?.validate() ?? true;
-    const dupattaOk = editDupattaColourRef.current?.validate() ?? true;
+    const dupattaOk = isEditKids ? true : (editDupattaColourRef.current?.validate() ?? true);
     if (!shirtOk || !trouserOk || !dupattaOk) {
       setEditPOMessage({ type: 'error', text: 'Please fix all colour fields.' }); return;
     }
@@ -1453,7 +1455,13 @@ function PPView({ user, onLogout }) {
                 </div>
                 {componentCard('shirt',   'Shirt',   shirtColourRef)}
                 {componentCard('trouser', 'Trouser', trouserColourRef)}
-                {componentCard('dupatta', 'Dupatta', dupattaColourRef)}
+                {poForm.garment_type === 'Kids' ? (
+                  <div style={{ padding: '12px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', marginBottom: '12px' }}>
+                    <p style={{ margin: 0, fontSize: '13px', color: '#166534', fontWeight: '600' }}>
+                      ℹ Dupatta not applicable for Kids garments — skipped.
+                    </p>
+                  </div>
+                ) : componentCard('dupatta', 'Dupatta', dupattaColourRef)}
 
                 {/* Section C: Accessories */}
                 <div style={{ marginTop: '24px', marginBottom: '8px', paddingBottom: '8px', borderBottom: '2px solid #f0f2f5' }}>
@@ -1643,7 +1651,13 @@ function PPView({ user, onLogout }) {
               </div>
               {editComponentCard('shirt',   'Shirt',   editShirtColourRef)}
               {editComponentCard('trouser', 'Trouser', editTrouserColourRef)}
-              {editComponentCard('dupatta', 'Dupatta', editDupattaColourRef)}
+              {editPOForm.garment_type === 'Kids' ? (
+                <div style={{ padding: '12px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', marginBottom: '12px' }}>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#166534', fontWeight: '600' }}>
+                    ℹ Dupatta not applicable for Kids garments — skipped.
+                  </p>
+                </div>
+              ) : editComponentCard('dupatta', 'Dupatta', editDupattaColourRef)}
 
               {/* Section C: Accessories */}
               <div style={{ marginTop: '24px', marginBottom: '8px', paddingBottom: '8px', borderBottom: '2px solid #f0f2f5' }}>

@@ -67,10 +67,11 @@ const EMPTY_STITCHER_FORM = {
 
 const PL_TODAY = new Date().toISOString().split('T')[0];
 
-const PL_DEPARTMENTS = ['Stitching', 'Finishing Shirt', 'Finishing Trouser', 'Finishing Dupatta'];
+const PL_DEPARTMENTS = ['Stitching', 'Cutting', 'Finishing Shirt', 'Finishing Trouser', 'Finishing Dupatta'];
 
 const PL_OPERATION_OPTIONS = {
   'Stitching':          ['Shirt', 'Trouser', 'Dupatta', 'Patching'],
+  'Cutting':            ['Shirt', 'Trouser', 'Dupatta', 'Patching'],
   'Finishing Shirt':    ['Clipping', 'Heming', 'Tussling', 'Pressing'],
   'Finishing Trouser':  ['Clipping', 'Heming', 'Pressing', 'Patching'],
   'Finishing Dupatta':  ['Heming', 'Tussling', 'Pressing', 'Patching'],
@@ -81,6 +82,10 @@ const PL_DEPT_OP_TO_RATE_FIELD = {
   'Stitching|Trouser':            'trouser',
   'Stitching|Dupatta':            'dupatta',
   'Stitching|Patching':           'patching',
+  'Cutting|Shirt':                'cutting',
+  'Cutting|Trouser':              'cutting',
+  'Cutting|Dupatta':              'cutting',
+  'Cutting|Patching':             'patching',
   'Finishing Shirt|Clipping':     'fs_clipping',
   'Finishing Shirt|Heming':       'fs_heming',
   'Finishing Shirt|Tussling':     'fs_tussling',
@@ -261,6 +266,7 @@ function CuttingView({ user, onLogout }) {
   const [plEntries,        setPlEntries]        = useState([]);
   const [plEntriesLoading, setPlEntriesLoading] = useState(false);
   const [plSubTab,         setPlSubTab]         = useState('log');
+  const [plSelectedOps,    setPlSelectedOps]    = useState([]);
 
   // ── Stitcher Dashboard state ───────────────────────────────────────────
   const [sdStitcher,  setSdStitcher]  = useState('');
@@ -677,86 +683,102 @@ function CuttingView({ user, onLogout }) {
   // Payment Log derived values
   const plEligiblePOs = plPos.filter(p => p.status === 'Active' && plApprovedSet.has(p.po_number));
 
-  const plRateField = plForm.department && plForm.operation
-    ? PL_DEPT_OP_TO_RATE_FIELD[`${plForm.department}|${plForm.operation}`]
-    : null;
+  // Multi-op derived values: per-op rates and combined total
+  const plOpRates = plSelectedOps.map(op => {
+    const rf = plPoRateData ? PL_DEPT_OP_TO_RATE_FIELD[`${plForm.department}|${op}`] : null;
+    const rate = rf && plPoRateData ? Number(plPoRateData[rf] || 0) : 0;
+    const qty = Number(plForm.qty_claimed) || 0;
+    return { op, rate, amount: rate * qty };
+  });
+  const plCombinedTotal = plOpRates.reduce((s, r) => s + r.amount, 0);
 
+  // Keep legacy single-op derived values for allocation cap check (use first selected op)
+  const plFirstOp = plSelectedOps[0] || '';
+  const plRateField = plForm.department && plFirstOp
+    ? PL_DEPT_OP_TO_RATE_FIELD[`${plForm.department}|${plFirstOp}`]
+    : null;
   const plCurrentRate = plRateField && plPoRateData
     ? Number(plPoRateData[plRateField] || 0)
     : null;
 
-  const plCurrentAmount = plCurrentRate !== null && plForm.qty_claimed
-    ? (plCurrentRate * Number(plForm.qty_claimed)).toFixed(2)
-    : '';
-
-  let plRateText = '';
-  let plRateStyle = { color: '#999', fontStyle: 'italic' };
-  if (plRateLoading) {
-    plRateText = 'Loading...';
-  } else if (!plForm.po_number || !plForm.department || !plForm.operation) {
-    plRateText = 'Select PO, Department and Operation to load rate';
-  } else if (plRateError) {
-    plRateText = 'No approved rate found';
-    plRateStyle = { color: '#dc2626', fontWeight: '600' };
-  } else if (plCurrentRate !== null) {
-    plRateText = `PKR ${plCurrentRate.toLocaleString()}`;
-    plRateStyle = { color: '#0f3460', fontWeight: '600' };
-  }
-
   const plHandleFormChange = (e) => {
     const { name, value } = e.target;
     const patch = { [name]: value };
-    if (name === 'department') patch.operation = '';
-    if (['po_number', 'department', 'operation'].includes(name)) {
+    if (name === 'department') {
+      patch.operation = '';
+      setPlSelectedOps([]);
+    }
+    if (['po_number', 'department'].includes(name)) {
       const newPO   = name === 'po_number'  ? value : plForm.po_number;
       const newDept = name === 'department' ? value : plForm.department;
-      const newOp   = name === 'operation'  ? value : (name === 'department' ? '' : plForm.operation);
-      patch.color = deriveColor(plPos, newPO, newDept, newOp);
+      patch.color = deriveColor(plPos, newPO, newDept, '');
     }
     setPlForm(prev => ({ ...prev, ...patch }));
     if (plFormMsg) setPlFormMsg(null);
   };
 
+  const plToggleOp = (op) => {
+    setPlSelectedOps(prev =>
+      prev.includes(op) ? prev.filter(o => o !== op) : [...prev, op]
+    );
+    if (plFormMsg) setPlFormMsg(null);
+  };
+
   const plHandleSubmit = async (e) => {
     e.preventDefault();
-    if (!plForm.po_number || !plForm.stitcher_code || !plForm.department || !plForm.operation || !plForm.qty_claimed) {
+    if (!plForm.po_number || !plForm.stitcher_code || !plForm.department || !plForm.qty_claimed) {
       setPlFormMsg({ type: 'error', text: 'All required fields must be filled.' });
       return;
     }
-    if (plRateError || plCurrentRate === null) {
-      setPlFormMsg({ type: 'error', text: 'Cannot submit — no approved rate found for this PO / operation.' });
+    if (plSelectedOps.length === 0) {
+      setPlFormMsg({ type: 'error', text: 'Select at least one operation.' });
       return;
     }
-    const _comp = deriveComponent(plForm.department, plForm.operation);
-    const _matched = _comp ? plAllocations.find(a => a.component?.toLowerCase() === _comp) : null;
-    if (_matched && Number(plForm.qty_claimed) > Number(_matched.qty_accepted || 0)) {
-      setPlFormMsg({ type: 'error', text: `Cannot exceed ${Number(_matched.qty_accepted || 0)} accepted pieces from allocation.` });
+    if (plRateError || !plPoRateData) {
+      setPlFormMsg({ type: 'error', text: 'Cannot submit — no approved rate found for this PO.' });
       return;
+    }
+    // Validate each selected op has a valid rate
+    for (const op of plSelectedOps) {
+      const rf = PL_DEPT_OP_TO_RATE_FIELD[`${plForm.department}|${op}`];
+      const rate = rf ? Number(plPoRateData[rf] || 0) : 0;
+      if (!rate) {
+        setPlFormMsg({ type: 'error', text: `No rate found for ${plForm.department} — ${op}. Check CMT rates.` });
+        return;
+      }
     }
     setPlSubmitting(true);
     setPlFormMsg(null);
-    try {
-      const res = await logPaymentEntry({
-        entry_date:    plForm.entry_date || PL_TODAY,
-        po_number:     plForm.po_number,
-        stitcher_code: plForm.stitcher_code,
-        department:    plForm.department,
-        operation:     plForm.operation,
-        qty_claimed:   Number(plForm.qty_claimed),
-        ...(plForm.color   ? { color:   plForm.color }   : {}),
-        ...(plForm.remarks ? { remarks: plForm.remarks } : {}),
-      });
-      if (res.success) {
-        setPlFormMsg({ type: 'success', text: 'Entry logged successfully.' });
-        setPlForm(prev => ({ ...PL_EMPTY_FORM, po_number: prev.po_number }));
-        plLoadMyEntries();
-      } else {
-        setPlFormMsg({ type: 'error', text: res.message || 'Failed to log entry.' });
+    let submitted = 0;
+    let failed = 0;
+    for (const op of plSelectedOps) {
+      try {
+        const color = deriveColor(plPos, plForm.po_number, plForm.department, op);
+        const res = await logPaymentEntry({
+          entry_date:    plForm.entry_date || PL_TODAY,
+          po_number:     plForm.po_number,
+          stitcher_code: plForm.stitcher_code,
+          department:    plForm.department,
+          operation:     op,
+          qty_claimed:   Number(plForm.qty_claimed),
+          ...(color            ? { color }            : {}),
+          ...(plForm.remarks   ? { remarks: plForm.remarks } : {}),
+        });
+        if (res.success) submitted++;
+        else failed++;
+      } catch {
+        failed++;
       }
-    } catch {
-      setPlFormMsg({ type: 'error', text: 'Network error. Please try again.' });
     }
     setPlSubmitting(false);
+    if (failed === 0) {
+      setPlFormMsg({ type: 'success', text: `✓ ${submitted} entr${submitted === 1 ? 'y' : 'ies'} logged successfully.` });
+      setPlForm(prev => ({ ...PL_EMPTY_FORM, po_number: prev.po_number }));
+      setPlSelectedOps([]);
+      plLoadMyEntries();
+    } else {
+      setPlFormMsg({ type: 'error', text: `${submitted} submitted, ${failed} failed. Please retry.` });
+    }
   };
 
   const sdHandleLoad = async () => {
@@ -940,15 +962,6 @@ function CuttingView({ user, onLogout }) {
     marginBottom: '-2px', transition: 'color 0.15s',
   });
 
-  // ── Allocation cap derived values ──────────────────────────────────────
-  const plDerivedComponent = deriveComponent(plForm.department, plForm.operation);
-  const plMatchedAlloc = plDerivedComponent
-    ? plAllocations.find(a => a.component?.toLowerCase() === plDerivedComponent)
-    : null;
-  const plAllocCap = plMatchedAlloc ? Number(plMatchedAlloc.qty_accepted || 0) : null;
-  const plQtyCapError = plAllocCap !== null && plForm.qty_claimed && Number(plForm.qty_claimed) > plAllocCap
-    ? `Cannot exceed ${plAllocCap} accepted pieces from allocation`
-    : '';
 
   // ── Render ─────────────────────────────────────────────────────────────
 
@@ -1844,79 +1857,71 @@ function CuttingView({ user, onLogout }) {
                         </select>
                       </div>
 
-                      <div className="form-group">
-                        <label>Operation *</label>
-                        <select
-                          name="operation"
-                          value={plForm.operation}
-                          onChange={plHandleFormChange}
-                          required
-                          disabled={!plForm.department}
-                        >
-                          <option value="">Select operation...</option>
-                          {(PL_OPERATION_OPTIONS[plForm.department] || []).map(op => (
-                            <option key={op} value={op}>{op}</option>
+                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                        <label>Operations * <span style={{ fontWeight: '400', color: '#888', fontSize: '12px' }}>(select all that apply)</span></label>
+                        {!plForm.department ? (
+                          <p style={{ color: '#aaa', fontStyle: 'italic', fontSize: '13px', margin: '8px 0 0' }}>Select a department first</p>
+                        ) : (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '8px' }}>
+                            {(PL_OPERATION_OPTIONS[plForm.department] || []).map(op => {
+                              const isChecked = plSelectedOps.includes(op);
+                              const rf = plPoRateData ? PL_DEPT_OP_TO_RATE_FIELD[`${plForm.department}|${op}`] : null;
+                              const rate = rf && plPoRateData ? Number(plPoRateData[rf] || 0) : null;
+                              return (
+                                <label
+                                  key={op}
+                                  style={{
+                                    display: 'flex', alignItems: 'center', gap: '8px',
+                                    padding: '8px 14px', borderRadius: '8px', cursor: 'pointer',
+                                    border: isChecked ? '2px solid #0f3460' : '2px solid #e8e8e8',
+                                    background: isChecked ? '#f0f4ff' : '#fafafa',
+                                    fontWeight: isChecked ? '700' : '400',
+                                    fontSize: '14px', color: '#0f3460',
+                                    transition: 'all 0.15s', userSelect: 'none',
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => plToggleOp(op)}
+                                    style={{ accentColor: '#0f3460', width: '15px', height: '15px' }}
+                                  />
+                                  {op}
+                                  {rate !== null && plPoRateData && (
+                                    <span style={{ fontSize: '12px', color: '#555', fontWeight: '400' }}>
+                                      &nbsp;@ PKR {rate.toLocaleString()}
+                                    </span>
+                                  )}
+                                  {plRateLoading && <span style={{ fontSize: '11px', color: '#aaa' }}>…</span>}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Per-op breakdown + combined total */}
+                      {plSelectedOps.length > 0 && plPoRateData && plForm.qty_claimed && (
+                        <div style={{ gridColumn: '1 / -1', background: '#f8fafc', border: '1px solid #e0e7ff', borderRadius: '8px', padding: '14px 16px' }}>
+                          <p style={{ fontWeight: '700', fontSize: '12px', color: '#0f3460', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '10px' }}>Breakdown</p>
+                          {plOpRates.map(({ op, rate, amount }) => (
+                            <div key={op} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '6px', color: '#333' }}>
+                              <span>{op} — {plForm.qty_claimed} pcs × PKR {rate.toLocaleString()}</span>
+                              <span style={{ fontWeight: '600' }}>PKR {amount.toLocaleString()}</span>
+                            </div>
                           ))}
-                        </select>
-                      </div>
-
-                      <div className="form-group">
-                        <label>Color</label>
-                        <input
-                          className="auto-field"
-                          type="text"
-                          readOnly
-                          value={plForm.color || '—'}
-                          placeholder="Auto-filled from PO"
-                        />
-                      </div>
-
-                      <div className="form-group">
-                        <label>Qty Claimed *</label>
-                        <input
-                          type="number"
-                          name="qty_claimed"
-                          value={plForm.qty_claimed}
-                          onChange={plHandleFormChange}
-                          min="1"
-                          required
-                          placeholder="Pieces"
-                          style={plQtyCapError ? { borderColor: '#dc2626' } : {}}
-                        />
-                        {plMatchedAlloc && (
-                          <p style={{ fontSize: '12px', color: '#0f3460', marginTop: '4px', fontWeight: '600' }}>
-                            Accepted by Supervisor: {Number(plMatchedAlloc.qty_accepted || 0)} pcs
-                          </p>
-                        )}
-                        {plQtyCapError && (
-                          <p style={{ fontSize: '12px', color: '#dc2626', marginTop: '4px', fontWeight: '600' }}>
-                            {plQtyCapError}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Rate — read-only, auto-fetched */}
-                      <div className="form-group">
-                        <label>Rate (PKR / piece)</label>
-                        <div style={{
-                          padding: '12px 16px', border: '2px dashed #e8e8e8', borderRadius: '8px',
-                          background: '#fafafa', fontSize: '15px', minHeight: '48px',
-                          display: 'flex', alignItems: 'center', ...plRateStyle,
-                        }}>
-                          {plRateText || '\u00A0'}
+                          <div style={{ borderTop: '2px solid #e0e7ff', marginTop: '8px', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontWeight: '700', fontSize: '15px', color: '#0f3460' }}>
+                            <span>Combined Total</span>
+                            <span>PKR {plCombinedTotal.toLocaleString()}</span>
+                          </div>
                         </div>
-                      </div>
+                      )}
 
-                      {/* Amount — read-only, auto-calculated */}
-                      <div className="form-group">
-                        <label>Amount (PKR)</label>
-                        <input
-                          className="auto-field"
-                          type="text"
-                          readOnly
-                          value={plCurrentAmount ? `PKR ${Number(plCurrentAmount).toLocaleString()}` : '—'}
-                        />
-                      </div>
+                      {plRateError && (
+                        <div style={{ gridColumn: '1 / -1' }}>
+                          <p style={{ color: '#dc2626', fontWeight: '600', fontSize: '13px' }}>⚠ No approved CMT rate found for this PO. Cannot log entries.</p>
+                        </div>
+                      )}
 
                       <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                         <label>Remarks</label>
@@ -1942,14 +1947,18 @@ function CuttingView({ user, onLogout }) {
                       <button
                         type="submit"
                         className="btn btn-primary"
-                        disabled={plSubmitting || !!plRateError || plCurrentRate === null || !!plQtyCapError}
-                        style={{ maxWidth: '200px' }}
+                        disabled={plSubmitting || !!plRateError || plSelectedOps.length === 0}
+                        style={{ maxWidth: '220px' }}
                       >
-                        {plSubmitting ? 'Submitting...' : 'Submit Entry'}
+                        {plSubmitting
+                          ? 'Submitting...'
+                          : plSelectedOps.length > 1
+                            ? `Submit ${plSelectedOps.length} Entries`
+                            : 'Submit Entry'}
                       </button>
-                      {plCurrentAmount && (
+                      {plCombinedTotal > 0 && (
                         <span style={{ fontSize: '15px', fontWeight: '700', color: '#0f3460' }}>
-                          Total: PKR {Number(plCurrentAmount).toLocaleString()}
+                          Total: PKR {plCombinedTotal.toLocaleString()}
                         </span>
                       )}
                     </div>
