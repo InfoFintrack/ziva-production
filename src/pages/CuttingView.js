@@ -1892,6 +1892,19 @@ function CuttingView({ user, onLogout }) {
                         )}
                       </div>
 
+                      <div className="form-group">
+                        <label>Qty Claimed *</label>
+                        <input
+                          type="number"
+                          name="qty_claimed"
+                          value={plForm.qty_claimed}
+                          onChange={plHandleFormChange}
+                          min="1"
+                          required
+                          placeholder="Pieces"
+                        />
+                      </div>
+
                       {/* Per-op breakdown + combined total */}
                       {plSelectedOps.length > 0 && plPoRateData && plForm.qty_claimed && (
                         <div style={{ gridColumn: '1 / -1', background: '#f8fafc', border: '1px solid #e0e7ff', borderRadius: '8px', padding: '14px 16px' }}>

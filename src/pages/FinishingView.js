@@ -193,6 +193,7 @@ function FinishingView({ user, onLogout }) {
   const [plFormMsg, setPlFormMsg] = useState(null);
   const [plEntries, setPlEntries] = useState([]);
   const [plEntriesLoading, setPlEntriesLoading] = useState(false);
+  const [plSelectedOps, setPlSelectedOps] = useState([]);
   const [bulkStitcher, setBulkStitcher] = useState('');
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkRows, setBulkRows] = useState([]);
@@ -444,37 +445,23 @@ function FinishingView({ user, onLogout }) {
 
   const plEligiblePOs = plPos.filter(p => p.status === 'Active' && plApprovedSet.has(p.po_number));
 
-  const plRateField = plForm.department && plForm.operation
-    ? FL_DEPT_OP_TO_RATE_FIELD[`${plForm.department}|${plForm.operation}`]
-    : null;
-
-  const plCurrentRate = plRateField && plPoRateData
-    ? Number(plPoRateData[plRateField] || 0)
-    : null;
-
-  const plCurrentAmount = plCurrentRate !== null && plForm.qty_claimed
-    ? (plCurrentRate * Number(plForm.qty_claimed)).toFixed(2)
-    : '';
-
-  let plRateText = '';
-  let plRateStyle = { color: '#999', fontStyle: 'italic' };
-  if (plRateLoading) {
-    plRateText = 'Loading...';
-  } else if (!plForm.po_number || !plForm.department || !plForm.operation) {
-    plRateText = 'Select PO, Department and Operation to load rate';
-  } else if (plRateError) {
-    plRateText = 'No approved rate found';
-    plRateStyle = { color: '#dc2626', fontWeight: '600' };
-  } else if (plCurrentRate !== null) {
-    plRateText = `PKR ${plCurrentRate.toLocaleString()}`;
-    plRateStyle = { color: '#0f3460', fontWeight: '600' };
-  }
+  // Multi-op derived values: per-op rates and combined total
+  const plOpRates = plSelectedOps.map(op => {
+    const rf = plPoRateData ? FL_DEPT_OP_TO_RATE_FIELD[`${plForm.department}|${op}`] : null;
+    const rate = rf && plPoRateData ? Number(plPoRateData[rf] || 0) : 0;
+    const qty = Number(plForm.qty_claimed) || 0;
+    return { op, rate, amount: rate * qty };
+  });
+  const plCombinedTotal = plOpRates.reduce((s, r) => s + r.amount, 0);
 
   const plHandleFormChange = (e) => {
     const { name, value } = e.target;
     const patch = { [name]: value };
-    if (name === 'department') patch.operation = '';
-    if (['po_number', 'department', 'operation'].includes(name)) {
+    if (name === 'department') {
+      patch.operation = '';
+      setPlSelectedOps([]);
+    }
+    if (['po_number', 'department'].includes(name)) {
       const newPO   = name === 'po_number'   ? value : plForm.po_number;
       const newDept = name === 'department'  ? value : plForm.department;
       patch.color   = deriveFinishingColor(plPos, newPO, newDept);
@@ -483,43 +470,70 @@ function FinishingView({ user, onLogout }) {
     if (plFormMsg) setPlFormMsg(null);
   };
 
+  const plToggleOp = (op) => {
+    setPlSelectedOps(prev =>
+      prev.includes(op) ? prev.filter(o => o !== op) : [...prev, op]
+    );
+    if (plFormMsg) setPlFormMsg(null);
+  };
+
   const plHandleSubmit = async (e) => {
     e.preventDefault();
-    if (!plForm.po_number || !plForm.stitcher_code || !plForm.department || !plForm.operation || !plForm.qty_claimed) {
+    if (!plForm.po_number || !plForm.stitcher_code || !plForm.department || !plForm.qty_claimed) {
       setPlFormMsg({ type: 'error', text: 'All required fields must be filled.' });
       return;
     }
-    if (plRateError || plCurrentRate === null) {
-      setPlFormMsg({ type: 'error', text: 'Cannot submit — no approved rate found for this PO / operation.' });
+    if (plSelectedOps.length === 0) {
+      setPlFormMsg({ type: 'error', text: 'Select at least one operation.' });
       return;
+    }
+    if (plRateError || !plPoRateData) {
+      setPlFormMsg({ type: 'error', text: 'Cannot submit — no approved rate found for this PO.' });
+      return;
+    }
+    for (const op of plSelectedOps) {
+      const rf = FL_DEPT_OP_TO_RATE_FIELD[`${plForm.department}|${op}`];
+      const rate = rf ? Number(plPoRateData[rf] || 0) : 0;
+      if (!rate) {
+        setPlFormMsg({ type: 'error', text: `No rate found for ${plForm.department} — ${op}. Check CMT rates.` });
+        return;
+      }
     }
     const selectedStitcher = allStitchers.find(s => s.stitcher_code === plForm.stitcher_code);
     setPlSubmitting(true);
     setPlFormMsg(null);
-    try {
-      const res = await logPaymentEntry({
-        entry_date:       plForm.entry_date || TODAY,
-        po_number:        plForm.po_number,
-        stitcher_code:    plForm.stitcher_code,
-        department:       plForm.department,
-        operation:        plForm.operation,
-        qty_claimed:      Number(plForm.qty_claimed),
-        ...(plForm.color   ? { color:   plForm.color }   : {}),
-        ...(plForm.remarks ? { remarks: plForm.remarks } : {}),
-        worker_type:      selectedStitcher?.worker_type || null,
-        flexible_payment: selectedStitcher?.worker_type === 'Finishing_OutOfFactory',
-      });
-      if (res.success) {
-        setPlFormMsg({ type: 'success', text: 'Entry logged successfully.' });
-        setPlForm(prev => ({ ...EMPTY_PL_FORM, po_number: prev.po_number }));
-        plLoadMyEntries();
-      } else {
-        setPlFormMsg({ type: 'error', text: res.message || 'Failed to log entry.' });
+    let submitted = 0;
+    let failed = 0;
+    for (const op of plSelectedOps) {
+      try {
+        const color = deriveFinishingColor(plPos, plForm.po_number, plForm.department);
+        const res = await logPaymentEntry({
+          entry_date:       plForm.entry_date || TODAY,
+          po_number:        plForm.po_number,
+          stitcher_code:    plForm.stitcher_code,
+          department:       plForm.department,
+          operation:        op,
+          qty_claimed:      Number(plForm.qty_claimed),
+          ...(color            ? { color }            : {}),
+          ...(plForm.remarks   ? { remarks: plForm.remarks } : {}),
+          worker_type:      selectedStitcher?.worker_type || null,
+          flexible_payment: selectedStitcher?.worker_type === 'Finishing_OutOfFactory',
+        });
+        if (res.success) submitted++;
+        else failed++;
+      } catch {
+        failed++;
       }
-    } catch {
-      setPlFormMsg({ type: 'error', text: 'Network error. Please try again.' });
     }
     setPlSubmitting(false);
+    if (failed === 0) {
+      setPlFormMsg({ type: 'success', text: `✓ ${submitted} entr${submitted === 1 ? 'y' : 'ies'} logged successfully.` });
+      setPlForm(prev => ({ ...EMPTY_PL_FORM, po_number: prev.po_number }));
+      setPlSelectedOps([]);
+      plLoadMyEntries();
+    } else {
+      setPlFormMsg({ type: 'error', text: `${submitted} submitted, ${failed} failed. Please retry.` });
+    }
   };
 
   const loadBulkRows = async (stitcherCode) => {
@@ -1253,31 +1267,47 @@ function FinishingView({ user, onLogout }) {
                             </select>
                           </div>
 
-                          <div className="form-group">
-                            <label>Operation *</label>
-                            <select
-                              name="operation"
-                              value={plForm.operation}
-                              onChange={plHandleFormChange}
-                              required
-                              disabled={!plForm.department}
-                            >
-                              <option value="">Select operation...</option>
-                              {(FL_OPERATION_OPTIONS[plForm.department] || []).map(op => (
-                                <option key={op} value={op}>{op}</option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div className="form-group">
-                            <label>Color</label>
-                            <input
-                              className="auto-field"
-                              type="text"
-                              readOnly
-                              value={plForm.color || '—'}
-                              placeholder="Auto-filled from PO"
-                            />
+                          <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                            <label>Operations * <span style={{ fontWeight: '400', color: '#888', fontSize: '12px' }}>(select all that apply)</span></label>
+                            {!plForm.department ? (
+                              <p style={{ color: '#aaa', fontStyle: 'italic', fontSize: '13px', margin: '8px 0 0' }}>Select a department first</p>
+                            ) : (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '8px' }}>
+                                {(FL_OPERATION_OPTIONS[plForm.department] || []).map(op => {
+                                  const isChecked = plSelectedOps.includes(op);
+                                  const rf = plPoRateData ? FL_DEPT_OP_TO_RATE_FIELD[`${plForm.department}|${op}`] : null;
+                                  const rate = rf && plPoRateData ? Number(plPoRateData[rf] || 0) : null;
+                                  return (
+                                    <label
+                                      key={op}
+                                      style={{
+                                        display: 'flex', alignItems: 'center', gap: '8px',
+                                        padding: '8px 14px', borderRadius: '8px', cursor: 'pointer',
+                                        border: isChecked ? '2px solid #0f3460' : '2px solid #e8e8e8',
+                                        background: isChecked ? '#f0f4ff' : '#fafafa',
+                                        fontWeight: isChecked ? '700' : '400',
+                                        fontSize: '14px', color: '#0f3460',
+                                        transition: 'all 0.15s', userSelect: 'none',
+                                      }}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() => plToggleOp(op)}
+                                        style={{ accentColor: '#0f3460', width: '15px', height: '15px' }}
+                                      />
+                                      {op}
+                                      {rate !== null && plPoRateData && (
+                                        <span style={{ fontSize: '12px', color: '#555', fontWeight: '400' }}>
+                                          &nbsp;@ PKR {rate.toLocaleString()}
+                                        </span>
+                                      )}
+                                      {plRateLoading && <span style={{ fontSize: '11px', color: '#aaa' }}>…</span>}
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
 
                           <div className="form-group">
@@ -1293,26 +1323,28 @@ function FinishingView({ user, onLogout }) {
                             />
                           </div>
 
-                          <div className="form-group">
-                            <label>Rate (PKR / piece)</label>
-                            <div style={{
-                              padding: '12px 16px', border: '2px dashed #e8e8e8', borderRadius: '8px',
-                              background: '#fafafa', fontSize: '15px', minHeight: '48px',
-                              display: 'flex', alignItems: 'center', ...plRateStyle,
-                            }}>
-                              {plRateText || ' '}
+                          {/* Per-op breakdown + combined total */}
+                          {plSelectedOps.length > 0 && plPoRateData && plForm.qty_claimed && (
+                            <div style={{ gridColumn: '1 / -1', background: '#f8fafc', border: '1px solid #e0e7ff', borderRadius: '8px', padding: '14px 16px' }}>
+                              <p style={{ fontWeight: '700', fontSize: '12px', color: '#0f3460', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '10px' }}>Breakdown</p>
+                              {plOpRates.map(({ op, rate, amount }) => (
+                                <div key={op} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '6px', color: '#333' }}>
+                                  <span>{op} — {plForm.qty_claimed} pcs × PKR {rate.toLocaleString()}</span>
+                                  <span style={{ fontWeight: '600' }}>PKR {amount.toLocaleString()}</span>
+                                </div>
+                              ))}
+                              <div style={{ borderTop: '2px solid #e0e7ff', marginTop: '8px', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontWeight: '700', fontSize: '15px', color: '#0f3460' }}>
+                                <span>Combined Total</span>
+                                <span>PKR {plCombinedTotal.toLocaleString()}</span>
+                              </div>
                             </div>
-                          </div>
+                          )}
 
-                          <div className="form-group">
-                            <label>Amount (PKR)</label>
-                            <input
-                              className="auto-field"
-                              type="text"
-                              readOnly
-                              value={plCurrentAmount ? `PKR ${Number(plCurrentAmount).toLocaleString()}` : '—'}
-                            />
-                          </div>
+                          {plRateError && (
+                            <div style={{ gridColumn: '1 / -1' }}>
+                              <p style={{ color: '#dc2626', fontWeight: '600', fontSize: '13px' }}>⚠ No approved CMT rate found for this PO. Cannot log entries.</p>
+                            </div>
+                          )}
 
                           <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                             <label>Remarks</label>
@@ -1337,14 +1369,18 @@ function FinishingView({ user, onLogout }) {
                           <button
                             type="submit"
                             className="btn btn-primary"
-                            disabled={plSubmitting || !!plRateError || plCurrentRate === null}
-                            style={{ maxWidth: '200px' }}
+                            disabled={plSubmitting || !!plRateError || plSelectedOps.length === 0}
+                            style={{ maxWidth: '220px' }}
                           >
-                            {plSubmitting ? 'Submitting...' : 'Submit Entry'}
+                            {plSubmitting
+                              ? 'Submitting...'
+                              : plSelectedOps.length > 1
+                                ? `Submit ${plSelectedOps.length} Entries`
+                                : 'Submit Entry'}
                           </button>
-                          {plCurrentAmount && (
+                          {plCombinedTotal > 0 && (
                             <span style={{ fontSize: '15px', fontWeight: '700', color: '#0f3460' }}>
-                              Total: PKR {Number(plCurrentAmount).toLocaleString()}
+                              Total: PKR {plCombinedTotal.toLocaleString()}
                             </span>
                           )}
                         </div>
