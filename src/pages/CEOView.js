@@ -121,14 +121,12 @@ function CEOView({ user, onLogout }) {
   const loadDashboard = async () => {
     setDashLoading(true);
     try {
-      const [posRes, ratesRes, allocRes, payRes] = await Promise.all([
+      const [posRes, allocRes, payRes] = await Promise.all([
         getPOs(),
-        getCMTRates('?status=Approved'),
         getAllocations(),
         getPaymentEntries(),
       ]);
       const allPOs = posRes.success ? posRes.pos : [];
-      const rates = ratesRes.success ? ratesRes.rates : [];
       const allocs = allocRes.success ? allocRes.allocations : [];
       const payments = payRes.success ? payRes.payments : [];
 
