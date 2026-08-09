@@ -128,9 +128,9 @@ function StatusBadge({ status }) {
 
 function PaymentStatusBadge({ status }) {
   const cfg = {
-    Pending:  { bg: '#fef3c7', color: '#92400e' },
-    Verified: { bg: '#dbeafe', color: '#1e40af' },
-    Paid:     { bg: '#dcfce7', color: '#166534' },
+    Pending:  { bg: '#fef3c7', color: '#d29922' },
+    Verified: { bg: '#dbeafe', color: '#4a7cc9' },
+    Paid:     { bg: '#dcfce7', color: '#3fb950' },
   };
   const s = cfg[status] || cfg.Pending;
   return (
@@ -753,8 +753,8 @@ function FinishingView({ user, onLogout }) {
 
         {/* Tab bar */}
         <div style={{
-          display: 'flex', background: 'white', borderRadius: '12px 12px 0 0',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: '2px', padding: '0 8px',
+          display: 'flex', background: '#161b22', borderRadius: '12px 12px 0 0',
+          borderBottom: '1px solid #30363d', marginBottom: '2px', padding: '0 8px',
           flexWrap: 'wrap',
         }}>
           <button style={tabStyle('receive')}   onClick={() => setActiveTab('receive')}>Receive Pieces</button>
@@ -768,7 +768,7 @@ function FinishingView({ user, onLogout }) {
           <>
             <div className="card" style={{ borderRadius: '0 0 12px 12px', marginTop: 0 }}>
               <h3>Receive Pieces</h3>
-              <p style={{ color: '#888', fontSize: '13px', marginBottom: '20px', marginTop: '-8px' }}>
+              <p style={{ color: '#8b949e', fontSize: '13px', marginBottom: '20px', marginTop: '-8px' }}>
                 Log pieces received from QC to start finishing work.
               </p>
 
@@ -884,7 +884,7 @@ function FinishingView({ user, onLogout }) {
               {intakeLoading ? (
                 <div className="loading"><div className="spinner" />Loading...</div>
               ) : intakeLogs.length === 0 ? (
-                <p style={{ color: '#888', textAlign: 'center', padding: '24px' }}>No pieces received yet.</p>
+                <p style={{ color: '#8b949e', textAlign: 'center', padding: '24px' }}>No pieces received yet.</p>
               ) : (
                 <div className="table-container">
                   <table>
@@ -922,7 +922,7 @@ function FinishingView({ user, onLogout }) {
         {activeTab === 'allocate' && (
           <>
             {/* Sub-tab bar */}
-            <div style={{ display: 'flex', gap: '0', borderBottom: '2px solid #e8e8e8', background: 'white', borderRadius: '0 0 0 0', padding: '0 8px' }}>
+            <div style={{ display: 'flex', gap: '0', borderBottom: '1px solid #30363d', background: '#161b22', borderRadius: '0 0 0 0', padding: '0 8px' }}>
               <button style={subTabStyle('new', allocTab)}     onClick={() => setAllocTab('new')}>New Allocation</button>
               <button style={subTabStyle('tracker', allocTab)} onClick={() => setAllocTab('tracker')}>Live Tracker</button>
             </div>
@@ -1054,12 +1054,12 @@ function FinishingView({ user, onLogout }) {
                       placeholder="Search by PO or worker name..."
                       value={allocSearch}
                       onChange={e => setAllocSearch(e.target.value)}
-                      style={{ flex: '1', minWidth: '200px', padding: '10px 14px', border: '2px solid #e8e8e8', borderRadius: '8px', fontSize: '14px' }}
+                      style={{ flex: '1', minWidth: '200px', padding: '10px 14px', border: '1px solid #30363d', borderRadius: '8px', fontSize: '14px' }}
                     />
                     <select
                       value={allocStatusFilter}
                       onChange={e => setAllocStatusFilter(e.target.value)}
-                      style={{ padding: '10px 14px', border: '2px solid #e8e8e8', borderRadius: '8px', fontSize: '14px' }}
+                      style={{ padding: '10px 14px', border: '1px solid #30363d', borderRadius: '8px', fontSize: '14px' }}
                     >
                       <option>All</option>
                       <option>In Progress</option>
@@ -1105,7 +1105,7 @@ function FinishingView({ user, onLogout }) {
                         <tbody>
                           {filteredAlloc.length === 0 ? (
                             <tr>
-                              <td colSpan={12} style={{ textAlign: 'center', color: '#888', padding: '32px' }}>
+                              <td colSpan={12} style={{ textAlign: 'center', color: '#8b949e', padding: '32px' }}>
                                 No allocations found.
                               </td>
                             </tr>
@@ -1131,7 +1131,7 @@ function FinishingView({ user, onLogout }) {
                                   {displayStatus !== 'Complete' && (
                                     <button
                                       className="btn btn-small"
-                                      style={{ background: '#0f3460', color: 'white', whiteSpace: 'nowrap' }}
+                                      style={{ background: '#4a7cc9', color: 'white', whiteSpace: 'nowrap' }}
                                       onClick={() => openUpdate(a)}
                                     >
                                       Update
@@ -1187,7 +1187,7 @@ function FinishingView({ user, onLogout }) {
         {/* ── Tab 3: Payment Log ────────────────────────────────────────────── */}
         {activeTab === 'paylog' && (
           <>
-            <div style={{ display: 'flex', gap: '0', marginBottom: '24px', borderBottom: '2px solid #e8e8e8' }}>
+            <div style={{ display: 'flex', gap: '0', marginBottom: '24px', borderBottom: '1px solid #30363d' }}>
               <button style={subTabStyle('log',       plSubTab)} onClick={() => setPlSubTab('log')}>Log Entry</button>
               <button style={subTabStyle('entries',   plSubTab)} onClick={() => setPlSubTab('entries')}>My Entries</button>
               <button style={subTabStyle('dashboard', plSubTab)} onClick={() => setPlSubTab('dashboard')}>Stitcher Dashboard</button>
@@ -1197,7 +1197,7 @@ function FinishingView({ user, onLogout }) {
             {plSubTab === 'log' && (
               <>
                 {/* Single / Bulk toggle */}
-                <div style={{ display: 'flex', gap: '0', marginBottom: '16px', borderBottom: '2px solid #e8e8e8' }}>
+                <div style={{ display: 'flex', gap: '0', marginBottom: '16px', borderBottom: '1px solid #30363d' }}>
                   {[{ key: 'single', label: 'Single Entry' }, { key: 'bulk', label: 'Bulk Entry' }].map(m => (
                     <button
                       key={m.key}
@@ -1268,9 +1268,9 @@ function FinishingView({ user, onLogout }) {
                           </div>
 
                           <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                            <label>Operations * <span style={{ fontWeight: '400', color: '#888', fontSize: '12px' }}>(select all that apply)</span></label>
+                            <label>Operations * <span style={{ fontWeight: '400', color: '#8b949e', fontSize: '12px' }}>(select all that apply)</span></label>
                             {!plForm.department ? (
-                              <p style={{ color: '#aaa', fontStyle: 'italic', fontSize: '13px', margin: '8px 0 0' }}>Select a department first</p>
+                              <p style={{ color: '#8b949e', fontStyle: 'italic', fontSize: '13px', margin: '8px 0 0' }}>Select a department first</p>
                             ) : (
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '8px' }}>
                                 {(FL_OPERATION_OPTIONS[plForm.department] || []).map(op => {
@@ -1286,7 +1286,7 @@ function FinishingView({ user, onLogout }) {
                                         border: isChecked ? '2px solid #0f3460' : '2px solid #e8e8e8',
                                         background: isChecked ? '#f0f4ff' : '#fafafa',
                                         fontWeight: isChecked ? '700' : '400',
-                                        fontSize: '14px', color: '#0f3460',
+                                        fontSize: '14px', color: '#e6edf3',
                                         transition: 'all 0.15s', userSelect: 'none',
                                       }}
                                     >
@@ -1294,15 +1294,15 @@ function FinishingView({ user, onLogout }) {
                                         type="checkbox"
                                         checked={isChecked}
                                         onChange={() => plToggleOp(op)}
-                                        style={{ accentColor: '#0f3460', width: '15px', height: '15px' }}
+                                        style={{ accentcolor: '#e6edf3', width: '15px', height: '15px' }}
                                       />
                                       {op}
                                       {rate !== null && plPoRateData && (
-                                        <span style={{ fontSize: '12px', color: '#555', fontWeight: '400' }}>
+                                        <span style={{ fontSize: '12px', color: '#8b949e', fontWeight: '400' }}>
                                           &nbsp;@ PKR {rate.toLocaleString()}
                                         </span>
                                       )}
-                                      {plRateLoading && <span style={{ fontSize: '11px', color: '#aaa' }}>…</span>}
+                                      {plRateLoading && <span style={{ fontSize: '11px', color: '#8b949e' }}>…</span>}
                                     </label>
                                   );
                                 })}
@@ -1325,15 +1325,15 @@ function FinishingView({ user, onLogout }) {
 
                           {/* Per-op breakdown + combined total */}
                           {plSelectedOps.length > 0 && plPoRateData && plForm.qty_claimed && (
-                            <div style={{ gridColumn: '1 / -1', background: '#f8fafc', border: '1px solid #e0e7ff', borderRadius: '8px', padding: '14px 16px' }}>
-                              <p style={{ fontWeight: '700', fontSize: '12px', color: '#0f3460', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '10px' }}>Breakdown</p>
+                            <div style={{ gridColumn: '1 / -1', background: '#161b22', border: '1px solid #30363d', borderRadius: '8px', padding: '14px 16px' }}>
+                              <p style={{ fontWeight: '700', fontSize: '12px', color: '#e6edf3', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '10px' }}>Breakdown</p>
                               {plOpRates.map(({ op, rate, amount }) => (
-                                <div key={op} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '6px', color: '#333' }}>
+                                <div key={op} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '6px', color: '#e6edf3' }}>
                                   <span>{op} — {plForm.qty_claimed} pcs × PKR {rate.toLocaleString()}</span>
                                   <span style={{ fontWeight: '600' }}>PKR {amount.toLocaleString()}</span>
                                 </div>
                               ))}
-                              <div style={{ borderTop: '2px solid #e0e7ff', marginTop: '8px', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontWeight: '700', fontSize: '15px', color: '#0f3460' }}>
+                              <div style={{ borderTop: '1px solid #30363d', marginTop: '8px', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontWeight: '700', fontSize: '15px', color: '#e6edf3' }}>
                                 <span>Combined Total</span>
                                 <span>PKR {plCombinedTotal.toLocaleString()}</span>
                               </div>
@@ -1342,7 +1342,7 @@ function FinishingView({ user, onLogout }) {
 
                           {plRateError && (
                             <div style={{ gridColumn: '1 / -1' }}>
-                              <p style={{ color: '#dc2626', fontWeight: '600', fontSize: '13px' }}>⚠ No approved CMT rate found for this PO. Cannot log entries.</p>
+                              <p style={{ color: '#f85149', fontWeight: '600', fontSize: '13px' }}>⚠ No approved CMT rate found for this PO. Cannot log entries.</p>
                             </div>
                           )}
 
@@ -1379,7 +1379,7 @@ function FinishingView({ user, onLogout }) {
                                 : 'Submit Entry'}
                           </button>
                           {plCombinedTotal > 0 && (
-                            <span style={{ fontSize: '15px', fontWeight: '700', color: '#0f3460' }}>
+                            <span style={{ fontSize: '15px', fontWeight: '700', color: '#e6edf3' }}>
                               Total: PKR {plCombinedTotal.toLocaleString()}
                             </span>
                           )}
@@ -1449,7 +1449,7 @@ function FinishingView({ user, onLogout }) {
                                     <select
                                       value={row.department}
                                       onChange={e => bulkHandleRowChange(i, 'department', e.target.value)}
-                                      style={{ padding: '4px 8px', fontSize: '13px', border: '1px solid #e8e8e8', borderRadius: '6px', minWidth: '160px' }}
+                                      style={{ padding: '4px 8px', fontSize: '13px', border: '1px solid #30363d', borderRadius: '6px', minWidth: '160px' }}
                                     >
                                       <option value="">Select...</option>
                                       {FL_DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
@@ -1460,7 +1460,7 @@ function FinishingView({ user, onLogout }) {
                                       value={row.operation}
                                       onChange={e => bulkHandleRowChange(i, 'operation', e.target.value)}
                                       disabled={!row.department}
-                                      style={{ padding: '4px 8px', fontSize: '13px', border: '1px solid #e8e8e8', borderRadius: '6px', minWidth: '120px' }}
+                                      style={{ padding: '4px 8px', fontSize: '13px', border: '1px solid #30363d', borderRadius: '6px', minWidth: '120px' }}
                                     >
                                       <option value="">Select...</option>
                                       {(FL_OPERATION_OPTIONS[row.department] || []).map(op => (
@@ -1476,7 +1476,7 @@ function FinishingView({ user, onLogout }) {
                                       onChange={e => bulkHandleRowChange(i, 'qty_claimed', e.target.value)}
                                       min="0"
                                       max={row.qty_accepted}
-                                      style={{ width: '80px', padding: '4px 8px', border: '1px solid #e8e8e8', borderRadius: '6px', fontSize: '13px' }}
+                                      style={{ width: '80px', padding: '4px 8px', border: '1px solid #30363d', borderRadius: '6px', fontSize: '13px' }}
                                     />
                                   </td>
                                   <td style={{ textAlign: 'right' }}>
@@ -1487,11 +1487,11 @@ function FinishingView({ user, onLogout }) {
                                   </td>
                                   <td>
                                     {row.alreadyLogged ? (
-                                      <span style={{ padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '700', background: '#fef3c7', color: '#92400e' }}>
+                                      <span style={{ padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '700', background: '#2d2208', color: '#d29922' }}>
                                         Already Logged
                                       </span>
                                     ) : (
-                                      <span style={{ padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '700', background: '#dcfce7', color: '#166534' }}>
+                                      <span style={{ padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '700', background: '#0d2818', color: '#3fb950' }}>
                                         Pending
                                       </span>
                                     )}
@@ -1550,7 +1550,7 @@ function FinishingView({ user, onLogout }) {
                   {plEntriesLoading ? (
                     <div className="loading"><div className="spinner" />Loading entries...</div>
                   ) : regularEntries.length === 0 ? (
-                    <p style={{ color: '#888', textAlign: 'center', padding: '24px' }}>No in-house entries yet.</p>
+                    <p style={{ color: '#8b949e', textAlign: 'center', padding: '24px' }}>No in-house entries yet.</p>
                   ) : (
                     <div className="table-container">
                       <table>
@@ -1595,12 +1595,12 @@ function FinishingView({ user, onLogout }) {
                 {/* Out-of-Factory Payments */}
                 <div className="card">
                   <h3>Out-of-Factory Payments</h3>
-                  <p style={{ color: '#888', fontSize: '13px', marginBottom: '16px', marginTop: '-8px' }}>
+                  <p style={{ color: '#8b949e', fontSize: '13px', marginBottom: '16px', marginTop: '-8px' }}>
                     Flexible payment — each entry can be marked paid individually.
                   </p>
 
                   {flexEntries.length === 0 ? (
-                    <p style={{ color: '#888', textAlign: 'center', padding: '24px' }}>No out-of-factory entries yet.</p>
+                    <p style={{ color: '#8b949e', textAlign: 'center', padding: '24px' }}>No out-of-factory entries yet.</p>
                   ) : (
                     <div className="table-container">
                       <table>
@@ -1642,7 +1642,7 @@ function FinishingView({ user, onLogout }) {
                                   {e.payment_status !== 'Paid' && (
                                     <button
                                       className="btn btn-small"
-                                      style={{ background: '#16a34a', color: 'white', whiteSpace: 'nowrap' }}
+                                      style={{ background: '#3fb950', color: 'white', whiteSpace: 'nowrap' }}
                                       onClick={() => handleMarkPaidFlexible(e)}
                                       disabled={!!flexMarking[e.id]}
                                     >
@@ -1699,7 +1699,7 @@ function FinishingView({ user, onLogout }) {
 
                 {!sdStitcher ? (
                   <div className="card">
-                    <p style={{ color: '#888', textAlign: 'center', padding: '32px' }}>
+                    <p style={{ color: '#8b949e', textAlign: 'center', padding: '32px' }}>
                       Select a finishing worker to view their performance
                     </p>
                   </div>
@@ -1707,18 +1707,18 @@ function FinishingView({ user, onLogout }) {
                   <div className="loading"><div className="spinner" />Loading...</div>
                 ) : sdLoaded && sdEntries.length === 0 ? (
                   <div className="card">
-                    <p style={{ color: '#888', textAlign: 'center', padding: '32px' }}>No entries found for this worker.</p>
+                    <p style={{ color: '#8b949e', textAlign: 'center', padding: '32px' }}>No entries found for this worker.</p>
                   </div>
                 ) : sdLoaded && sdEntries.length > 0 ? (
                   <>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
                       {[
-                        { label: 'Total POs',      value: new Set(sdEntries.map(e => e.po_number)).size,                                       color: '#0f3460' },
-                        { label: 'Total Pieces',   value: sdEntries.reduce((s, e) => s + Number(e.qty_claimed || 0), 0).toLocaleString(),      color: '#0f3460' },
-                        { label: 'Total Earnings', value: `PKR ${sdEntries.reduce((s, e) => s + Number(e.amount || 0), 0).toLocaleString()}`,  color: '#16a34a' },
+                        { label: 'Total POs',      value: new Set(sdEntries.map(e => e.po_number)).size,                                       color: '#e6edf3' },
+                        { label: 'Total Pieces',   value: sdEntries.reduce((s, e) => s + Number(e.qty_claimed || 0), 0).toLocaleString(),      color: '#e6edf3' },
+                        { label: 'Total Earnings', value: `PKR ${sdEntries.reduce((s, e) => s + Number(e.amount || 0), 0).toLocaleString()}`,  color: '#3fb950' },
                       ].map(c => (
                         <div key={c.label} className="card" style={{ marginBottom: 0, textAlign: 'center' }}>
-                          <p style={{ fontSize: '12px', color: '#888', fontWeight: '600', textTransform: 'uppercase', marginBottom: '8px' }}>{c.label}</p>
+                          <p style={{ fontSize: '12px', color: '#8b949e', fontWeight: '600', textTransform: 'uppercase', marginBottom: '8px' }}>{c.label}</p>
                           <p style={{ fontSize: '26px', fontWeight: '700', color: c.color }}>{c.value}</p>
                         </div>
                       ))}
@@ -1729,7 +1729,7 @@ function FinishingView({ user, onLogout }) {
                         <h3 style={{ margin: 0, borderBottom: 'none', padding: 0 }}>
                           Breakdown — {sdStitcher}
                           {(sdDateFrom || sdDateTo) && (
-                            <span style={{ fontSize: '13px', fontWeight: '400', color: '#888', marginLeft: '8px' }}>
+                            <span style={{ fontSize: '13px', fontWeight: '400', color: '#8b949e', marginLeft: '8px' }}>
                               {sdDateFrom || 'All'} to {sdDateTo || 'Now'}
                             </span>
                           )}
@@ -1738,14 +1738,14 @@ function FinishingView({ user, onLogout }) {
                           <button
                             className="btn btn-small"
                             onClick={sdHandleExport}
-                            style={{ width: 'auto', background: '#16a34a', color: 'white' }}
+                            style={{ width: 'auto', background: '#3fb950', color: 'white' }}
                           >
                             ↓ Excel
                           </button>
                           <button
                             className="btn btn-small"
                             onClick={() => window.print()}
-                            style={{ width: 'auto', background: '#0f3460', color: 'white' }}
+                            style={{ width: 'auto', background: '#4a7cc9', color: 'white' }}
                           >
                             Print
                           </button>
@@ -1842,7 +1842,7 @@ function FinishingView({ user, onLogout }) {
 
             {!sdStitcher ? (
               <div className="card">
-                <p style={{ color: '#888', textAlign: 'center', padding: '32px' }}>
+                <p style={{ color: '#8b949e', textAlign: 'center', padding: '32px' }}>
                   Select a finishing worker to view their performance
                 </p>
               </div>
@@ -1850,18 +1850,18 @@ function FinishingView({ user, onLogout }) {
               <div className="loading"><div className="spinner" />Loading...</div>
             ) : sdLoaded && sdEntries.length === 0 ? (
               <div className="card">
-                <p style={{ color: '#888', textAlign: 'center', padding: '32px' }}>No entries found for this worker.</p>
+                <p style={{ color: '#8b949e', textAlign: 'center', padding: '32px' }}>No entries found for this worker.</p>
               </div>
             ) : sdLoaded && sdEntries.length > 0 ? (
               <>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
                   {[
-                    { label: 'Total POs',      value: new Set(sdEntries.map(e => e.po_number)).size,                                       color: '#0f3460' },
-                    { label: 'Total Pieces',   value: sdEntries.reduce((s, e) => s + Number(e.qty_claimed || 0), 0).toLocaleString(),      color: '#0f3460' },
-                    { label: 'Total Earnings', value: `PKR ${sdEntries.reduce((s, e) => s + Number(e.amount || 0), 0).toLocaleString()}`,  color: '#16a34a' },
+                    { label: 'Total POs',      value: new Set(sdEntries.map(e => e.po_number)).size,                                       color: '#e6edf3' },
+                    { label: 'Total Pieces',   value: sdEntries.reduce((s, e) => s + Number(e.qty_claimed || 0), 0).toLocaleString(),      color: '#e6edf3' },
+                    { label: 'Total Earnings', value: `PKR ${sdEntries.reduce((s, e) => s + Number(e.amount || 0), 0).toLocaleString()}`,  color: '#3fb950' },
                   ].map(c => (
                     <div key={c.label} className="card" style={{ marginBottom: 0, textAlign: 'center' }}>
-                      <p style={{ fontSize: '12px', color: '#888', fontWeight: '600', textTransform: 'uppercase', marginBottom: '8px' }}>{c.label}</p>
+                      <p style={{ fontSize: '12px', color: '#8b949e', fontWeight: '600', textTransform: 'uppercase', marginBottom: '8px' }}>{c.label}</p>
                       <p style={{ fontSize: '26px', fontWeight: '700', color: c.color }}>{c.value}</p>
                     </div>
                   ))}
@@ -1872,7 +1872,7 @@ function FinishingView({ user, onLogout }) {
                     <h3 style={{ margin: 0, borderBottom: 'none', padding: 0 }}>
                       Breakdown — {sdStitcher}
                       {(sdDateFrom || sdDateTo) && (
-                        <span style={{ fontSize: '13px', fontWeight: '400', color: '#888', marginLeft: '8px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: '400', color: '#8b949e', marginLeft: '8px' }}>
                           {sdDateFrom || 'All'} to {sdDateTo || 'Now'}
                         </span>
                       )}
@@ -1881,14 +1881,14 @@ function FinishingView({ user, onLogout }) {
                       <button
                         className="btn btn-small"
                         onClick={sdHandleExport}
-                        style={{ width: 'auto', background: '#16a34a', color: 'white' }}
+                        style={{ width: 'auto', background: '#3fb950', color: 'white' }}
                       >
                         ↓ Excel
                       </button>
                       <button
                         className="btn btn-small"
                         onClick={() => window.print()}
-                        style={{ width: 'auto', background: '#0f3460', color: 'white' }}
+                        style={{ width: 'auto', background: '#4a7cc9', color: 'white' }}
                       >
                         Print
                       </button>
@@ -1956,33 +1956,33 @@ function FinishingView({ user, onLogout }) {
         >
           <div className="modal-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#0f3460' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#e6edf3' }}>
                 Update — {updateModal.stitcher_name} — <span style={{ textTransform: 'capitalize' }}>{updateModal.component}</span>
               </h3>
               <button
                 onClick={closeModal}
-                style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#888', lineHeight: 1 }}
+                style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#8b949e', lineHeight: 1 }}
               >
                 ✕
               </button>
             </div>
 
             <div style={{
-              background: '#f8f9ff', borderRadius: '8px', padding: '14px 16px',
+              background: '#1c2129', borderRadius: '8px', padding: '14px 16px',
               marginBottom: '20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '14px',
             }}>
-              <div><span style={{ color: '#888', fontWeight: '600' }}>PO: </span>{updateModal.po_number}</div>
-              <div><span style={{ color: '#888', fontWeight: '600' }}>Worker: </span>{updateModal.stitcher_name}</div>
+              <div><span style={{ color: '#8b949e', fontWeight: '600' }}>PO: </span>{updateModal.po_number}</div>
+              <div><span style={{ color: '#8b949e', fontWeight: '600' }}>Worker: </span>{updateModal.stitcher_name}</div>
               <div style={{ textTransform: 'capitalize' }}>
-                <span style={{ color: '#888', fontWeight: '600' }}>Component: </span>{updateModal.component}
+                <span style={{ color: '#8b949e', fontWeight: '600' }}>Component: </span>{updateModal.component}
               </div>
-              <div><span style={{ color: '#888', fontWeight: '600' }}>Allocated: </span>{updateModal.qty_allocated}</div>
+              <div><span style={{ color: '#8b949e', fontWeight: '600' }}>Allocated: </span>{updateModal.qty_allocated}</div>
               <div>
-                <span style={{ color: '#888', fontWeight: '600' }}>Total Returned So Far: </span>
+                <span style={{ color: '#8b949e', fontWeight: '600' }}>Total Returned So Far: </span>
                 {updateModal.qty_returned || 0}
               </div>
               <div>
-                <span style={{ color: '#888', fontWeight: '600' }}>Remaining: </span>
+                <span style={{ color: '#8b949e', fontWeight: '600' }}>Remaining: </span>
                 {updateModal.qty_remaining != null
                   ? Number(updateModal.qty_remaining)
                   : Number(updateModal.qty_allocated) - Number(updateModal.qty_returned || 0)}
@@ -2031,7 +2031,7 @@ function FinishingView({ user, onLogout }) {
               </button>
               <button
                 className="btn btn-small"
-                style={{ background: '#e8e8e8', color: '#555', padding: '12px 24px' }}
+                style={{ background: '#e8e8e8', color: '#8b949e', padding: '12px 24px' }}
                 onClick={closeModal}
               >
                 Cancel

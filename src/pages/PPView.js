@@ -82,7 +82,7 @@ export const ColourInput = React.forwardRef(function ColourInput(
         value={value}
         disabled
         className="auto-field"
-        style={{ width: '100%', padding: '12px 16px', border: '2px solid #e8e8e8', borderRadius: '8px', fontSize: '15px', background: '#f0f0f0', color: '#999', boxSizing: 'border-box' }}
+        style={{ width: '100%', padding: '12px 16px', border: '1px solid #30363d', borderRadius: '8px', fontSize: '15px', background: '#f0f0f0', color: '#8b949e', boxSizing: 'border-box' }}
       />
     );
   }
@@ -135,7 +135,7 @@ export const ColourInput = React.forwardRef(function ColourInput(
           border: error ? '2px solid #dc2626' : '2px solid #e8e8e8',
           borderRadius: '8px',
           fontSize: '15px',
-          background: '#fafafa',
+          background: '#21262d',
           boxSizing: 'border-box',
           outline: 'none',
         }}
@@ -144,7 +144,7 @@ export const ColourInput = React.forwardRef(function ColourInput(
       {showDropdown && (
         <div style={{
           position: 'absolute', top: '100%', left: 0, right: 0,
-          background: 'white', border: '1px solid #d1d5db', borderRadius: '6px',
+          background: '#161b22', border: '1px solid #d1d5db', borderRadius: '6px',
           boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 100,
           maxHeight: '200px', overflowY: 'auto',
         }}>
@@ -152,7 +152,7 @@ export const ColourInput = React.forwardRef(function ColourInput(
             <div
               key={s}
               onMouseDown={() => handleSelect(s)}
-              style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '14px', borderBottom: '1px solid #f0f2f5' }}
+              style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '14px', borderBottom: '1px solid #30363d' }}
               onMouseEnter={e => { e.currentTarget.style.background = '#f0f2f5'; }}
               onMouseLeave={e => { e.currentTarget.style.background = 'white'; }}
             >
@@ -162,7 +162,7 @@ export const ColourInput = React.forwardRef(function ColourInput(
         </div>
       )}
       {error && (
-        <p style={{ color: '#dc2626', fontSize: '12px', margin: '4px 0 0' }}>{error}</p>
+        <p style={{ color: '#f85149', fontSize: '12px', margin: '4px 0 0' }}>{error}</p>
       )}
     </div>
   );
@@ -875,19 +875,19 @@ function PPView({ user, onLogout }) {
   const getPOStatusBadge = (status) => {
     if (status === 'Active')    return { cls: 'badge badge-accepted', style: undefined };
     if (status === 'Cancelled') return { cls: 'badge badge-rejected', style: undefined };
-    return { cls: 'badge', style: { background: '#dbeafe', color: '#1e40af' } };
+    return { cls: 'badge', style: { background: '#1c2d4a', color: '#4a7cc9' } };
   };
 
   // ── Helpers ────────────────────────────────────────────────────────────
 
   const componentCard = (compKey, compLabel, colourRef) => (
-    <div key={compKey} style={{ border: '1px solid #e8e8e8', borderRadius: '8px', marginBottom: '12px', overflow: 'hidden' }}>
+    <div key={compKey} style={{ border: '1px solid #30363d', borderRadius: '8px', marginBottom: '12px', overflow: 'hidden' }}>
       <div
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#f8fafc', cursor: 'pointer' }}
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#161b22', cursor: 'pointer' }}
         onClick={() => toggleCard(compKey)}
       >
-        <span style={{ fontWeight: '700', color: '#0f3460', fontSize: '14px' }}>{compLabel} Details</span>
-        <span style={{ fontSize: '12px', color: '#888' }}>{collapsedCards[compKey] ? '▼' : '▲'}</span>
+        <span style={{ fontWeight: '700', color: '#e6edf3', fontSize: '14px' }}>{compLabel} Details</span>
+        <span style={{ fontSize: '12px', color: '#8b949e' }}>{collapsedCards[compKey] ? '▼' : '▲'}</span>
       </div>
       {!collapsedCards[compKey] && (
         <div style={{ padding: '16px' }}>
@@ -942,13 +942,13 @@ function PPView({ user, onLogout }) {
   );
 
   const editComponentCard = (compKey, compLabel, colourRef) => (
-    <div key={compKey} style={{ border: '1px solid #e8e8e8', borderRadius: '8px', marginBottom: '12px', overflow: 'hidden' }}>
+    <div key={compKey} style={{ border: '1px solid #30363d', borderRadius: '8px', marginBottom: '12px', overflow: 'hidden' }}>
       <div
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#f8fafc', cursor: 'pointer' }}
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#161b22', cursor: 'pointer' }}
         onClick={() => toggleEditCard(compKey)}
       >
-        <span style={{ fontWeight: '700', color: '#0f3460', fontSize: '14px' }}>{compLabel} Details</span>
-        <span style={{ fontSize: '12px', color: '#888' }}>{editCollapsedCards[compKey] ? '▼' : '▲'}</span>
+        <span style={{ fontWeight: '700', color: '#e6edf3', fontSize: '14px' }}>{compLabel} Details</span>
+        <span style={{ fontSize: '12px', color: '#8b949e' }}>{editCollapsedCards[compKey] ? '▼' : '▲'}</span>
       </div>
       {!editCollapsedCards[compKey] && (
         <div style={{ padding: '16px' }}>
@@ -1007,7 +1007,7 @@ function PPView({ user, onLogout }) {
       <div className="main-content">
 
         {/* Tab switcher */}
-        <div style={{ display: 'flex', gap: '0', marginBottom: '24px', borderBottom: '2px solid #e8e8e8' }}>
+        <div style={{ display: 'flex', gap: '0', marginBottom: '24px', borderBottom: '1px solid #30363d' }}>
           {[
             { key: 'issue', label: 'Issue Fabric' },
             { key: 'po',    label: 'PO Management' },
@@ -1053,9 +1053,9 @@ function PPView({ user, onLogout }) {
 
                 {/* Multi-component issuance card — shown when PO is linked */}
                 {issuePO && issuePODetails && (
-                  <div style={{ border: '1px solid #e0e7ff', borderRadius: '8px', marginBottom: '20px', overflow: 'hidden' }}>
-                    <div style={{ background: '#f0f6ff', padding: '10px 16px', borderBottom: '1px solid #e0e7ff' }}>
-                      <p style={{ fontWeight: '700', color: '#0f3460', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>
+                  <div style={{ border: '1px solid #30363d', borderRadius: '8px', marginBottom: '20px', overflow: 'hidden' }}>
+                    <div style={{ background: '#1c2d4a', padding: '10px 16px', borderBottom: '1px solid #30363d' }}>
+                      <p style={{ fontWeight: '700', color: '#e6edf3', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>
                         Qty to Issue — {issuePODetails.collection_name || issuePODetails.po_number}
                       </p>
                     </div>
@@ -1068,8 +1068,8 @@ function PPView({ user, onLogout }) {
                         const overLimit = inputVal !== '' && Number(inputVal) > remaining;
                         const label     = comp.charAt(0).toUpperCase() + comp.slice(1);
                         return (
-                          <div key={comp} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0', borderBottom: '1px solid #f0f2f5' }}>
-                            <div style={{ width: '72px', fontWeight: '700', color: '#0f3460', fontSize: '14px' }}>{label}</div>
+                          <div key={comp} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0', borderBottom: '1px solid #30363d' }}>
+                            <div style={{ width: '72px', fontWeight: '700', color: '#e6edf3', fontSize: '14px' }}>{label}</div>
                             <div style={{ flex: 1, fontSize: '12px', color: '#666' }}>
                               {issuePODetails[`${comp}_colour`] || '—'} · {issuePODetails[`${comp}_fabric`] || '—'}
                             </div>
@@ -1098,7 +1098,7 @@ function PPView({ user, onLogout }) {
                                 }}
                               />
                               {overLimit && (
-                                <p style={{ fontSize: '11px', color: '#dc2626', margin: '3px 0 0', fontWeight: '600' }}>
+                                <p style={{ fontSize: '11px', color: '#f85149', margin: '3px 0 0', fontWeight: '600' }}>
                                   Exceeds remaining
                                 </p>
                               )}
@@ -1129,7 +1129,7 @@ function PPView({ user, onLogout }) {
                   <div className="form-group">
                     <label>PO Number *</label>
                     <div style={{ display: 'flex', alignItems: 'center', border: issuePO ? '2px dashed #0f3460' : '2px solid #e8e8e8', borderRadius: '8px', overflow: 'hidden', background: issuePO ? '#f0f6ff' : '#fafafa' }}>
-                      <span style={{ padding: '12px 14px', background: '#f0f2f5', color: '#555', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderRight: issuePO ? '2px dashed #0f3460' : '2px solid #e8e8e8', userSelect: 'none' }}>PO-</span>
+                      <span style={{ padding: '12px 14px', background: '#161b22', color: '#8b949e', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderRight: issuePO ? '2px dashed #0f3460' : '2px solid #e8e8e8', userSelect: 'none' }}>PO-</span>
                       <input
                         type="text"
                         name="poNumber"
@@ -1145,8 +1145,8 @@ function PPView({ user, onLogout }) {
 
                   <div className="form-group">
                     <label>JO Number *</label>
-                    <div style={{ display: 'flex', alignItems: 'center', border: '2px solid #e8e8e8', borderRadius: '8px', overflow: 'hidden', background: '#fafafa' }}>
-                      <span style={{ padding: '12px 14px', background: '#f0f2f5', color: '#555', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderRight: '2px solid #e8e8e8', userSelect: 'none' }}>JO-</span>
+                    <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #30363d', borderRadius: '8px', overflow: 'hidden', background: '#21262d' }}>
+                      <span style={{ padding: '12px 14px', background: '#161b22', color: '#8b949e', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderRight: '2px solid #e8e8e8', userSelect: 'none' }}>JO-</span>
                       <input
                         type="text"
                         name="joNumber"
@@ -1168,7 +1168,7 @@ function PPView({ user, onLogout }) {
                       value={form.article}
                       onChange={handleChange}
                       disabled={!!issuePO}
-                      style={issuePO ? { border: '2px dashed #0f3460', background: '#f0f6ff', color: '#0f3460' } : {}}
+                      style={issuePO ? { border: '2px dashed #0f3460', background: '#1c2d4a', color: '#e6edf3' } : {}}
                     />
                   </div>
 
@@ -1192,7 +1192,7 @@ function PPView({ user, onLogout }) {
                         type="text"
                         value={form.garmentType}
                         disabled
-                        style={{ border: '2px dashed #0f3460', background: '#f0f6ff', color: '#0f3460', width: '100%', padding: '12px 16px', borderRadius: '8px', fontSize: '15px', boxSizing: 'border-box', cursor: 'not-allowed' }}
+                        style={{ border: '2px dashed #0f3460', background: '#1c2d4a', color: '#e6edf3', width: '100%', padding: '12px 16px', borderRadius: '8px', fontSize: '15px', boxSizing: 'border-box', cursor: 'not-allowed' }}
                       />
                     ) : (
                       <select name="garmentType" value={form.garmentType} onChange={handleChange}>
@@ -1211,7 +1211,7 @@ function PPView({ user, onLogout }) {
                       value={form.fabricName}
                       onChange={handleChange}
                       disabled={!!issuePO}
-                      style={issuePO ? { border: '2px dashed #0f3460', background: '#f0f6ff', color: '#0f3460' } : {}}
+                      style={issuePO ? { border: '2px dashed #0f3460', background: '#1c2d4a', color: '#e6edf3' } : {}}
                     />
                   </div>
 
@@ -1224,7 +1224,7 @@ function PPView({ user, onLogout }) {
                       value={form.fabricColor}
                       onChange={handleChange}
                       disabled={!!issuePO}
-                      style={issuePO ? { border: '2px dashed #0f3460', background: '#f0f6ff', color: '#0f3460' } : {}}
+                      style={issuePO ? { border: '2px dashed #0f3460', background: '#1c2d4a', color: '#e6edf3' } : {}}
                     />
                   </div>
 
@@ -1237,9 +1237,9 @@ function PPView({ user, onLogout }) {
                 {/* Accessories */}
                 <div style={{ marginTop: '24px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                    <h4 style={{ margin: 0, color: '#0f3460' }}>Accessories</h4>
+                    <h4 style={{ margin: 0, color: '#e6edf3' }}>Accessories</h4>
                     {accessories.filter(a => !a.fromPO).length < 10 && (
-                      <button type="button" className="btn btn-small" onClick={addAccessory} style={{ background: '#e0e7ff', color: '#0f3460', width: 'auto' }}>+ Add Accessory</button>
+                      <button type="button" className="btn btn-small" onClick={addAccessory} style={{ background: '#1c2d4a', color: '#e6edf3', width: 'auto' }}>+ Add Accessory</button>
                     )}
                   </div>
                   {accessories.map((acc, i) => {
@@ -1267,12 +1267,12 @@ function PPView({ user, onLogout }) {
                               style={{ width: '100%', padding: '8px', border: `1px solid ${overIssued ? '#dc2626' : '#d1d5db'}`, borderRadius: '6px', background: overIssued ? '#fef2f2' : 'white', boxSizing: 'border-box' }}
                             />
                             {overIssued && (
-                              <p style={{ fontSize: '11px', color: '#dc2626', margin: '3px 0 0', fontWeight: '600' }}>
+                              <p style={{ fontSize: '11px', color: '#f85149', margin: '3px 0 0', fontWeight: '600' }}>
                                 Exceeds by {qtyNum - remaining}
                               </p>
                             )}
                           </div>
-                          <button type="button" onClick={() => removeAccessory(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#dc2626', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
+                          <button type="button" onClick={() => removeAccessory(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#f85149', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
                         </div>
                       );
                     }
@@ -1287,19 +1287,19 @@ function PPView({ user, onLogout }) {
                           <option value="">Unit</option>
                           {ACCESSORY_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
                         </select>
-                        <button type="button" onClick={() => removeAccessory(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#dc2626', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
+                        <button type="button" onClick={() => removeAccessory(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#f85149', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
                       </div>
                     );
                   })}
-                  {accessories.length === 0 && <p style={{ color: '#aaa', fontSize: '13px', margin: '4px 0 0' }}>No accessories added.</p>}
+                  {accessories.length === 0 && <p style={{ color: '#8b949e', fontSize: '13px', margin: '4px 0 0' }}>No accessories added.</p>}
                 </div>
 
                 {/* Laces */}
                 <div style={{ marginTop: '24px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                    <h4 style={{ margin: 0, color: '#0f3460' }}>Laces</h4>
+                    <h4 style={{ margin: 0, color: '#e6edf3' }}>Laces</h4>
                     {laces.length < 10 && (
-                      <button type="button" className="btn btn-small" onClick={addLace} style={{ background: '#e0e7ff', color: '#0f3460', width: 'auto' }}>+ Add Lace</button>
+                      <button type="button" className="btn btn-small" onClick={addLace} style={{ background: '#1c2d4a', color: '#e6edf3', width: 'auto' }}>+ Add Lace</button>
                     )}
                   </div>
                   {laces.map((lace, i) => (
@@ -1307,10 +1307,10 @@ function PPView({ user, onLogout }) {
                       <input type="text" placeholder="Lace type" value={lace.laceType} onChange={e => handleLaceChange(i, 'laceType', e.target.value)} style={{ flex: 2, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }} />
                       <input type="number" placeholder="Qty" value={lace.qty} onChange={e => handleLaceChange(i, 'qty', e.target.value)} onWheel={e => e.target.blur()} min="0" style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }} />
                       <input type="text" placeholder="Unit" value={lace.unit} onChange={e => handleLaceChange(i, 'unit', e.target.value)} style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }} />
-                      <button type="button" onClick={() => removeLace(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#dc2626', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
+                      <button type="button" onClick={() => removeLace(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#f85149', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
                     </div>
                   ))}
-                  {laces.length === 0 && <p style={{ color: '#aaa', fontSize: '13px', margin: '4px 0 0' }}>No laces added.</p>}
+                  {laces.length === 0 && <p style={{ color: '#8b949e', fontSize: '13px', margin: '4px 0 0' }}>No laces added.</p>}
                 </div>
 
                 <div style={{ marginTop: '20px' }}>
@@ -1327,7 +1327,7 @@ function PPView({ user, onLogout }) {
               {loading ? (
                 <div className="loading"><div className="spinner"></div>Loading records...</div>
               ) : records.length === 0 ? (
-                <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>No records yet. Issue fabric above to get started.</p>
+                <p style={{ color: '#8b949e', textAlign: 'center', padding: '20px' }}>No records yet. Issue fabric above to get started.</p>
               ) : (
                 <div className="table-container">
                   <table>
@@ -1369,14 +1369,14 @@ function PPView({ user, onLogout }) {
               <form onSubmit={handlePOSubmit}>
 
                 {/* Section A: Header */}
-                <div style={{ marginBottom: '8px', paddingBottom: '8px', borderBottom: '2px solid #f0f2f5' }}>
-                  <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f3460', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 16px' }}>A — Header</p>
+                <div style={{ marginBottom: '8px', paddingBottom: '8px', borderBottom: '1px solid #30363d' }}>
+                  <p style={{ fontSize: '13px', fontWeight: '700', color: '#e6edf3', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 16px' }}>A — Header</p>
                 </div>
                 <div className="form-grid">
                   <div className="form-group">
                     <label>Batch Number *</label>
-                    <div style={{ display: 'flex', alignItems: 'center', border: '2px dashed #0f3460', borderRadius: '8px', overflow: 'hidden', background: '#f0f6ff' }}>
-                      <span style={{ padding: '12px 12px', background: '#e0e7ff', color: '#0f3460', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderRight: '2px dashed #0f3460', userSelect: 'none' }}>B-</span>
+                    <div style={{ display: 'flex', alignItems: 'center', border: '2px dashed #0f3460', borderRadius: '8px', overflow: 'hidden', background: '#1c2d4a' }}>
+                      <span style={{ padding: '12px 12px', background: '#1c2d4a', color: '#e6edf3', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderRight: '2px dashed #0f3460', userSelect: 'none' }}>B-</span>
                       <input
                         type="text"
                         name="batch_number_b"
@@ -1386,7 +1386,7 @@ function PPView({ user, onLogout }) {
                         maxLength={4}
                         style={{ border: 'none', width: '48px', padding: '12px 8px', outline: 'none', background: 'transparent', fontSize: '15px', textAlign: 'center' }}
                       />
-                      <span style={{ padding: '12px 10px', background: '#e0e7ff', color: '#0f3460', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderLeft: '2px dashed #0f3460', borderRight: '2px dashed #0f3460', userSelect: 'none' }}>-PO-</span>
+                      <span style={{ padding: '12px 10px', background: '#1c2d4a', color: '#e6edf3', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderLeft: '2px dashed #0f3460', borderRight: '2px dashed #0f3460', userSelect: 'none' }}>-PO-</span>
                       <input
                         type="text"
                         name="batch_number_po"
@@ -1401,8 +1401,8 @@ function PPView({ user, onLogout }) {
 
                   <div className="form-group">
                     <label>PO Number *</label>
-                    <div style={{ display: 'flex', alignItems: 'center', border: '2px solid #e8e8e8', borderRadius: '8px', overflow: 'hidden', background: '#fafafa' }}>
-                      <span style={{ padding: '12px 14px', background: '#f0f2f5', color: '#555', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderRight: '2px solid #e8e8e8', userSelect: 'none' }}>PO-</span>
+                    <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #30363d', borderRadius: '8px', overflow: 'hidden', background: '#21262d' }}>
+                      <span style={{ padding: '12px 14px', background: '#161b22', color: '#8b949e', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderRight: '2px solid #e8e8e8', userSelect: 'none' }}>PO-</span>
                       <input
                         type="text"
                         name="po_number"
@@ -1450,24 +1450,24 @@ function PPView({ user, onLogout }) {
                 </div>
 
                 {/* Section B: Components */}
-                <div style={{ marginTop: '24px', marginBottom: '8px', paddingBottom: '8px', borderBottom: '2px solid #f0f2f5' }}>
-                  <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f3460', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 16px' }}>B — Components</p>
+                <div style={{ marginTop: '24px', marginBottom: '8px', paddingBottom: '8px', borderBottom: '1px solid #30363d' }}>
+                  <p style={{ fontSize: '13px', fontWeight: '700', color: '#e6edf3', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 16px' }}>B — Components</p>
                 </div>
                 {componentCard('shirt',   'Shirt',   shirtColourRef)}
                 {componentCard('trouser', 'Trouser', trouserColourRef)}
                 {poForm.garment_type === 'Kids' ? (
-                  <div style={{ padding: '12px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', marginBottom: '12px' }}>
-                    <p style={{ margin: 0, fontSize: '13px', color: '#166534', fontWeight: '600' }}>
+                  <div style={{ padding: '12px 16px', background: '#0d2818', border: '1px solid #bbf7d0', borderRadius: '8px', marginBottom: '12px' }}>
+                    <p style={{ margin: 0, fontSize: '13px', color: '#3fb950', fontWeight: '600' }}>
                       ℹ Dupatta not applicable for Kids garments — skipped.
                     </p>
                   </div>
                 ) : componentCard('dupatta', 'Dupatta', dupattaColourRef)}
 
                 {/* Section C: Accessories */}
-                <div style={{ marginTop: '24px', marginBottom: '8px', paddingBottom: '8px', borderBottom: '2px solid #f0f2f5' }}>
+                <div style={{ marginTop: '24px', marginBottom: '8px', paddingBottom: '8px', borderBottom: '1px solid #30363d' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                    <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f3460', textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>C — Accessories</p>
-                    <button type="button" className="btn btn-small" onClick={addPOAccessoryRow} style={{ background: '#e0e7ff', color: '#0f3460', width: 'auto' }}>+ Add Accessory</button>
+                    <p style={{ fontSize: '13px', fontWeight: '700', color: '#e6edf3', textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>C — Accessories</p>
+                    <button type="button" className="btn btn-small" onClick={addPOAccessoryRow} style={{ background: '#1c2d4a', color: '#e6edf3', width: 'auto' }}>+ Add Accessory</button>
                   </div>
                 </div>
                 {poAccessories.map((acc, i) => (
@@ -1481,11 +1481,11 @@ function PPView({ user, onLogout }) {
                     />
                     <input type="number" placeholder="Qty" value={acc.quantity} onChange={e => handlePOAccessoryChange(i, 'quantity', e.target.value)} onWheel={e => e.target.blur()} min="0" style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }} />
                     {poAccessories.length > 1 && (
-                      <button type="button" onClick={() => removePOAccessoryRow(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#dc2626', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
+                      <button type="button" onClick={() => removePOAccessoryRow(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#f85149', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
                     )}
                   </div>
                 ))}
-                <p style={{ color: '#aaa', fontSize: '12px', margin: '4px 0 0' }}>Accessories are optional — leave rows blank to skip.</p>
+                <p style={{ color: '#8b949e', fontSize: '12px', margin: '4px 0 0' }}>Accessories are optional — leave rows blank to skip.</p>
 
                 <div style={{ marginTop: '24px' }}>
                   <button type="submit" className="btn btn-primary" disabled={poSubmitting}>
@@ -1501,7 +1501,7 @@ function PPView({ user, onLogout }) {
               {poLoading ? (
                 <div className="loading"><div className="spinner"></div>Loading POs...</div>
               ) : pos.length === 0 ? (
-                <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>No POs created yet.</p>
+                <p style={{ color: '#8b949e', textAlign: 'center', padding: '20px' }}>No POs created yet.</p>
               ) : (
                 <div className="table-container">
                   <table>
@@ -1527,15 +1527,15 @@ function PPView({ user, onLogout }) {
                             <td>{p.dupatta_qty ?? '—'}</td>
                             <td><span className={badge.cls} style={badge.style}>{p.status || '—'}</span></td>
                             <td>
-                              <button className="btn btn-small" onClick={() => openPODetail(p)} style={{ background: '#e0e7ff', color: '#0f3460', width: 'auto' }}>
+                              <button className="btn btn-small" onClick={() => openPODetail(p)} style={{ background: '#1c2d4a', color: '#e6edf3', width: 'auto' }}>
                                 View
                               </button>
                             </td>
                             <td>
                               {poHasIssuance.has(p.po_number) ? (
-                                <span title="Cannot edit — fabric already issued" style={{ fontSize: '12px', color: '#aaa', cursor: 'not-allowed' }}>Locked</span>
+                                <span title="Cannot edit — fabric already issued" style={{ fontSize: '12px', color: '#8b949e', cursor: 'not-allowed' }}>Locked</span>
                               ) : (
-                                <button className="btn btn-small" onClick={() => openEditPO(p)} style={{ background: '#fef3c7', color: '#92400e', width: 'auto' }}>
+                                <button className="btn btn-small" onClick={() => openEditPO(p)} style={{ background: '#2d2208', color: '#d29922', width: 'auto' }}>
                                   Edit
                                 </button>
                               )}
@@ -1565,10 +1565,10 @@ function PPView({ user, onLogout }) {
           }}
           onClick={e => { if (e.target === e.currentTarget) closeEditPO(); }}
         >
-          <div style={{ background: 'white', borderRadius: '12px', padding: '32px', maxWidth: '720px', width: '100%' }}>
+          <div style={{ background: '#161b22', borderRadius: '12px', padding: '32px', maxWidth: '720px', width: '100%' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
               <div>
-                <h2 style={{ color: '#0f3460', marginBottom: '4px' }}>Edit PO — {editPOTarget.po_number}</h2>
+                <h2 style={{ color: '#e6edf3', marginBottom: '4px' }}>Edit PO — {editPOTarget.po_number}</h2>
                 <p style={{ color: '#666', fontSize: '13px' }}>Changes to Batch No., Collection, components, and accessories only. PO Number cannot change.</p>
               </div>
               <button className="btn btn-small btn-danger" onClick={closeEditPO} style={{ width: 'auto' }}>Close</button>
@@ -1578,14 +1578,14 @@ function PPView({ user, onLogout }) {
 
             <form onSubmit={handleEditPOSubmit}>
               {/* Section A */}
-              <div style={{ marginBottom: '8px', paddingBottom: '8px', borderBottom: '2px solid #f0f2f5' }}>
-                <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f3460', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 16px' }}>A — Header</p>
+              <div style={{ marginBottom: '8px', paddingBottom: '8px', borderBottom: '1px solid #30363d' }}>
+                <p style={{ fontSize: '13px', fontWeight: '700', color: '#e6edf3', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 16px' }}>A — Header</p>
               </div>
               <div className="form-grid">
                 <div className="form-group">
                   <label>Batch Number</label>
-                  <div style={{ display: 'flex', alignItems: 'center', border: '2px dashed #0f3460', borderRadius: '8px', overflow: 'hidden', background: '#f0f6ff' }}>
-                    <span style={{ padding: '12px 12px', background: '#e0e7ff', color: '#0f3460', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderRight: '2px dashed #0f3460', userSelect: 'none' }}>B-</span>
+                  <div style={{ display: 'flex', alignItems: 'center', border: '2px dashed #0f3460', borderRadius: '8px', overflow: 'hidden', background: '#1c2d4a' }}>
+                    <span style={{ padding: '12px 12px', background: '#1c2d4a', color: '#e6edf3', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderRight: '2px dashed #0f3460', userSelect: 'none' }}>B-</span>
                     <input
                       type="text"
                       name="batch_number_b"
@@ -1594,7 +1594,7 @@ function PPView({ user, onLogout }) {
                       maxLength={4}
                       style={{ border: 'none', width: '48px', padding: '12px 8px', outline: 'none', background: 'transparent', fontSize: '15px', textAlign: 'center' }}
                     />
-                    <span style={{ padding: '12px 10px', background: '#e0e7ff', color: '#0f3460', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderLeft: '2px dashed #0f3460', borderRight: '2px dashed #0f3460', userSelect: 'none' }}>-PO-</span>
+                    <span style={{ padding: '12px 10px', background: '#1c2d4a', color: '#e6edf3', fontWeight: '700', fontSize: '15px', whiteSpace: 'nowrap', borderLeft: '2px dashed #0f3460', borderRight: '2px dashed #0f3460', userSelect: 'none' }}>-PO-</span>
                     <input
                       type="text"
                       name="batch_number_po"
@@ -1608,7 +1608,7 @@ function PPView({ user, onLogout }) {
 
                 <div className="form-group">
                   <label>PO Number</label>
-                  <input type="text" value={editPOForm.po_number || ''} disabled style={{ background: '#f0f0f0', color: '#999', width: '100%', padding: '12px 16px', border: '2px solid #e8e8e8', borderRadius: '8px', fontSize: '15px', boxSizing: 'border-box' }} />
+                  <input type="text" value={editPOForm.po_number || ''} disabled style={{ background: '#f0f0f0', color: '#8b949e', width: '100%', padding: '12px 16px', border: '1px solid #30363d', borderRadius: '8px', fontSize: '15px', boxSizing: 'border-box' }} />
                 </div>
 
                 <div className="form-group">
@@ -1646,24 +1646,24 @@ function PPView({ user, onLogout }) {
               </div>
 
               {/* Section B: Components */}
-              <div style={{ marginTop: '24px', marginBottom: '8px', paddingBottom: '8px', borderBottom: '2px solid #f0f2f5' }}>
-                <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f3460', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 16px' }}>B — Components</p>
+              <div style={{ marginTop: '24px', marginBottom: '8px', paddingBottom: '8px', borderBottom: '1px solid #30363d' }}>
+                <p style={{ fontSize: '13px', fontWeight: '700', color: '#e6edf3', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 16px' }}>B — Components</p>
               </div>
               {editComponentCard('shirt',   'Shirt',   editShirtColourRef)}
               {editComponentCard('trouser', 'Trouser', editTrouserColourRef)}
               {editPOForm.garment_type === 'Kids' ? (
-                <div style={{ padding: '12px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', marginBottom: '12px' }}>
-                  <p style={{ margin: 0, fontSize: '13px', color: '#166534', fontWeight: '600' }}>
+                <div style={{ padding: '12px 16px', background: '#0d2818', border: '1px solid #bbf7d0', borderRadius: '8px', marginBottom: '12px' }}>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#3fb950', fontWeight: '600' }}>
                     ℹ Dupatta not applicable for Kids garments — skipped.
                   </p>
                 </div>
               ) : editComponentCard('dupatta', 'Dupatta', editDupattaColourRef)}
 
               {/* Section C: Accessories */}
-              <div style={{ marginTop: '24px', marginBottom: '8px', paddingBottom: '8px', borderBottom: '2px solid #f0f2f5' }}>
+              <div style={{ marginTop: '24px', marginBottom: '8px', paddingBottom: '8px', borderBottom: '1px solid #30363d' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                  <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f3460', textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>C — Accessories</p>
-                  <button type="button" className="btn btn-small" onClick={addEditPOAccessoryRow} style={{ background: '#e0e7ff', color: '#0f3460', width: 'auto' }}>+ Add</button>
+                  <p style={{ fontSize: '13px', fontWeight: '700', color: '#e6edf3', textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>C — Accessories</p>
+                  <button type="button" className="btn btn-small" onClick={addEditPOAccessoryRow} style={{ background: '#1c2d4a', color: '#e6edf3', width: 'auto' }}>+ Add</button>
                 </div>
               </div>
               {editPOAccessories.map((acc, i) => (
@@ -1685,17 +1685,17 @@ function PPView({ user, onLogout }) {
                     style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}
                   />
                   {editPOAccessories.length > 1 && (
-                    <button type="button" onClick={() => removeEditPOAccessoryRow(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#dc2626', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
+                    <button type="button" onClick={() => removeEditPOAccessoryRow(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#f85149', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
                   )}
                 </div>
               ))}
-              <p style={{ color: '#aaa', fontSize: '12px', margin: '4px 0 16px' }}>Accessories will be replaced entirely on save. Leave rows blank to remove all.</p>
+              <p style={{ color: '#8b949e', fontSize: '12px', margin: '4px 0 16px' }}>Accessories will be replaced entirely on save. Leave rows blank to remove all.</p>
 
               <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
                 <button type="submit" className="btn btn-primary" disabled={editPOSubmitting} style={{ flex: 1 }}>
                   {editPOSubmitting ? 'Saving...' : 'Save Changes'}
                 </button>
-                <button type="button" className="btn" onClick={closeEditPO} style={{ flex: 1, background: '#f0f2f5', color: '#333' }}>
+                <button type="button" className="btn" onClick={closeEditPO} style={{ flex: 1, background: '#161b22', color: '#e6edf3' }}>
                   Cancel
                 </button>
               </div>
@@ -1717,51 +1717,51 @@ function PPView({ user, onLogout }) {
           }}
           onClick={e => { if (e.target === e.currentTarget) closePODetail(); }}
         >
-          <div style={{ background: 'white', borderRadius: '12px', padding: '32px', maxWidth: '800px', width: '100%' }}>
+          <div style={{ background: '#161b22', borderRadius: '12px', padding: '32px', maxWidth: '800px', width: '100%' }}>
             {/* Modal header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
               <div>
-                <h2 style={{ color: '#0f3460', marginBottom: '4px' }}>{selectedPODetail.po_number}</h2>
+                <h2 style={{ color: '#e6edf3', marginBottom: '4px' }}>{selectedPODetail.po_number}</h2>
                 {selectedPODetail.batch_number && (
-                  <p style={{ color: '#0f3460', fontSize: '13px', fontWeight: '600', marginBottom: '2px' }}>
+                  <p style={{ color: '#e6edf3', fontSize: '13px', fontWeight: '600', marginBottom: '2px' }}>
                     Batch: {selectedPODetail.batch_number}
                   </p>
                 )}
                 <p style={{ color: '#666', fontSize: '14px' }}>{selectedPODetail.collection_name || selectedPODetail.buyer_name || '—'}</p>
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
-                <button className="btn btn-small" onClick={() => window.print()} style={{ background: '#e0e7ff', color: '#0f3460', width: 'auto' }}>Print</button>
+                <button className="btn btn-small" onClick={() => window.print()} style={{ background: '#1c2d4a', color: '#e6edf3', width: 'auto' }}>Print</button>
                 <button className="btn btn-small btn-danger" onClick={closePODetail} style={{ width: 'auto' }}>Close</button>
               </div>
             </div>
 
             {/* Section A: Header fields */}
             <div style={{ marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid #e8e8e8' }}>
-              <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f3460', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>A — Header</p>
+              <p style={{ fontSize: '13px', fontWeight: '700', color: '#e6edf3', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>A — Header</p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '14px' }}>
-                <div><span style={{ color: '#888' }}>Article: </span><strong>{selectedPODetail.article_name || '—'}</strong></div>
-                <div><span style={{ color: '#888' }}>Garment Type: </span><strong>{selectedPODetail.garment_type || '—'}</strong></div>
-                <div><span style={{ color: '#888' }}>PO Date: </span><strong>{selectedPODetail.po_date ? new Date(selectedPODetail.po_date).toLocaleDateString('en-GB') : '—'}</strong></div>
-                <div><span style={{ color: '#888' }}>Delivery Date: </span><strong>{selectedPODetail.delivery_date ? new Date(selectedPODetail.delivery_date).toLocaleDateString('en-GB') : '—'}</strong></div>
-                <div style={{ gridColumn: '1 / -1' }}><span style={{ color: '#888' }}>Remarks: </span><strong>{selectedPODetail.remarks || '—'}</strong></div>
+                <div><span style={{ color: '#8b949e' }}>Article: </span><strong>{selectedPODetail.article_name || '—'}</strong></div>
+                <div><span style={{ color: '#8b949e' }}>Garment Type: </span><strong>{selectedPODetail.garment_type || '—'}</strong></div>
+                <div><span style={{ color: '#8b949e' }}>PO Date: </span><strong>{selectedPODetail.po_date ? new Date(selectedPODetail.po_date).toLocaleDateString('en-GB') : '—'}</strong></div>
+                <div><span style={{ color: '#8b949e' }}>Delivery Date: </span><strong>{selectedPODetail.delivery_date ? new Date(selectedPODetail.delivery_date).toLocaleDateString('en-GB') : '—'}</strong></div>
+                <div style={{ gridColumn: '1 / -1' }}><span style={{ color: '#8b949e' }}>Remarks: </span><strong>{selectedPODetail.remarks || '—'}</strong></div>
               </div>
             </div>
 
             {/* Section B: Component cards */}
             <div style={{ marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid #e8e8e8' }}>
-              <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f3460', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>B — Components</p>
+              <p style={{ fontSize: '13px', fontWeight: '700', color: '#e6edf3', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>B — Components</p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                 {['shirt','trouser','dupatta'].map(comp => {
                   const qty       = Number(selectedPODetail[`${comp}_qty`] || 0);
                   const issued    = Number(selectedPODetail[`${comp}_meters_issued`] || 0);
                   const remaining = qty - issued;
                   return (
-                    <div key={comp} style={{ border: '1px solid #e8e8e8', borderRadius: '8px', padding: '12px' }}>
-                      <p style={{ fontWeight: '700', color: '#0f3460', marginBottom: '8px', textTransform: 'capitalize', fontSize: '13px' }}>{comp}</p>
-                      <p style={{ fontSize: '13px', marginBottom: '4px' }}><span style={{ color: '#888' }}>Colour: </span>{selectedPODetail[`${comp}_colour`] || '—'}</p>
-                      <p style={{ fontSize: '13px', marginBottom: '4px' }}><span style={{ color: '#888' }}>Fabric: </span>{selectedPODetail[`${comp}_fabric`] || '—'}</p>
-                      <p style={{ fontSize: '13px', marginBottom: '4px' }}><span style={{ color: '#888' }}>Total Qty: </span>{qty} pcs</p>
-                      <p style={{ fontSize: '13px', marginBottom: '4px' }}><span style={{ color: '#888' }}>Issued: </span>{issued} pcs</p>
+                    <div key={comp} style={{ border: '1px solid #30363d', borderRadius: '8px', padding: '12px' }}>
+                      <p style={{ fontWeight: '700', color: '#e6edf3', marginBottom: '8px', textTransform: 'capitalize', fontSize: '13px' }}>{comp}</p>
+                      <p style={{ fontSize: '13px', marginBottom: '4px' }}><span style={{ color: '#8b949e' }}>Colour: </span>{selectedPODetail[`${comp}_colour`] || '—'}</p>
+                      <p style={{ fontSize: '13px', marginBottom: '4px' }}><span style={{ color: '#8b949e' }}>Fabric: </span>{selectedPODetail[`${comp}_fabric`] || '—'}</p>
+                      <p style={{ fontSize: '13px', marginBottom: '4px' }}><span style={{ color: '#8b949e' }}>Total Qty: </span>{qty} pcs</p>
+                      <p style={{ fontSize: '13px', marginBottom: '4px' }}><span style={{ color: '#8b949e' }}>Issued: </span>{issued} pcs</p>
                       <p style={{ fontSize: '13px', fontWeight: '600', color: remaining > 0 ? '#16a34a' : '#dc2626' }}>
                         Remaining: {remaining} pcs
                       </p>
@@ -1773,11 +1773,11 @@ function PPView({ user, onLogout }) {
 
             {/* Section C: Accessories */}
             <div style={{ marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid #e8e8e8' }}>
-              <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f3460', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>C — Accessories</p>
+              <p style={{ fontSize: '13px', fontWeight: '700', color: '#e6edf3', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>C — Accessories</p>
               {detailLoading ? (
-                <p style={{ color: '#888', fontSize: '13px' }}>Loading...</p>
+                <p style={{ color: '#8b949e', fontSize: '13px' }}>Loading...</p>
               ) : poDetailAccessories.length === 0 ? (
-                <p style={{ color: '#aaa', fontSize: '13px' }}>No accessories recorded.</p>
+                <p style={{ color: '#8b949e', fontSize: '13px' }}>No accessories recorded.</p>
               ) : (
                 <div className="table-container">
                   <table>
@@ -1794,11 +1794,11 @@ function PPView({ user, onLogout }) {
 
             {/* Section D: Issuance History */}
             <div>
-              <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f3460', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>D — Issuance History</p>
+              <p style={{ fontSize: '13px', fontWeight: '700', color: '#e6edf3', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>D — Issuance History</p>
               {detailLoading ? (
-                <p style={{ color: '#888', fontSize: '13px' }}>Loading...</p>
+                <p style={{ color: '#8b949e', fontSize: '13px' }}>Loading...</p>
               ) : poDetailLog.length === 0 ? (
-                <p style={{ color: '#aaa', fontSize: '13px' }}>No issuance history.</p>
+                <p style={{ color: '#8b949e', fontSize: '13px' }}>No issuance history.</p>
               ) : (
                 <div className="table-container">
                   <table>

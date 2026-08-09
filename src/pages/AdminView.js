@@ -109,7 +109,7 @@ function AdminView({ user, onLogout }) {
           <button
             className="btn btn-small"
             onClick={() => navigate('/admin/settings')}
-            style={{ background: '#e0e7ff', color: '#0f3460' }}
+            style={{ background: '#1c2d4a', color: '#e6edf3' }}
           >
             ⚙ Settings
           </button>
@@ -133,24 +133,24 @@ function AdminView({ user, onLogout }) {
           marginBottom: '24px'
         }}>
           {[
-            { label: 'Total Records', value: stats.total, color: '#0f3460' },
-            { label: 'Pending', value: stats.pending, color: '#856404' },
-            { label: 'Accepted', value: stats.accepted, color: '#0a3622' },
-            { label: 'Partial', value: stats.partial, color: '#7c3a00' },
-            { label: 'Rejected', value: stats.rejected, color: '#58151c' },
+            { label: 'Total Records', value: stats.total, color: '#e6edf3' },
+            { label: 'Pending', value: stats.pending, color: '#d29922' },
+            { label: 'Accepted', value: stats.accepted, color: '#3fb950' },
+            { label: 'Partial', value: stats.partial, color: '#d29922' },
+            { label: 'Rejected', value: stats.rejected, color: '#f85149' },
             { label: 'Discrepancies', value: stats.discrepancies, color: '#e74c3c' },
           ].map(stat => (
             <div key={stat.label} style={{
-              background: 'white',
+              background: '#161b22',
               borderRadius: '12px',
               padding: '20px',
               textAlign: 'center',
-              boxShadow: '0 2px 12px rgba(0,0,0,0.08)'
+              border: '1px solid #30363d'
             }}>
               <div style={{ fontSize: '32px', fontWeight: '700', color: stat.color }}>
                 {stat.value}
               </div>
-              <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>
+              <div style={{ fontSize: '12px', color: '#8b949e', marginTop: '4px' }}>
                 {stat.label}
               </div>
             </div>
@@ -178,7 +178,7 @@ function AdminView({ user, onLogout }) {
                 onChange={(e) => setSearch(e.target.value)}
                 style={{
                   padding: '8px 12px',
-                  border: '2px solid #e8e8e8',
+                  border: '1px solid #30363d',
                   borderRadius: '8px',
                   fontSize: '14px',
                   width: '200px'
@@ -187,7 +187,7 @@ function AdminView({ user, onLogout }) {
               <button
                 className="btn btn-small"
                 onClick={loadData}
-                style={{ background: '#f0f2f5', color: '#333', width: 'auto' }}
+                style={{ background: '#161b22', color: '#e6edf3', width: 'auto' }}
               >
                 ↻ Refresh
               </button>
@@ -219,7 +219,7 @@ function AdminView({ user, onLogout }) {
               Loading records...
             </div>
           ) : filteredRecords.length === 0 ? (
-            <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>
+            <p style={{ color: '#8b949e', textAlign: 'center', padding: '20px' }}>
               No records found.
             </p>
           ) : (
@@ -279,7 +279,7 @@ function AdminView({ user, onLogout }) {
                         <button
                           className="btn btn-small"
                           onClick={() => handleOverride(r, 'Issue_Remarks')}
-                          style={{ background: '#fff3cd', color: '#856404', width: 'auto' }}
+                          style={{ background: '#2d2208', color: '#d29922', width: 'auto' }}
                         >
                           Edit
                         </button>
@@ -303,12 +303,12 @@ function AdminView({ user, onLogout }) {
           zIndex: 1000
         }}>
           <div style={{
-            background: 'white', borderRadius: '16px',
+            background: '#161b22', borderRadius: '16px',
             padding: '32px', width: '100%', maxWidth: '440px',
             boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
           }}>
-            <h3 style={{ marginBottom: '8px', color: '#0f3460' }}>Admin Override</h3>
-            <p style={{ color: '#888', fontSize: '14px', marginBottom: '20px' }}>
+            <h3 style={{ marginBottom: '8px', color: '#e6edf3' }}>Admin Override</h3>
+            <p style={{ color: '#8b949e', fontSize: '14px', marginBottom: '20px' }}>
               Record: <strong>{overrideModal.record.Record_ID}</strong> —
               Field: <strong>{overrideModal.field}</strong>
               <br />

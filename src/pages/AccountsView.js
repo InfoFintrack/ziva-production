@@ -53,18 +53,18 @@ const getCMTStatusBadge = (status) => {
   switch (status) {
     case 'Draft':            return { cls: 'badge badge-pending', style: undefined };
     case 'Pending_Accounts': return { cls: 'badge badge-issued',  style: undefined };
-    case 'Pending_CEO':      return { cls: 'badge', style: { background: '#f97316', color: 'white' } };
-    case 'Approved':         return { cls: 'badge', style: { background: '#16a34a', color: 'white' } };
-    case 'Rejected':         return { cls: 'badge', style: { background: '#dc2626', color: 'white' } };
+    case 'Pending_CEO':      return { cls: 'badge', style: { background: '#d29922', color: 'white' } };
+    case 'Approved':         return { cls: 'badge', style: { background: '#3fb950', color: 'white' } };
+    case 'Rejected':         return { cls: 'badge', style: { background: '#f85149', color: 'white' } };
     default:                 return { cls: 'badge badge-pending', style: undefined };
   }
 };
 
 function PayStatusBadge({ status }) {
   const cfg = {
-    Pending:  { bg: '#fef3c7', color: '#92400e' },
-    Verified: { bg: '#dbeafe', color: '#1e40af' },
-    Paid:     { bg: '#dcfce7', color: '#166534' },
+    Pending:  { bg: '#fef3c7', color: '#d29922' },
+    Verified: { bg: '#dbeafe', color: '#4a7cc9' },
+    Paid:     { bg: '#dcfce7', color: '#3fb950' },
   };
   const s = cfg[status] || cfg.Pending;
   return (
@@ -80,16 +80,16 @@ function PayStatusBadge({ status }) {
 // ── Modal sub-components ──────────────────────────────────────────────────────
 const ModalSectionTitle = ({ children }) => (
   <p style={{
-    fontSize: '12px', fontWeight: '700', color: '#0f3460',
+    fontSize: '12px', fontWeight: '700', color: '#e6edf3',
     textTransform: 'uppercase', letterSpacing: '0.5px',
     margin: '20px 0 12px', paddingBottom: '6px',
-    borderBottom: '1px solid #f0f2f5',
+    borderBottom: '1px solid #30363d',
   }}>{children}</p>
 );
 
 const ModalSubTitle = ({ children }) => (
   <p style={{
-    fontSize: '11px', fontWeight: '600', color: '#888',
+    fontSize: '11px', fontWeight: '600', color: '#8b949e',
     textTransform: 'uppercase', letterSpacing: '0.4px',
     marginTop: '14px', marginBottom: '8px',
   }}>{children}</p>
@@ -97,8 +97,8 @@ const ModalSubTitle = ({ children }) => (
 
 const FieldView = ({ label, value }) => (
   <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-    <span style={{ fontSize: '11px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label}</span>
-    <span style={{ fontSize: '14px', color: '#333', fontWeight: '500' }}>{value ?? '—'}</span>
+    <span style={{ fontSize: '11px', fontWeight: '600', color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label}</span>
+    <span style={{ fontSize: '14px', color: '#e6edf3', fontWeight: '500' }}>{value ?? '—'}</span>
   </div>
 );
 
@@ -522,12 +522,12 @@ function AccountsView({ user, onLogout }) {
       >
         <div className="modal-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
-            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#0f3460' }}>
+            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#e6edf3' }}>
               CMT Rate Detail — {r.po_number}
             </h3>
             <button
               onClick={closeModal}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: '#888', lineHeight: 1, padding: '0 4px' }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: '#8b949e', lineHeight: 1, padding: '0 4px' }}
             >
               ✕
             </button>
@@ -544,13 +544,13 @@ function AccountsView({ user, onLogout }) {
             <FieldGrid>
               <FieldView label="PO Number" value={r.po_number} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '11px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Color / Design</span>
+                <span style={{ fontSize: '11px', fontWeight: '600', color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Color / Design</span>
                 <input
                   type="text"
                   name="color_design"
                   value={editForm.color_design || ''}
                   onChange={handleEditFormChange}
-                  style={{ padding: '8px 10px', border: '2px solid #e8e8e8', borderRadius: '6px', fontSize: '14px' }}
+                  style={{ padding: '8px 10px', border: '1px solid #30363d', borderRadius: '6px', fontSize: '14px' }}
                 />
               </div>
             </FieldGrid>
@@ -568,9 +568,9 @@ function AccountsView({ user, onLogout }) {
           <FieldGrid>
             {SEC_B.map(({ key, label }) => isEditMode ? (
               <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '11px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label} (PKR)</span>
+                <span style={{ fontSize: '11px', fontWeight: '600', color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label} (PKR)</span>
                 <input type="number" name={key} value={editForm[key] ?? ''} onChange={handleEditFormChange} min="0"
-                  style={{ padding: '8px 10px', border: '2px solid #e8e8e8', borderRadius: '6px', fontSize: '14px' }} />
+                  style={{ padding: '8px 10px', border: '1px solid #30363d', borderRadius: '6px', fontSize: '14px' }} />
               </div>
             ) : (
               <FieldView key={key} label={`${label} (PKR)`} value={r[key] != null ? Number(r[key]).toLocaleString() : '0'} />
@@ -582,9 +582,9 @@ function AccountsView({ user, onLogout }) {
           <FieldGrid>
             {SEC_C_SHIRT.map(({ key, label }) => isEditMode ? (
               <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '11px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label} (PKR)</span>
+                <span style={{ fontSize: '11px', fontWeight: '600', color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label} (PKR)</span>
                 <input type="number" name={key} value={editForm[key] ?? ''} onChange={handleEditFormChange} min="0"
-                  style={{ padding: '8px 10px', border: '2px solid #e8e8e8', borderRadius: '6px', fontSize: '14px' }} />
+                  style={{ padding: '8px 10px', border: '1px solid #30363d', borderRadius: '6px', fontSize: '14px' }} />
               </div>
             ) : (
               <FieldView key={key} label={`${label} (PKR)`} value={r[key] != null ? Number(r[key]).toLocaleString() : '0'} />
@@ -594,9 +594,9 @@ function AccountsView({ user, onLogout }) {
           <FieldGrid>
             {SEC_C_TROUSER.map(({ key, label }) => isEditMode ? (
               <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '11px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label} (PKR)</span>
+                <span style={{ fontSize: '11px', fontWeight: '600', color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label} (PKR)</span>
                 <input type="number" name={key} value={editForm[key] ?? ''} onChange={handleEditFormChange} min="0"
-                  style={{ padding: '8px 10px', border: '2px solid #e8e8e8', borderRadius: '6px', fontSize: '14px' }} />
+                  style={{ padding: '8px 10px', border: '1px solid #30363d', borderRadius: '6px', fontSize: '14px' }} />
               </div>
             ) : (
               <FieldView key={key} label={`${label} (PKR)`} value={r[key] != null ? Number(r[key]).toLocaleString() : '0'} />
@@ -606,9 +606,9 @@ function AccountsView({ user, onLogout }) {
           <FieldGrid>
             {SEC_C_DUPATTA.map(({ key, label }) => isEditMode ? (
               <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '11px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label} (PKR)</span>
+                <span style={{ fontSize: '11px', fontWeight: '600', color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label} (PKR)</span>
                 <input type="number" name={key} value={editForm[key] ?? ''} onChange={handleEditFormChange} min="0"
-                  style={{ padding: '8px 10px', border: '2px solid #e8e8e8', borderRadius: '6px', fontSize: '14px' }} />
+                  style={{ padding: '8px 10px', border: '1px solid #30363d', borderRadius: '6px', fontSize: '14px' }} />
               </div>
             ) : (
               <FieldView key={key} label={`${label} (PKR)`} value={r[key] != null ? Number(r[key]).toLocaleString() : '0'} />
@@ -619,9 +619,9 @@ function AccountsView({ user, onLogout }) {
           <FieldGrid>
             {isEditMode ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '11px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Quality &amp; Packing (PKR)</span>
+                <span style={{ fontSize: '11px', fontWeight: '600', color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Quality &amp; Packing (PKR)</span>
                 <input type="number" name="quality_packing" value={editForm.quality_packing ?? ''} onChange={handleEditFormChange} min="0"
-                  style={{ padding: '8px 10px', border: '2px solid #e8e8e8', borderRadius: '6px', fontSize: '14px' }} />
+                  style={{ padding: '8px 10px', border: '1px solid #30363d', borderRadius: '6px', fontSize: '14px' }} />
               </div>
             ) : (
               <FieldView label="Quality &amp; Packing (PKR)" value={r.quality_packing != null ? Number(r.quality_packing).toLocaleString() : '0'} />
@@ -632,7 +632,7 @@ function AccountsView({ user, onLogout }) {
             />
           </FieldGrid>
 
-          <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #f0f2f5' }}>
+          <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #30363d' }}>
             <FieldGrid>
               <FieldView label="Submitted By" value={r.submitted_by} />
               <FieldView label="Submitted Date" value={r.submitted_at ? new Date(r.submitted_at).toLocaleDateString('en-GB') : '—'} />
@@ -643,21 +643,21 @@ function AccountsView({ user, onLogout }) {
           </div>
 
           {r.status === 'Rejected' && (r.accounts_remarks || r.ceo_remarks) && (
-            <div style={{ marginTop: '12px', padding: '10px 14px', background: '#fef2f2', borderRadius: '8px', border: '1px solid #fecaca' }}>
+            <div style={{ marginTop: '12px', padding: '10px 14px', background: '#3d1417', borderRadius: '8px', border: '1px solid #5c2124' }}>
               {r.accounts_remarks && (
-                <p style={{ fontSize: '13px', color: '#dc2626', margin: 0 }}>
+                <p style={{ fontSize: '13px', color: '#f85149', margin: 0 }}>
                   <strong>Accounts remarks:</strong> {r.accounts_remarks}
                 </p>
               )}
               {r.ceo_remarks && (
-                <p style={{ fontSize: '13px', color: '#dc2626', margin: r.accounts_remarks ? '6px 0 0' : 0 }}>
+                <p style={{ fontSize: '13px', color: '#f85149', margin: r.accounts_remarks ? '6px 0 0' : 0 }}>
                   <strong>CEO remarks:</strong> {r.ceo_remarks}
                 </p>
               )}
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '24px', paddingTop: '16px', borderTop: '2px solid #f0f2f5', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #30363d', flexWrap: 'wrap' }}>
             {modalContext === 'pending' && !isEditMode && (
               <>
                 {showRejectInput ? (
@@ -667,12 +667,12 @@ function AccountsView({ user, onLogout }) {
                       placeholder="Rejection reason (required)"
                       value={rejectInput}
                       onChange={e => setRejectInput(e.target.value)}
-                      style={{ flex: 1, minWidth: '180px', padding: '8px 12px', border: '2px solid #e8e8e8', borderRadius: '6px', fontSize: '13px' }}
+                      style={{ flex: 1, minWidth: '180px', padding: '8px 12px', border: '1px solid #30363d', borderRadius: '6px', fontSize: '13px' }}
                     />
                     <button className="btn btn-danger btn-small" onClick={handleModalRejectConfirm} disabled={modalActing} style={{ width: 'auto' }}>
                       {modalActing ? '...' : 'Confirm Reject'}
                     </button>
-                    <button className="btn btn-small" onClick={() => { setShowRejectInput(false); setRejectInput(''); setModalMessage(null); }} disabled={modalActing} style={{ width: 'auto', background: '#e0e7ff', color: '#0f3460' }}>
+                    <button className="btn btn-small" onClick={() => { setShowRejectInput(false); setRejectInput(''); setModalMessage(null); }} disabled={modalActing} style={{ width: 'auto', background: '#1c2d4a', color: '#e6edf3' }}>
                       Cancel
                     </button>
                   </>
@@ -684,7 +684,7 @@ function AccountsView({ user, onLogout }) {
                     <button className="btn btn-danger btn-small" onClick={() => { setShowRejectInput(true); setModalMessage(null); }} disabled={modalActing} style={{ width: 'auto' }}>
                       Reject
                     </button>
-                    <button className="btn btn-small" onClick={closeModal} style={{ width: 'auto', background: '#e0e7ff', color: '#0f3460' }}>
+                    <button className="btn btn-small" onClick={closeModal} style={{ width: 'auto', background: '#1c2d4a', color: '#e6edf3' }}>
                       Close
                     </button>
                   </>
@@ -699,21 +699,21 @@ function AccountsView({ user, onLogout }) {
                     <button className="btn btn-primary btn-small" onClick={handleEditSave} disabled={editSubmitting} style={{ width: 'auto' }}>
                       {editSubmitting ? 'Saving...' : 'Save'}
                     </button>
-                    <button className="btn btn-small" onClick={() => { setModalMode('view'); setModalMessage(null); }} disabled={editSubmitting} style={{ width: 'auto', background: '#e0e7ff', color: '#0f3460' }}>
+                    <button className="btn btn-small" onClick={() => { setModalMode('view'); setModalMessage(null); }} disabled={editSubmitting} style={{ width: 'auto', background: '#1c2d4a', color: '#e6edf3' }}>
                       Cancel
                     </button>
                   </>
                 ) : (
                   <>
-                    <button className="btn btn-small" onClick={enterEditMode} style={{ width: 'auto', background: '#0f3460', color: 'white' }}>Edit</button>
-                    <button className="btn btn-small" onClick={closeModal} style={{ width: 'auto', background: '#e0e7ff', color: '#0f3460' }}>Close</button>
+                    <button className="btn btn-small" onClick={enterEditMode} style={{ width: 'auto', background: '#4a7cc9', color: 'white' }}>Edit</button>
+                    <button className="btn btn-small" onClick={closeModal} style={{ width: 'auto', background: '#1c2d4a', color: '#e6edf3' }}>Close</button>
                   </>
                 )}
               </>
             )}
 
             {modalContext === 'pending' && isEditMode && (
-              <button className="btn btn-small" onClick={closeModal} style={{ width: 'auto', background: '#e0e7ff', color: '#0f3460' }}>Close</button>
+              <button className="btn btn-small" onClick={closeModal} style={{ width: 'auto', background: '#1c2d4a', color: '#e6edf3' }}>Close</button>
             )}
           </div>
         </div>
@@ -755,11 +755,11 @@ function AccountsView({ user, onLogout }) {
       <div className="main-content">
 
         {/* ── MAIN TAB BAR ─────────────────────────────────────────────── */}
-        <div style={{ display: 'flex', gap: '0', marginBottom: '24px', borderBottom: '2px solid #e8e8e8' }}>
+        <div style={{ display: 'flex', gap: '0', marginBottom: '24px', borderBottom: '1px solid #30363d' }}>
           <button onClick={() => setActiveTab('pending')} style={tabBtnStyle('pending')}>
             Pending Rates
             {pendingRates.length > 0 && (
-              <span style={{ background: '#dc2626', color: 'white', borderRadius: '10px', fontSize: '11px', fontWeight: '700', padding: '1px 7px', marginLeft: '8px', verticalAlign: 'middle' }}>
+              <span style={{ background: '#f85149', color: 'white', borderRadius: '10px', fontSize: '11px', fontWeight: '700', padding: '1px 7px', marginLeft: '8px', verticalAlign: 'middle' }}>
                 {pendingRates.length}
               </span>
             )}
@@ -784,7 +784,7 @@ function AccountsView({ user, onLogout }) {
             {pendingLoading ? (
               <div className="loading"><div className="spinner"></div>Loading pending rates...</div>
             ) : pendingRates.length === 0 ? (
-              <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>No pending rates. All caught up.</p>
+              <p style={{ color: '#8b949e', textAlign: 'center', padding: '20px' }}>No pending rates. All caught up.</p>
             ) : (
               <div className="table-container">
                 <table>
@@ -825,13 +825,13 @@ function AccountsView({ user, onLogout }) {
                   placeholder="Search by PO or submitted by..."
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  style={{ padding: '8px 12px', border: '2px solid #e8e8e8', borderRadius: '8px', fontSize: '14px', width: '260px' }}
+                  style={{ padding: '8px 12px', border: '1px solid #30363d', borderRadius: '8px', fontSize: '14px', width: '260px' }}
                 />
                 <button
                   className="btn btn-small"
                   onClick={handleExcelExport}
                   disabled={filteredRates.length === 0}
-                  style={{ width: 'auto', background: '#16a34a', color: 'white', whiteSpace: 'nowrap' }}
+                  style={{ width: 'auto', background: '#3fb950', color: 'white', whiteSpace: 'nowrap' }}
                 >
                   ↓ Excel
                 </button>
@@ -841,7 +841,7 @@ function AccountsView({ user, onLogout }) {
             {allLoading ? (
               <div className="loading"><div className="spinner"></div>Loading rates...</div>
             ) : filteredRates.length === 0 ? (
-              <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>
+              <p style={{ color: '#8b949e', textAlign: 'center', padding: '20px' }}>
                 {allRates.length === 0 ? 'No CMT rates found.' : 'No results match your search.'}
               </p>
             ) : (
@@ -882,7 +882,7 @@ function AccountsView({ user, onLogout }) {
         {activeTab === 'payments' && (
           <>
             {/* Sub-tab bar */}
-            <div style={{ display: 'flex', gap: '0', marginBottom: '20px', borderBottom: '2px solid #e8e8e8' }}>
+            <div style={{ display: 'flex', gap: '0', marginBottom: '20px', borderBottom: '1px solid #30363d' }}>
               <button onClick={() => setPaySubTab('weekly')}   style={subTabBtnStyle('weekly')}>Weekly Summary</button>
               <button onClick={() => setPaySubTab('advances')} style={subTabBtnStyle('advances')}>Advances</button>
             </div>
@@ -893,14 +893,14 @@ function AccountsView({ user, onLogout }) {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                     <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#555', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
                         Week Ending (Saturday)
                       </label>
                       <input
                         type="date"
                         value={payWeek}
                         onChange={e => { setPayWeek(e.target.value); setExpandedRow(null); }}
-                        style={{ padding: '8px 12px', border: '2px solid #e8e8e8', borderRadius: '8px', fontSize: '14px' }}
+                        style={{ padding: '8px 12px', border: '1px solid #30363d', borderRadius: '8px', fontSize: '14px' }}
                       />
                     </div>
                     <button
@@ -916,7 +916,7 @@ function AccountsView({ user, onLogout }) {
                     className="btn btn-small"
                     onClick={handlePaymentExcelExport}
                     disabled={weekPayments.length === 0}
-                    style={{ width: 'auto', background: '#16a34a', color: 'white', whiteSpace: 'nowrap' }}
+                    style={{ width: 'auto', background: '#3fb950', color: 'white', whiteSpace: 'nowrap' }}
                   >
                     ↓ Excel
                   </button>
@@ -936,7 +936,7 @@ function AccountsView({ user, onLogout }) {
                   return (
                     <>
                       {groups.length === 0 ? (
-                        <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>No stitching entries for this week.</p>
+                        <p style={{ color: '#8b949e', textAlign: 'center', padding: '20px' }}>No stitching entries for this week.</p>
                       ) : (
                         <div className="table-container">
                           <table>
@@ -961,7 +961,7 @@ function AccountsView({ user, onLogout }) {
                                   >
                                     <td>{g.code}</td>
                                     <td>
-                                      <span style={{ marginRight: '6px', fontSize: '11px', color: '#888' }}>
+                                      <span style={{ marginRight: '6px', fontSize: '11px', color: '#8b949e' }}>
                                         {expandedRow === g.code ? '▲' : '▶'}
                                       </span>
                                       {g.name}
@@ -988,7 +988,7 @@ function AccountsView({ user, onLogout }) {
                                         {g.status === 'Verified' && (
                                           <button
                                             className="btn btn-small"
-                                            style={{ background: '#16a34a', color: 'white', whiteSpace: 'nowrap' }}
+                                            style={{ background: '#3fb950', color: 'white', whiteSpace: 'nowrap' }}
                                             onClick={() => handleMarkPaid(g.code)}
                                             disabled={!!payActing[g.code]}
                                           >
@@ -1002,13 +1002,13 @@ function AccountsView({ user, onLogout }) {
                                     const po = pos.find(p => p.po_number === e.po_number);
                                     return (
                                       <tr key={e.id} style={{ background: '#fafbff' }}>
-                                        <td style={{ paddingLeft: '32px', color: '#888', fontSize: '13px' }}>
+                                        <td style={{ paddingLeft: '32px', color: '#8b949e', fontSize: '13px' }}>
                                           {e.entry_date ? String(e.entry_date).slice(0, 10) : '—'}
                                           &nbsp;·&nbsp;{e.po_number}
                                         </td>
-                                        <td style={{ fontSize: '13px', color: '#555' }}>{po?.collection_name || '—'}</td>
-                                        <td style={{ fontSize: '13px', color: '#555' }}>{e.department}</td>
-                                        <td style={{ fontSize: '13px', color: '#555' }}>{e.operation}</td>
+                                        <td style={{ fontSize: '13px', color: '#8b949e' }}>{po?.collection_name || '—'}</td>
+                                        <td style={{ fontSize: '13px', color: '#8b949e' }}>{e.department}</td>
+                                        <td style={{ fontSize: '13px', color: '#8b949e' }}>{e.operation}</td>
                                         <td style={{ fontSize: '13px' }}>{e.qty_claimed}</td>
                                         <td style={{ fontSize: '13px' }}>PKR {Number(e.rate || 0).toLocaleString()}</td>
                                         <td style={{ fontSize: '13px', fontWeight: '600' }} colSpan={2}>
@@ -1026,11 +1026,11 @@ function AccountsView({ user, onLogout }) {
 
                       {/* ── Finishing Payments ── */}
                       <div style={{ marginTop: '32px' }}>
-                        <h4 style={{ color: '#0f3460', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid #e0e7ff', fontSize: '15px', fontWeight: '700' }}>
+                        <h4 style={{ color: '#e6edf3', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid #30363d', fontSize: '15px', fontWeight: '700' }}>
                           Finishing Payments
                         </h4>
                         {fGroups.length === 0 ? (
-                          <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>No finishing entries for this week.</p>
+                          <p style={{ color: '#8b949e', textAlign: 'center', padding: '20px' }}>No finishing entries for this week.</p>
                         ) : (
                           <div className="table-container">
                             <table>
@@ -1057,7 +1057,7 @@ function AccountsView({ user, onLogout }) {
                                       >
                                         <td>{g.code}</td>
                                         <td>
-                                          <span style={{ marginRight: '6px', fontSize: '11px', color: '#888' }}>
+                                          <span style={{ marginRight: '6px', fontSize: '11px', color: '#8b949e' }}>
                                             {expandedRow === expandKey ? '▲' : '▶'}
                                           </span>
                                           {g.name}
@@ -1068,7 +1068,7 @@ function AccountsView({ user, onLogout }) {
                                               Flexible
                                             </span>
                                           ) : (
-                                            <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', background: '#eff6ff', color: '#1e40af' }}>
+                                            <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', background: '#161b22', color: '#4a7cc9' }}>
                                               In-House
                                             </span>
                                           )}
@@ -1092,7 +1092,7 @@ function AccountsView({ user, onLogout }) {
                                               {g.status === 'Verified' && (
                                                 <button
                                                   className="btn btn-small"
-                                                  style={{ background: '#16a34a', color: 'white', whiteSpace: 'nowrap' }}
+                                                  style={{ background: '#3fb950', color: 'white', whiteSpace: 'nowrap' }}
                                                   onClick={() => handleMarkPaid(g.code)}
                                                   disabled={!!payActing[g.code]}
                                                 >
@@ -1107,12 +1107,12 @@ function AccountsView({ user, onLogout }) {
                                         const po = pos.find(p => p.po_number === e.po_number);
                                         return (
                                           <tr key={e.id} style={{ background: '#fafbff' }}>
-                                            <td style={{ paddingLeft: '32px', color: '#888', fontSize: '13px' }}>
+                                            <td style={{ paddingLeft: '32px', color: '#8b949e', fontSize: '13px' }}>
                                               {e.entry_date ? String(e.entry_date).slice(0, 10) : '—'}
                                               &nbsp;·&nbsp;{e.po_number}
                                             </td>
-                                            <td style={{ fontSize: '13px', color: '#555' }}>{po?.collection_name || '—'}</td>
-                                            <td style={{ fontSize: '13px', color: '#555' }}>{e.department}</td>
+                                            <td style={{ fontSize: '13px', color: '#8b949e' }}>{po?.collection_name || '—'}</td>
+                                            <td style={{ fontSize: '13px', color: '#8b949e' }}>{e.department}</td>
                                             <td style={{ fontSize: '13px' }}>{e.qty_claimed}</td>
                                             <td style={{ fontSize: '13px' }}>PKR {Number(e.amount || 0).toLocaleString()}</td>
                                             <td><PayStatusBadge status={e.payment_status} /></td>
@@ -1120,7 +1120,7 @@ function AccountsView({ user, onLogout }) {
                                               {isFlexible && e.payment_status !== 'Paid' && (
                                                 <button
                                                   className="btn btn-small"
-                                                  style={{ background: '#16a34a', color: 'white', whiteSpace: 'nowrap' }}
+                                                  style={{ background: '#3fb950', color: 'white', whiteSpace: 'nowrap' }}
                                                   onClick={() => handleMarkPaidFlexible(e.id)}
                                                   disabled={!!payActing[e.id]}
                                                 >
@@ -1204,7 +1204,7 @@ function AccountsView({ user, onLogout }) {
                   {payLoading ? (
                     <div className="loading"><div className="spinner" />Loading...</div>
                   ) : weekAdvances.length === 0 ? (
-                    <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>No advances logged for this week.</p>
+                    <p style={{ color: '#8b949e', textAlign: 'center', padding: '20px' }}>No advances logged for this week.</p>
                   ) : (
                     <>
                       <div className="table-container">
@@ -1233,8 +1233,8 @@ function AccountsView({ user, onLogout }) {
                           </tbody>
                         </table>
                       </div>
-                      <div style={{ marginTop: '12px', padding: '10px 16px', background: '#f0fdf4', borderRadius: '8px', textAlign: 'right' }}>
-                        <span style={{ fontWeight: '700', color: '#16a34a', fontSize: '15px' }}>
+                      <div style={{ marginTop: '12px', padding: '10px 16px', background: '#0d2818', borderRadius: '8px', textAlign: 'right' }}>
+                        <span style={{ fontWeight: '700', color: '#3fb950', fontSize: '15px' }}>
                           Total advances this week: PKR {weekAdvances.reduce((s, a) => s + Number(a.amount || 0), 0).toLocaleString()}
                         </span>
                       </div>

@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { getCMTRates, approveCMTRate } from '../api';
+import { getCMTRates, approveCMTRate, getPOs, getStitchers, getAllocations, getPaymentEntries } from '../api';
 import ProdFlowLogo from '../components/ProdFlowLogo';
 import PoweredByFintrack from '../components/PoweredByFintrack';
 
@@ -45,9 +45,9 @@ const getCMTStatusBadge = (status) => {
   switch (status) {
     case 'Draft':            return { cls: 'badge badge-pending', style: undefined };
     case 'Pending_Accounts': return { cls: 'badge badge-issued',  style: undefined };
-    case 'Pending_CEO':      return { cls: 'badge', style: { background: '#f97316', color: 'white' } };
-    case 'Approved':         return { cls: 'badge', style: { background: '#16a34a', color: 'white' } };
-    case 'Rejected':         return { cls: 'badge', style: { background: '#dc2626', color: 'white' } };
+    case 'Pending_CEO':      return { cls: 'badge', style: { background: '#d29922', color: 'white' } };
+    case 'Approved':         return { cls: 'badge', style: { background: '#3fb950', color: 'white' } };
+    case 'Rejected':         return { cls: 'badge', style: { background: '#f85149', color: 'white' } };
     default:                 return { cls: 'badge badge-pending', style: undefined };
   }
 };
@@ -55,16 +55,16 @@ const getCMTStatusBadge = (status) => {
 // ── Modal sub-components ──────────────────────────────────────────────────────
 const ModalSectionTitle = ({ children }) => (
   <p style={{
-    fontSize: '12px', fontWeight: '700', color: '#0f3460',
+    fontSize: '12px', fontWeight: '700', color: '#e6edf3',
     textTransform: 'uppercase', letterSpacing: '0.5px',
     margin: '20px 0 12px', paddingBottom: '6px',
-    borderBottom: '1px solid #f0f2f5',
+    borderBottom: '1px solid #30363d',
   }}>{children}</p>
 );
 
 const ModalSubTitle = ({ children }) => (
   <p style={{
-    fontSize: '11px', fontWeight: '600', color: '#888',
+    fontSize: '11px', fontWeight: '600', color: '#8b949e',
     textTransform: 'uppercase', letterSpacing: '0.4px',
     marginTop: '14px', marginBottom: '8px',
   }}>{children}</p>
@@ -72,8 +72,8 @@ const ModalSubTitle = ({ children }) => (
 
 const FieldView = ({ label, value }) => (
   <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-    <span style={{ fontSize: '11px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label}</span>
-    <span style={{ fontSize: '14px', color: '#333', fontWeight: '500' }}>{value ?? '—'}</span>
+    <span style={{ fontSize: '11px', fontWeight: '600', color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label}</span>
+    <span style={{ fontSize: '14px', color: '#e6edf3', fontWeight: '500' }}>{value ?? '—'}</span>
   </div>
 );
 
@@ -85,7 +85,7 @@ const FieldGrid = ({ children, cols = 2 }) => (
 
 // ── Main component ────────────────────────────────────────────────────────────
 function CEOView({ user, onLogout }) {
-  const [activeTab, setActiveTab] = useState('pending');
+  const [activeTab, setActiveTab] = useState('dashboard');
 
   const [pendingRates, setPendingRates] = useState([]);
   const [pendingLoading, setPendingLoading] = useState(false);
@@ -107,10 +107,86 @@ function CEOView({ user, onLogout }) {
   const [modalMessage, setModalMessage] = useState(null);
   const [editSubmitting, setEditSubmitting] = useState(false);
 
+  // Dashboard state
+  const [dashLoading, setDashLoading] = useState(false);
+  const [dashData, setDashData] = useState(null);
+
   useEffect(() => {
     loadPending();
     loadAll();
+    loadDashboard();
   }, []);
+
+  // ── Dashboard data loader ──────────────────────────────────────────────────
+  const loadDashboard = async () => {
+    setDashLoading(true);
+    try {
+      const [posRes, ratesRes, allocRes, payRes, stitRes] = await Promise.all([
+        getPOs(),
+        getCMTRates('?status=Approved'),
+        getAllocations(),
+        getPaymentEntries(),
+        getStitchers(),
+      ]);
+      const allPOs = posRes.success ? posRes.pos : [];
+      const rates = ratesRes.success ? ratesRes.rates : [];
+      const allocs = allocRes.success ? allocRes.allocations : [];
+      const payments = payRes.success ? payRes.payments : [];
+      const stitchers = stitRes.success ? stitRes.stitchers : [];
+
+      // KPI calculations
+      const activePOs = allPOs.filter(p => p.status === 'Active');
+      const totalFabricIssued = activePOs.reduce((s, p) => s + (Number(p.total_qty) || 0), 0);
+      const totalAllocated = allocs.reduce((s, a) => s + (Number(a.qty_allocated) || 0), 0);
+      const totalCompleted = allocs.filter(a => a.status === 'Complete').reduce((s, a) => s + (Number(a.qty_allocated) || 0), 0);
+      const wip = totalAllocated - totalCompleted;
+      const totalCost = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+      const pendingPayments = payments.filter(p => p.payment_status !== 'Paid');
+      const pendingAmount = pendingPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+
+      // Stitcher leaderboard
+      const stitcherMap = {};
+      payments.forEach(p => {
+        const key = p.stitcher_name || p.stitcher_code || 'Unknown';
+        if (!stitcherMap[key]) stitcherMap[key] = { name: key, sets: 0, amount: 0, pending: 0 };
+        stitcherMap[key].sets += Number(p.qty_claimed) || 0;
+        stitcherMap[key].amount += Number(p.amount) || 0;
+        if (p.payment_status !== 'Paid') stitcherMap[key].pending += Number(p.amount) || 0;
+      });
+      const leaderboard = Object.values(stitcherMap).sort((a, b) => b.sets - a.sets).slice(0, 10);
+
+      // Cost by department
+      const deptCost = {};
+      payments.forEach(p => {
+        const dept = p.department || 'Other';
+        if (!deptCost[dept]) deptCost[dept] = { department: dept, qty: 0, amount: 0 };
+        deptCost[dept].qty += Number(p.qty_claimed) || 0;
+        deptCost[dept].amount += Number(p.amount) || 0;
+      });
+      const costBreakdown = Object.values(deptCost).sort((a, b) => b.amount - a.amount);
+
+      // Alerts
+      const alerts = [];
+      if (pendingAmount > 0) {
+        const unitCount = new Set(pendingPayments.map(p => p.stitcher_name || p.stitcher_code)).size;
+        alerts.push({ priority: 'Critical', text: `PKR ${pendingAmount.toLocaleString()} pending across ${unitCount} stitching unit${unitCount !== 1 ? 's' : ''}` });
+      }
+      const overdueAllocs = allocs.filter(a => a.status === 'Overdue');
+      if (overdueAllocs.length > 0) {
+        alerts.push({ priority: 'Warning', text: `${overdueAllocs.length} allocation${overdueAllocs.length !== 1 ? 's' : ''} overdue` });
+      }
+      const allRatesCheck = await getCMTRates('?status=Pending_CEO');
+      if (allRatesCheck.success && allRatesCheck.rates.length > 0) {
+        alerts.push({ priority: 'Warning', text: `${allRatesCheck.rates.length} CMT rate${allRatesCheck.rates.length !== 1 ? 's' : ''} awaiting CEO approval` });
+      }
+
+      setDashData({
+        totalFabricIssued, totalAllocated, totalCompleted, wip, totalCost, pendingAmount,
+        leaderboard, costBreakdown, alerts, poCount: activePOs.length,
+      });
+    } catch { /* silently fail */ }
+    setDashLoading(false);
+  };
 
   const loadPending = async () => {
     setPendingLoading(true);
@@ -288,12 +364,12 @@ function CEOView({ user, onLogout }) {
       >
         <div className="modal-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
-            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#0f3460' }}>
+            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#e6edf3' }}>
               CMT Rate Detail — {r.po_number}
             </h3>
             <button
               onClick={closeModal}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: '#888', lineHeight: 1, padding: '0 4px' }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: '#8b949e', lineHeight: 1, padding: '0 4px' }}
             >
               ✕
             </button>
@@ -311,13 +387,13 @@ function CEOView({ user, onLogout }) {
             <FieldGrid>
               <FieldView label="PO Number" value={r.po_number} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '11px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Color / Design</span>
+                <span style={{ fontSize: '11px', fontWeight: '600', color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Color / Design</span>
                 <input
                   type="text"
                   name="color_design"
                   value={editForm.color_design || ''}
                   onChange={handleEditFormChange}
-                  style={{ padding: '8px 10px', border: '2px solid #e8e8e8', borderRadius: '6px', fontSize: '14px' }}
+                  style={{ padding: '8px 10px', border: '1px solid #30363d', borderRadius: '6px', fontSize: '14px' }}
                 />
               </div>
             </FieldGrid>
@@ -336,9 +412,9 @@ function CEOView({ user, onLogout }) {
           <FieldGrid>
             {SEC_B.map(({ key, label }) => isEditMode ? (
               <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '11px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label} (PKR)</span>
+                <span style={{ fontSize: '11px', fontWeight: '600', color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label} (PKR)</span>
                 <input type="number" name={key} value={editForm[key] ?? ''} onChange={handleEditFormChange} min="0"
-                  style={{ padding: '8px 10px', border: '2px solid #e8e8e8', borderRadius: '6px', fontSize: '14px' }} />
+                  style={{ padding: '8px 10px', border: '1px solid #30363d', borderRadius: '6px', fontSize: '14px' }} />
               </div>
             ) : (
               <FieldView key={key} label={`${label} (PKR)`} value={r[key] != null ? Number(r[key]).toLocaleString() : '0'} />
@@ -351,9 +427,9 @@ function CEOView({ user, onLogout }) {
           <FieldGrid>
             {SEC_C_SHIRT.map(({ key, label }) => isEditMode ? (
               <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '11px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label} (PKR)</span>
+                <span style={{ fontSize: '11px', fontWeight: '600', color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label} (PKR)</span>
                 <input type="number" name={key} value={editForm[key] ?? ''} onChange={handleEditFormChange} min="0"
-                  style={{ padding: '8px 10px', border: '2px solid #e8e8e8', borderRadius: '6px', fontSize: '14px' }} />
+                  style={{ padding: '8px 10px', border: '1px solid #30363d', borderRadius: '6px', fontSize: '14px' }} />
               </div>
             ) : (
               <FieldView key={key} label={`${label} (PKR)`} value={r[key] != null ? Number(r[key]).toLocaleString() : '0'} />
@@ -363,9 +439,9 @@ function CEOView({ user, onLogout }) {
           <FieldGrid>
             {SEC_C_TROUSER.map(({ key, label }) => isEditMode ? (
               <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '11px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label} (PKR)</span>
+                <span style={{ fontSize: '11px', fontWeight: '600', color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label} (PKR)</span>
                 <input type="number" name={key} value={editForm[key] ?? ''} onChange={handleEditFormChange} min="0"
-                  style={{ padding: '8px 10px', border: '2px solid #e8e8e8', borderRadius: '6px', fontSize: '14px' }} />
+                  style={{ padding: '8px 10px', border: '1px solid #30363d', borderRadius: '6px', fontSize: '14px' }} />
               </div>
             ) : (
               <FieldView key={key} label={`${label} (PKR)`} value={r[key] != null ? Number(r[key]).toLocaleString() : '0'} />
@@ -375,9 +451,9 @@ function CEOView({ user, onLogout }) {
           <FieldGrid>
             {SEC_C_DUPATTA.map(({ key, label }) => isEditMode ? (
               <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '11px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label} (PKR)</span>
+                <span style={{ fontSize: '11px', fontWeight: '600', color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label} (PKR)</span>
                 <input type="number" name={key} value={editForm[key] ?? ''} onChange={handleEditFormChange} min="0"
-                  style={{ padding: '8px 10px', border: '2px solid #e8e8e8', borderRadius: '6px', fontSize: '14px' }} />
+                  style={{ padding: '8px 10px', border: '1px solid #30363d', borderRadius: '6px', fontSize: '14px' }} />
               </div>
             ) : (
               <FieldView key={key} label={`${label} (PKR)`} value={r[key] != null ? Number(r[key]).toLocaleString() : '0'} />
@@ -389,9 +465,9 @@ function CEOView({ user, onLogout }) {
           <FieldGrid>
             {isEditMode ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '11px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Quality &amp; Packing (PKR)</span>
+                <span style={{ fontSize: '11px', fontWeight: '600', color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Quality &amp; Packing (PKR)</span>
                 <input type="number" name="quality_packing" value={editForm.quality_packing ?? ''} onChange={handleEditFormChange} min="0"
-                  style={{ padding: '8px 10px', border: '2px solid #e8e8e8', borderRadius: '6px', fontSize: '14px' }} />
+                  style={{ padding: '8px 10px', border: '1px solid #30363d', borderRadius: '6px', fontSize: '14px' }} />
               </div>
             ) : (
               <FieldView label="Quality &amp; Packing (PKR)" value={r.quality_packing != null ? Number(r.quality_packing).toLocaleString() : '0'} />
@@ -407,7 +483,7 @@ function CEOView({ user, onLogout }) {
           </FieldGrid>
 
           {/* META */}
-          <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #f0f2f5' }}>
+          <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #30363d' }}>
             <FieldGrid>
               <FieldView label="Submitted By" value={r.submitted_by} />
               <FieldView label="Submitted Date" value={r.submitted_at ? new Date(r.submitted_at).toLocaleDateString('en-GB') : '—'} />
@@ -419,14 +495,14 @@ function CEOView({ user, onLogout }) {
 
           {/* Rejection remarks */}
           {r.status === 'Rejected' && (r.accounts_remarks || r.ceo_remarks) && (
-            <div style={{ marginTop: '12px', padding: '10px 14px', background: '#fef2f2', borderRadius: '8px', border: '1px solid #fecaca' }}>
+            <div style={{ marginTop: '12px', padding: '10px 14px', background: '#3d1417', borderRadius: '8px', border: '1px solid #5c2124' }}>
               {r.accounts_remarks && (
-                <p style={{ fontSize: '13px', color: '#dc2626', margin: 0 }}>
+                <p style={{ fontSize: '13px', color: '#f85149', margin: 0 }}>
                   <strong>Accounts remarks:</strong> {r.accounts_remarks}
                 </p>
               )}
               {r.ceo_remarks && (
-                <p style={{ fontSize: '13px', color: '#dc2626', margin: r.accounts_remarks ? '6px 0 0' : 0 }}>
+                <p style={{ fontSize: '13px', color: '#f85149', margin: r.accounts_remarks ? '6px 0 0' : 0 }}>
                   <strong>CEO remarks:</strong> {r.ceo_remarks}
                 </p>
               )}
@@ -434,7 +510,7 @@ function CEOView({ user, onLogout }) {
           )}
 
           {/* Footer buttons */}
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '24px', paddingTop: '16px', borderTop: '2px solid #f0f2f5', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #30363d', flexWrap: 'wrap' }}>
             {modalContext === 'pending' && !isEditMode && (
               <>
                 {showRejectInput ? (
@@ -444,7 +520,7 @@ function CEOView({ user, onLogout }) {
                       placeholder="Rejection reason (required)"
                       value={rejectInput}
                       onChange={e => setRejectInput(e.target.value)}
-                      style={{ flex: 1, minWidth: '180px', padding: '8px 12px', border: '2px solid #e8e8e8', borderRadius: '6px', fontSize: '13px' }}
+                      style={{ flex: 1, minWidth: '180px', padding: '8px 12px', border: '1px solid #30363d', borderRadius: '6px', fontSize: '13px' }}
                     />
                     <button
                       className="btn btn-danger btn-small"
@@ -458,7 +534,7 @@ function CEOView({ user, onLogout }) {
                       className="btn btn-small"
                       onClick={() => { setShowRejectInput(false); setRejectInput(''); setModalMessage(null); }}
                       disabled={modalActing}
-                      style={{ width: 'auto', background: '#e0e7ff', color: '#0f3460' }}
+                      style={{ width: 'auto', background: '#1c2d4a', color: '#e6edf3' }}
                     >
                       Cancel
                     </button>
@@ -484,7 +560,7 @@ function CEOView({ user, onLogout }) {
                     <button
                       className="btn btn-small"
                       onClick={closeModal}
-                      style={{ width: 'auto', background: '#e0e7ff', color: '#0f3460' }}
+                      style={{ width: 'auto', background: '#1c2d4a', color: '#e6edf3' }}
                     >
                       Close
                     </button>
@@ -509,7 +585,7 @@ function CEOView({ user, onLogout }) {
                       className="btn btn-small"
                       onClick={() => { setModalMode('view'); setModalMessage(null); }}
                       disabled={editSubmitting}
-                      style={{ width: 'auto', background: '#e0e7ff', color: '#0f3460' }}
+                      style={{ width: 'auto', background: '#1c2d4a', color: '#e6edf3' }}
                     >
                       Cancel
                     </button>
@@ -519,14 +595,14 @@ function CEOView({ user, onLogout }) {
                     <button
                       className="btn btn-small"
                       onClick={enterEditMode}
-                      style={{ width: 'auto', background: '#0f3460', color: 'white' }}
+                      style={{ width: 'auto', background: '#4a7cc9', color: 'white' }}
                     >
                       Edit
                     </button>
                     <button
                       className="btn btn-small"
                       onClick={closeModal}
-                      style={{ width: 'auto', background: '#e0e7ff', color: '#0f3460' }}
+                      style={{ width: 'auto', background: '#1c2d4a', color: '#e6edf3' }}
                     >
                       Close
                     </button>
@@ -539,7 +615,7 @@ function CEOView({ user, onLogout }) {
               <button
                 className="btn btn-small"
                 onClick={closeModal}
-                style={{ width: 'auto', background: '#e0e7ff', color: '#0f3460' }}
+                style={{ width: 'auto', background: '#1c2d4a', color: '#e6edf3' }}
               >
                 Close
               </button>
@@ -568,20 +644,32 @@ function CEOView({ user, onLogout }) {
       <div className="main-content">
 
         {/* TAB SWITCHER */}
-        <div style={{ display: 'flex', gap: '0', marginBottom: '24px', borderBottom: '2px solid #e8e8e8' }}>
+        <div style={{ display: 'flex', gap: '0', marginBottom: '24px', borderBottom: '1px solid #30363d' }}>
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            style={{
+              padding: '10px 24px', border: 'none', background: 'none', cursor: 'pointer',
+              fontSize: '14px', fontWeight: '600',
+              color: activeTab === 'dashboard' ? '#4a7cc9' : '#8b949e',
+              borderBottom: activeTab === 'dashboard' ? '3px solid #4a7cc9' : '3px solid transparent',
+              marginBottom: '-2px', transition: 'color 0.15s',
+            }}
+          >
+            Dashboard
+          </button>
           <button
             onClick={() => setActiveTab('pending')}
             style={{
               padding: '10px 24px', border: 'none', background: 'none', cursor: 'pointer',
               fontSize: '14px', fontWeight: '600',
-              color: activeTab === 'pending' ? '#0f3460' : '#888',
-              borderBottom: activeTab === 'pending' ? '3px solid #0f3460' : '3px solid transparent',
+              color: activeTab === 'pending' ? '#4a7cc9' : '#8b949e',
+              borderBottom: activeTab === 'pending' ? '3px solid #4a7cc9' : '3px solid transparent',
               marginBottom: '-2px', transition: 'color 0.15s',
             }}
           >
             Pending Rates
             {pendingRates.length > 0 && (
-              <span style={{ background: '#dc2626', color: 'white', borderRadius: '10px', fontSize: '11px', fontWeight: '700', padding: '1px 7px', marginLeft: '8px', verticalAlign: 'middle' }}>
+              <span style={{ background: '#f85149', color: 'white', borderRadius: '10px', fontSize: '11px', fontWeight: '700', padding: '1px 7px', marginLeft: '8px', verticalAlign: 'middle' }}>
                 {pendingRates.length}
               </span>
             )}
@@ -600,6 +688,137 @@ function CEOView({ user, onLogout }) {
           </button>
         </div>
 
+        {/* ── DASHBOARD TAB ────────────────────────────────────────────── */}
+        {activeTab === 'dashboard' && (
+          <>
+            {dashLoading ? (
+              <div className="loading"><div className="spinner" />Loading dashboard...</div>
+            ) : !dashData ? (
+              <p style={{ color: '#8b949e', textAlign: 'center', padding: '40px' }}>Failed to load dashboard data.</p>
+            ) : (
+              <>
+                {/* KPI CARDS */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                  {[
+                    { label: 'Active POs', value: dashData.poCount, color: '#4a7cc9' },
+                    { label: 'Fabric Issued', value: dashData.totalFabricIssued.toLocaleString() + ' pcs', color: '#4a7cc9' },
+                    { label: 'Allocated', value: dashData.totalAllocated.toLocaleString() + ' pcs', color: '#d29922' },
+                    { label: 'Completed', value: dashData.totalCompleted.toLocaleString() + ' pcs', color: '#3fb950' },
+                    { label: 'Work in Process', value: dashData.wip.toLocaleString() + ' pcs', color: '#d29922' },
+                    { label: 'Total Cost', value: 'PKR ' + dashData.totalCost.toLocaleString(), color: '#4a7cc9' },
+                    { label: 'Pending Payments', value: 'PKR ' + dashData.pendingAmount.toLocaleString(), color: dashData.pendingAmount > 0 ? '#f85149' : '#3fb950' },
+                  ].map(kpi => (
+                    <div key={kpi.label} style={{
+                      background: '#161b22', border: '1px solid #30363d', borderRadius: '12px',
+                      padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px',
+                    }}>
+                      <span style={{ fontSize: '12px', fontWeight: '600', color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{kpi.label}</span>
+                      <span style={{ fontSize: '22px', fontWeight: '700', color: kpi.color }}>{kpi.value}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ALERTS */}
+                {dashData.alerts.length > 0 && (
+                  <div className="card" style={{ marginBottom: '24px' }}>
+                    <h3 style={{ margin: 0, borderBottom: 'none', padding: 0, marginBottom: '14px' }}>⚠ Attention Required</h3>
+                    {dashData.alerts.map((a, i) => (
+                      <div key={i} style={{
+                        display: 'flex', alignItems: 'center', gap: '12px',
+                        padding: '12px 14px', marginBottom: '8px', borderRadius: '8px',
+                        background: a.priority === 'Critical' ? '#3d1417' : '#2d2208',
+                        border: `1px solid ${a.priority === 'Critical' ? '#5c2124' : '#4d3a0e'}`,
+                      }}>
+                        <span style={{
+                          fontSize: '11px', fontWeight: '700', textTransform: 'uppercase',
+                          padding: '2px 8px', borderRadius: '4px',
+                          background: a.priority === 'Critical' ? '#f85149' : '#d29922',
+                          color: '#fff',
+                        }}>{a.priority}</span>
+                        <span style={{ fontSize: '14px', color: '#e6edf3' }}>{a.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* TWO-COLUMN: COST BREAKDOWN + LEADERBOARD */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
+                  <div className="card" style={{ margin: 0 }}>
+                    <h3 style={{ margin: 0, borderBottom: 'none', padding: 0, marginBottom: '16px' }}>Cost by Department</h3>
+                    <div className="table-container">
+                      <table>
+                        <thead><tr><th>Department</th><th>Qty</th><th>Amount (PKR)</th></tr></thead>
+                        <tbody>
+                          {dashData.costBreakdown.map(c => (
+                            <tr key={c.department}>
+                              <td>{c.department}</td>
+                              <td>{c.qty.toLocaleString()}</td>
+                              <td style={{ fontWeight: '600' }}>{c.amount.toLocaleString()}</td>
+                            </tr>
+                          ))}
+                          <tr style={{ borderTop: '1px solid #30363d' }}>
+                            <td style={{ fontWeight: '700', color: '#4a7cc9' }}>Total</td>
+                            <td style={{ fontWeight: '700' }}>{dashData.costBreakdown.reduce((s, c) => s + c.qty, 0).toLocaleString()}</td>
+                            <td style={{ fontWeight: '700', color: '#4a7cc9' }}>{dashData.costBreakdown.reduce((s, c) => s + c.amount, 0).toLocaleString()}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div className="card" style={{ margin: 0 }}>
+                    <h3 style={{ margin: 0, borderBottom: 'none', padding: 0, marginBottom: '16px' }}>Stitching Leaderboard</h3>
+                    <div className="table-container">
+                      <table>
+                        <thead><tr><th>Unit</th><th>Pcs</th><th>Amount</th><th>Pending</th></tr></thead>
+                        <tbody>
+                          {dashData.leaderboard.map(s => (
+                            <tr key={s.name}>
+                              <td style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</td>
+                              <td>{s.sets.toLocaleString()}</td>
+                              <td>{s.amount.toLocaleString()}</td>
+                              <td style={{ color: s.pending > 0 ? '#f85149' : '#3fb950', fontWeight: '600' }}>
+                                {s.pending > 0 ? s.pending.toLocaleString() : '✓'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                {/* PRODUCTION PIPELINE */}
+                <div className="card">
+                  <h3 style={{ margin: 0, borderBottom: 'none', padding: 0, marginBottom: '16px' }}>Production Pipeline</h3>
+                  <div style={{ display: 'flex', gap: '0', alignItems: 'stretch' }}>
+                    {[
+                      { label: 'Fabric Issued', value: dashData.totalFabricIssued, color: '#4a7cc9' },
+                      { label: 'Allocated', value: dashData.totalAllocated, color: '#d29922' },
+                      { label: 'Completed', value: dashData.totalCompleted, color: '#3fb950' },
+                    ].map((stage, i, arr) => {
+                      const pct = dashData.totalFabricIssued > 0 ? Math.round((stage.value / dashData.totalFabricIssued) * 100) : 0;
+                      return (
+                        <div key={stage.label} style={{ flex: 1, textAlign: 'center', padding: '16px 12px', position: 'relative' }}>
+                          <div style={{ fontSize: '24px', fontWeight: '700', color: stage.color }}>{stage.value.toLocaleString()}</div>
+                          <div style={{ fontSize: '12px', color: '#8b949e', marginTop: '4px' }}>{stage.label}</div>
+                          {i < arr.length - 1 && (
+                            <div style={{ position: 'absolute', right: '-8px', top: '50%', transform: 'translateY(-50%)', color: '#30363d', fontSize: '20px' }}>→</div>
+                          )}
+                          <div style={{ marginTop: '10px', background: '#21262d', borderRadius: '4px', height: '6px', overflow: 'hidden' }}>
+                            <div style={{ width: `${pct}%`, height: '100%', background: stage.color, borderRadius: '4px', transition: 'width 0.5s' }} />
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#8b949e', marginTop: '4px' }}>{pct}%</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
+          </>
+        )}
+
         {/* ── TAB 1: PENDING RATES ──────────────────────────────────────── */}
         {activeTab === 'pending' && (
           <div className="card">
@@ -612,7 +831,7 @@ function CEOView({ user, onLogout }) {
             {pendingLoading ? (
               <div className="loading"><div className="spinner"></div>Loading pending rates...</div>
             ) : pendingRates.length === 0 ? (
-              <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>No pending rates. All caught up.</p>
+              <p style={{ color: '#8b949e', textAlign: 'center', padding: '20px' }}>No pending rates. All caught up.</p>
             ) : (
               <div className="table-container">
                 <table>
@@ -653,13 +872,13 @@ function CEOView({ user, onLogout }) {
                   placeholder="Search by PO or submitted by..."
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  style={{ padding: '8px 12px', border: '2px solid #e8e8e8', borderRadius: '8px', fontSize: '14px', width: '260px' }}
+                  style={{ padding: '8px 12px', border: '1px solid #30363d', borderRadius: '8px', fontSize: '14px', width: '260px' }}
                 />
                 <button
                   className="btn btn-small"
                   onClick={handleExcelExport}
                   disabled={filteredRates.length === 0}
-                  style={{ width: 'auto', background: '#16a34a', color: 'white', whiteSpace: 'nowrap' }}
+                  style={{ width: 'auto', background: '#3fb950', color: 'white', whiteSpace: 'nowrap' }}
                 >
                   ↓ Excel
                 </button>
@@ -669,7 +888,7 @@ function CEOView({ user, onLogout }) {
             {allLoading ? (
               <div className="loading"><div className="spinner"></div>Loading rates...</div>
             ) : filteredRates.length === 0 ? (
-              <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>
+              <p style={{ color: '#8b949e', textAlign: 'center', padding: '20px' }}>
                 {allRates.length === 0 ? 'No CMT rates found.' : 'No results match your search.'}
               </p>
             ) : (

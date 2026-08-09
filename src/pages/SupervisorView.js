@@ -332,8 +332,8 @@ function SupervisorView({ user, onLogout }) {
 
         {/* Tab bar */}
         <div style={{
-          display: 'flex', background: 'white', borderRadius: '12px 12px 0 0',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: '2px', padding: '0 8px',
+          display: 'flex', background: '#161b22', borderRadius: '12px 12px 0 0',
+          borderBottom: '1px solid #30363d', marginBottom: '2px', padding: '0 8px',
         }}>
           <button style={tabStyle('new')}       onClick={() => setActiveTab('new')}>New Allocation</button>
           <button style={tabStyle('tracker')}   onClick={() => setActiveTab('tracker')}>Live Tracker</button>
@@ -457,13 +457,13 @@ function SupervisorView({ user, onLogout }) {
                   onChange={e => setSearch(e.target.value)}
                   style={{
                     flex: '1', minWidth: '200px', padding: '10px 14px',
-                    border: '2px solid #e8e8e8', borderRadius: '8px', fontSize: '14px',
+                    border: '1px solid #30363d', borderRadius: '8px', fontSize: '14px',
                   }}
                 />
                 <select
                   value={statusFilter}
                   onChange={e => setStatusFilter(e.target.value)}
-                  style={{ padding: '10px 14px', border: '2px solid #e8e8e8', borderRadius: '8px', fontSize: '14px' }}
+                  style={{ padding: '10px 14px', border: '1px solid #30363d', borderRadius: '8px', fontSize: '14px' }}
                 >
                   <option>All</option>
                   <option>In Progress</option>
@@ -509,7 +509,7 @@ function SupervisorView({ user, onLogout }) {
                     <tbody>
                       {filtered.length === 0 ? (
                         <tr>
-                          <td colSpan={12} style={{ textAlign: 'center', color: '#888', padding: '32px' }}>
+                          <td colSpan={12} style={{ textAlign: 'center', color: '#8b949e', padding: '32px' }}>
                             No allocations found.
                           </td>
                         </tr>
@@ -535,7 +535,7 @@ function SupervisorView({ user, onLogout }) {
                               {displayStatus !== 'Complete' && (
                                 <button
                                   className="btn btn-small"
-                                  style={{ background: '#0f3460', color: 'white', whiteSpace: 'nowrap' }}
+                                  style={{ background: '#4a7cc9', color: 'white', whiteSpace: 'nowrap' }}
                                   onClick={() => openUpdate(a)}
                                 >
                                   Update
@@ -623,7 +623,7 @@ function SupervisorView({ user, onLogout }) {
 
             {!sdStitcher ? (
               <div className="card">
-                <p style={{ color: '#888', textAlign: 'center', padding: '32px' }}>
+                <p style={{ color: '#8b949e', textAlign: 'center', padding: '32px' }}>
                   Select a stitcher to view their performance
                 </p>
               </div>
@@ -631,18 +631,18 @@ function SupervisorView({ user, onLogout }) {
               <div className="loading"><div className="spinner" />Loading...</div>
             ) : sdLoaded && sdEntries.length === 0 ? (
               <div className="card">
-                <p style={{ color: '#888', textAlign: 'center', padding: '32px' }}>No entries found for this stitcher.</p>
+                <p style={{ color: '#8b949e', textAlign: 'center', padding: '32px' }}>No entries found for this stitcher.</p>
               </div>
             ) : sdLoaded && sdEntries.length > 0 ? (
               <>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
                   {[
-                    { label: 'Total POs',      value: new Set(sdEntries.map(e => e.po_number)).size,                                         color: '#0f3460' },
-                    { label: 'Total Pieces',   value: sdEntries.reduce((s, e) => s + Number(e.qty_claimed || 0), 0).toLocaleString(),        color: '#0f3460' },
-                    { label: 'Total Earnings', value: `PKR ${sdEntries.reduce((s, e) => s + Number(e.amount || 0), 0).toLocaleString()}`,    color: '#16a34a' },
+                    { label: 'Total POs',      value: new Set(sdEntries.map(e => e.po_number)).size,                                         color: '#e6edf3' },
+                    { label: 'Total Pieces',   value: sdEntries.reduce((s, e) => s + Number(e.qty_claimed || 0), 0).toLocaleString(),        color: '#e6edf3' },
+                    { label: 'Total Earnings', value: `PKR ${sdEntries.reduce((s, e) => s + Number(e.amount || 0), 0).toLocaleString()}`,    color: '#3fb950' },
                   ].map(c => (
                     <div key={c.label} className="card" style={{ marginBottom: 0, textAlign: 'center' }}>
-                      <p style={{ fontSize: '12px', color: '#888', fontWeight: '600', textTransform: 'uppercase', marginBottom: '8px' }}>{c.label}</p>
+                      <p style={{ fontSize: '12px', color: '#8b949e', fontWeight: '600', textTransform: 'uppercase', marginBottom: '8px' }}>{c.label}</p>
                       <p style={{ fontSize: '26px', fontWeight: '700', color: c.color }}>{c.value}</p>
                     </div>
                   ))}
@@ -653,7 +653,7 @@ function SupervisorView({ user, onLogout }) {
                     <h3 style={{ margin: 0, borderBottom: 'none', padding: 0 }}>
                       Breakdown — {sdStitcher}
                       {(sdDateFrom || sdDateTo) && (
-                        <span style={{ fontSize: '13px', fontWeight: '400', color: '#888', marginLeft: '8px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: '400', color: '#8b949e', marginLeft: '8px' }}>
                           {sdDateFrom || 'All'} to {sdDateTo || 'Now'}
                         </span>
                       )}
@@ -662,14 +662,14 @@ function SupervisorView({ user, onLogout }) {
                       <button
                         className="btn btn-small"
                         onClick={sdHandleExport}
-                        style={{ width: 'auto', background: '#16a34a', color: 'white' }}
+                        style={{ width: 'auto', background: '#3fb950', color: 'white' }}
                       >
                         ↓ Excel
                       </button>
                       <button
                         className="btn btn-small"
                         onClick={() => window.print()}
-                        style={{ width: 'auto', background: '#0f3460', color: 'white' }}
+                        style={{ width: 'auto', background: '#4a7cc9', color: 'white' }}
                       >
                         Print
                       </button>
@@ -739,12 +739,12 @@ function SupervisorView({ user, onLogout }) {
 
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#0f3460' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#e6edf3' }}>
                 Update — {updateModal.stitcher_name} — <span style={{ textTransform: 'capitalize' }}>{updateModal.component}</span>
               </h3>
               <button
                 onClick={closeModal}
-                style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#888', lineHeight: 1 }}
+                style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#8b949e', lineHeight: 1 }}
               >
                 ✕
               </button>
@@ -752,22 +752,22 @@ function SupervisorView({ user, onLogout }) {
 
             {/* Read-only summary */}
             <div style={{
-              background: '#f8f9ff', borderRadius: '8px', padding: '14px 16px',
+              background: '#1c2129', borderRadius: '8px', padding: '14px 16px',
               marginBottom: '20px', display: 'grid', gridTemplateColumns: '1fr 1fr',
               gap: '10px', fontSize: '14px',
             }}>
-              <div><span style={{ color: '#888', fontWeight: '600' }}>PO: </span>{updateModal.po_number}</div>
-              <div><span style={{ color: '#888', fontWeight: '600' }}>Stitcher: </span>{updateModal.stitcher_name}</div>
+              <div><span style={{ color: '#8b949e', fontWeight: '600' }}>PO: </span>{updateModal.po_number}</div>
+              <div><span style={{ color: '#8b949e', fontWeight: '600' }}>Stitcher: </span>{updateModal.stitcher_name}</div>
               <div style={{ textTransform: 'capitalize' }}>
-                <span style={{ color: '#888', fontWeight: '600' }}>Component: </span>{updateModal.component}
+                <span style={{ color: '#8b949e', fontWeight: '600' }}>Component: </span>{updateModal.component}
               </div>
-              <div><span style={{ color: '#888', fontWeight: '600' }}>Allocated: </span>{updateModal.qty_allocated}</div>
+              <div><span style={{ color: '#8b949e', fontWeight: '600' }}>Allocated: </span>{updateModal.qty_allocated}</div>
               <div>
-                <span style={{ color: '#888', fontWeight: '600' }}>Total Returned So Far: </span>
+                <span style={{ color: '#8b949e', fontWeight: '600' }}>Total Returned So Far: </span>
                 {updateModal.qty_returned || 0}
               </div>
               <div>
-                <span style={{ color: '#888', fontWeight: '600' }}>Remaining: </span>
+                <span style={{ color: '#8b949e', fontWeight: '600' }}>Remaining: </span>
                 {updateModal.qty_remaining != null
                   ? Number(updateModal.qty_remaining)
                   : Number(updateModal.qty_allocated) - Number(updateModal.qty_returned || 0)}
@@ -848,7 +848,7 @@ function SupervisorView({ user, onLogout }) {
               </button>
               <button
                 className="btn btn-small"
-                style={{ background: '#e8e8e8', color: '#555', padding: '12px 24px' }}
+                style={{ background: '#e8e8e8', color: '#8b949e', padding: '12px 24px' }}
                 onClick={closeModal}
               >
                 Cancel

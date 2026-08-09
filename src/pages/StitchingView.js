@@ -48,9 +48,9 @@ const EMPTY_FORM = {
 
 function PaymentStatusBadge({ status }) {
   const cfg = {
-    Pending:  { bg: '#fef3c7', color: '#92400e' },
-    Verified: { bg: '#dbeafe', color: '#1e40af' },
-    Paid:     { bg: '#dcfce7', color: '#166534' },
+    Pending:  { bg: '#fef3c7', color: '#d29922' },
+    Verified: { bg: '#dbeafe', color: '#4a7cc9' },
+    Paid:     { bg: '#dcfce7', color: '#3fb950' },
   };
   const s = cfg[status] || cfg.Pending;
   return (
@@ -155,17 +155,17 @@ function StitchingView({ user, onLogout }) {
 
   // Rate display text and style
   let rateText = '';
-  let rateStyle = { color: '#999', fontStyle: 'italic' };
+  let rateStyle = { color: '#8b949e', fontStyle: 'italic' };
   if (rateLoading) {
     rateText = 'Loading...';
   } else if (!form.po_number || !form.department || !form.operation) {
     rateText = 'Select PO, Department and Operation to load rate';
   } else if (rateError) {
     rateText = 'No approved rate found';
-    rateStyle = { color: '#dc2626', fontWeight: '600' };
+    rateStyle = { color: '#f85149', fontWeight: '600' };
   } else if (currentRate !== null) {
     rateText = `PKR ${currentRate.toLocaleString()}`;
-    rateStyle = { color: '#0f3460', fontWeight: '600' };
+    rateStyle = { color: '#e6edf3', fontWeight: '600' };
   }
 
   // ── Form handlers ────────────────────────────────────────────────────────────
@@ -241,7 +241,7 @@ function StitchingView({ user, onLogout }) {
       <div className="main-content">
 
         {/* Tab bar */}
-        <div style={{ display: 'flex', gap: '0', marginBottom: '24px', borderBottom: '2px solid #e8e8e8' }}>
+        <div style={{ display: 'flex', gap: '0', marginBottom: '24px', borderBottom: '1px solid #30363d' }}>
           <button style={tabStyle('log')}     onClick={() => setActiveTab('log')}>Log Entry</button>
           <button style={tabStyle('entries')} onClick={() => setActiveTab('entries')}>My Entries</button>
         </div>
@@ -337,7 +337,7 @@ function StitchingView({ user, onLogout }) {
                     <label>Rate (PKR / piece)</label>
                     <div style={{
                       padding: '12px 16px', border: '2px dashed #e8e8e8', borderRadius: '8px',
-                      background: '#fafafa', fontSize: '15px', minHeight: '48px',
+                      background: '#21262d', fontSize: '15px', minHeight: '48px',
                       display: 'flex', alignItems: 'center', ...rateStyle,
                     }}>
                       {rateText || '\u00A0'}
@@ -385,7 +385,7 @@ function StitchingView({ user, onLogout }) {
                     {submitting ? 'Submitting...' : 'Submit Entry'}
                   </button>
                   {currentAmount && (
-                    <span style={{ fontSize: '15px', fontWeight: '700', color: '#0f3460' }}>
+                    <span style={{ fontSize: '15px', fontWeight: '700', color: '#e6edf3' }}>
                       Total: PKR {Number(currentAmount).toLocaleString()}
                     </span>
                   )}
@@ -412,7 +412,7 @@ function StitchingView({ user, onLogout }) {
             {entriesLoading ? (
               <div className="loading"><div className="spinner" />Loading entries...</div>
             ) : entries.length === 0 ? (
-              <p style={{ color: '#888', textAlign: 'center', padding: '24px' }}>No entries yet.</p>
+              <p style={{ color: '#8b949e', textAlign: 'center', padding: '24px' }}>No entries yet.</p>
             ) : (
               <div className="table-container">
                 <table>

@@ -147,9 +147,9 @@ function componentToDeptOp(component) {
 
 function PaymentStatusBadge({ status }) {
   const cfg = {
-    Pending:  { bg: '#fef3c7', color: '#92400e' },
-    Verified: { bg: '#dbeafe', color: '#1e40af' },
-    Paid:     { bg: '#dcfce7', color: '#166534' },
+    Pending:  { bg: '#fef3c7', color: '#d29922' },
+    Verified: { bg: '#dbeafe', color: '#4a7cc9' },
+    Paid:     { bg: '#dcfce7', color: '#3fb950' },
   };
   const s = cfg[status] || cfg.Pending;
   return (
@@ -169,12 +169,12 @@ const sectionHeader = (text) => (
     marginTop: '24px',
     marginBottom: '12px',
     paddingBottom: '8px',
-    borderBottom: '2px solid #f0f2f5',
+    borderBottom: '1px solid #30363d',
   }}>
     <p style={{
       fontSize: '13px',
       fontWeight: '700',
-      color: '#0f3460',
+      color: '#e6edf3',
       textTransform: 'uppercase',
       letterSpacing: '0.5px',
       margin: 0,
@@ -188,7 +188,7 @@ const subHeader = (text) => (
   <p style={{
     fontSize: '12px',
     fontWeight: '600',
-    color: '#555',
+    color: '#8b949e',
     textTransform: 'uppercase',
     letterSpacing: '0.4px',
     marginTop: '16px',
@@ -202,9 +202,9 @@ const getCMTStatusBadge = (status) => {
   switch (status) {
     case 'Draft':            return { cls: 'badge badge-pending', style: undefined };
     case 'Pending_Accounts': return { cls: 'badge badge-issued',  style: undefined };
-    case 'Pending_CEO':      return { cls: 'badge', style: { background: '#f97316', color: 'white' } };
-    case 'Approved':         return { cls: 'badge', style: { background: '#16a34a', color: 'white' } };
-    case 'Rejected':         return { cls: 'badge', style: { background: '#dc2626', color: 'white' } };
+    case 'Pending_CEO':      return { cls: 'badge', style: { background: '#d29922', color: 'white' } };
+    case 'Approved':         return { cls: 'badge', style: { background: '#3fb950', color: 'white' } };
+    case 'Rejected':         return { cls: 'badge', style: { background: '#f85149', color: 'white' } };
     default:                 return { cls: 'badge badge-pending', style: undefined };
   }
 };
@@ -977,7 +977,7 @@ function CuttingView({ user, onLogout }) {
           display: 'flex',
           gap: '0',
           marginBottom: '24px',
-          borderBottom: '2px solid #e8e8e8',
+          borderBottom: '1px solid #30363d',
         }}>
           {[
             { key: 'acceptance', label: 'Fabric Acceptance' },
@@ -1026,13 +1026,13 @@ function CuttingView({ user, onLogout }) {
 
                 {/* READ ONLY PP DETAILS */}
                 <div style={{
-                  background: '#f8f9ff',
-                  border: '1px solid #e0e7ff',
+                  background: '#1c2129',
+                  border: '1px solid #30363d',
                   borderRadius: '8px',
                   padding: '16px',
                   marginBottom: '20px'
                 }}>
-                  <p style={{ fontSize: '12px', fontWeight: '700', color: '#0f3460', marginBottom: '12px', textTransform: 'uppercase' }}>
+                  <p style={{ fontSize: '12px', fontWeight: '700', color: '#e6edf3', marginBottom: '12px', textTransform: 'uppercase' }}>
                     Issued By PP Department — Read Only
                   </p>
                   <div className="form-grid">
@@ -1179,7 +1179,7 @@ function CuttingView({ user, onLogout }) {
                 <button
                   className="btn btn-small"
                   onClick={loadData}
-                  style={{ width: 'auto', background: '#f0f2f5', color: '#333', marginLeft: 'auto' }}
+                  style={{ width: 'auto', background: '#161b22', color: '#e6edf3', marginLeft: 'auto' }}
                 >
                   ↻ Refresh
                 </button>
@@ -1192,7 +1192,7 @@ function CuttingView({ user, onLogout }) {
                 </div>
               ) : tab === 'pending' ? (
                 pendingRecords.length === 0 ? (
-                  <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>
+                  <p style={{ color: '#8b949e', textAlign: 'center', padding: '20px' }}>
                     No pending records. All fabric accounted for.
                   </p>
                 ) : (
@@ -1236,7 +1236,7 @@ function CuttingView({ user, onLogout }) {
                 )
               ) : tab === 'completed' ? (
                 completedRecords.length === 0 ? (
-                  <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>
+                  <p style={{ color: '#8b949e', textAlign: 'center', padding: '20px' }}>
                     No completed records yet.
                   </p>
                 ) : (
@@ -1281,7 +1281,7 @@ function CuttingView({ user, onLogout }) {
                 )
               ) : (
                 historyRecords.length === 0 ? (
-                  <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>
+                  <p style={{ color: '#8b949e', textAlign: 'center', padding: '20px' }}>
                     No records accepted by you yet.
                   </p>
                 ) : (
@@ -1515,7 +1515,7 @@ function CuttingView({ user, onLogout }) {
                       className="btn"
                       onClick={handleCancelEdit}
                       disabled={cmtSubmitting}
-                      style={{ flex: 1, background: '#e0e7ff', color: '#0f3460' }}
+                      style={{ flex: 1, background: '#1c2d4a', color: '#e6edf3' }}
                     >
                       Cancel
                     </button>
@@ -1533,7 +1533,7 @@ function CuttingView({ user, onLogout }) {
                   Loading submissions...
                 </div>
               ) : submissions.length === 0 ? (
-                <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>
+                <p style={{ color: '#8b949e', textAlign: 'center', padding: '20px' }}>
                   No submissions yet.
                 </p>
               ) : (
@@ -1566,7 +1566,7 @@ function CuttingView({ user, onLogout }) {
                               {r.status === 'Rejected' && rejectionRemarks && (
                                 <p style={{
                                   fontSize: '11px',
-                                  color: '#dc2626',
+                                  color: '#f85149',
                                   marginTop: '4px',
                                   fontStyle: 'italic',
                                   whiteSpace: 'normal',
@@ -1579,7 +1579,7 @@ function CuttingView({ user, onLogout }) {
                               <button
                                 className="btn btn-small"
                                 onClick={() => handleEditRate(r)}
-                                style={{ width: 'auto', background: '#e0e7ff', color: '#0f3460' }}
+                                style={{ width: 'auto', background: '#1c2d4a', color: '#e6edf3' }}
                               >
                                 Edit
                               </button>
@@ -1628,10 +1628,10 @@ function CuttingView({ user, onLogout }) {
                       placeholder="0300-1234567"
                       value={stitcherForm.phone}
                       onChange={handlePhoneChange}
-                      style={stitcherPhoneError ? { borderColor: '#dc2626' } : {}}
+                      style={stitcherPhoneError ? { bordercolor: '#f85149' } : {}}
                     />
                     {stitcherPhoneError && (
-                      <p style={{ fontSize: '12px', color: '#dc2626', marginTop: '4px', fontWeight: '600' }}>
+                      <p style={{ fontSize: '12px', color: '#f85149', marginTop: '4px', fontWeight: '600' }}>
                         {stitcherPhoneError}
                       </p>
                     )}
@@ -1696,12 +1696,12 @@ function CuttingView({ user, onLogout }) {
                     placeholder="Search by name or code..."
                     value={stitcherSearch}
                     onChange={e => setStitcherSearch(e.target.value)}
-                    style={{ padding: '7px 12px', border: '2px solid #e8e8e8', borderRadius: '8px', fontSize: '13px', width: '200px' }}
+                    style={{ padding: '7px 12px', border: '1px solid #30363d', borderRadius: '8px', fontSize: '13px', width: '200px' }}
                   />
                   <select
                     value={stitcherStatusFilter}
                     onChange={e => setStitcherStatusFilter(e.target.value)}
-                    style={{ padding: '7px 10px', border: '2px solid #e8e8e8', borderRadius: '8px', fontSize: '13px' }}
+                    style={{ padding: '7px 10px', border: '1px solid #30363d', borderRadius: '8px', fontSize: '13px' }}
                   >
                     <option value="Active">Active</option>
                     <option value="Inactive">Inactive</option>
@@ -1710,7 +1710,7 @@ function CuttingView({ user, onLogout }) {
                   <button
                     className="btn btn-small"
                     onClick={loadStitchers}
-                    style={{ width: 'auto', background: '#f0f2f5', color: '#333' }}
+                    style={{ width: 'auto', background: '#161b22', color: '#e6edf3' }}
                   >
                     ↻ Refresh
                   </button>
@@ -1720,7 +1720,7 @@ function CuttingView({ user, onLogout }) {
               {stitchersLoading ? (
                 <div className="loading"><div className="spinner"></div>Loading stitchers...</div>
               ) : filteredStitchers.length === 0 ? (
-                <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>
+                <p style={{ color: '#8b949e', textAlign: 'center', padding: '20px' }}>
                   {stitchers.length === 0 ? 'No stitchers yet.' : 'No results match your search.'}
                 </p>
               ) : (
@@ -1761,7 +1761,7 @@ function CuttingView({ user, onLogout }) {
         {activeTab === 'paylog' && (
           <>
             {/* Sub-tab bar */}
-            <div style={{ display: 'flex', gap: '0', marginBottom: '24px', borderBottom: '2px solid #e8e8e8' }}>
+            <div style={{ display: 'flex', gap: '0', marginBottom: '24px', borderBottom: '1px solid #30363d' }}>
               <button style={plSubTabStyle('log')}       onClick={() => setPlSubTab('log')}>Log Entry</button>
               <button style={plSubTabStyle('entries')}   onClick={() => setPlSubTab('entries')}>My Entries</button>
               <button style={plSubTabStyle('dashboard')} onClick={() => setPlSubTab('dashboard')}>Stitcher Dashboard</button>
@@ -1771,7 +1771,7 @@ function CuttingView({ user, onLogout }) {
             {plSubTab === 'log' && (
               <>
                 {/* Single / Bulk toggle */}
-                <div style={{ display: 'flex', gap: '0', marginBottom: '16px', borderBottom: '2px solid #e8e8e8' }}>
+                <div style={{ display: 'flex', gap: '0', marginBottom: '16px', borderBottom: '1px solid #30363d' }}>
                   {[
                     { key: 'single', label: 'Single Entry' },
                     { key: 'bulk',   label: 'Bulk Entry'   },
@@ -1850,9 +1850,9 @@ function CuttingView({ user, onLogout }) {
                       </div>
 
                       <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                        <label>Operations * <span style={{ fontWeight: '400', color: '#888', fontSize: '12px' }}>(select all that apply)</span></label>
+                        <label>Operations * <span style={{ fontWeight: '400', color: '#8b949e', fontSize: '12px' }}>(select all that apply)</span></label>
                         {!plForm.department ? (
-                          <p style={{ color: '#aaa', fontStyle: 'italic', fontSize: '13px', margin: '8px 0 0' }}>Select a department first</p>
+                          <p style={{ color: '#8b949e', fontStyle: 'italic', fontSize: '13px', margin: '8px 0 0' }}>Select a department first</p>
                         ) : (
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '8px' }}>
                             {(PL_OPERATION_OPTIONS[plForm.department] || []).map(op => {
@@ -1868,7 +1868,7 @@ function CuttingView({ user, onLogout }) {
                                     border: isChecked ? '2px solid #0f3460' : '2px solid #e8e8e8',
                                     background: isChecked ? '#f0f4ff' : '#fafafa',
                                     fontWeight: isChecked ? '700' : '400',
-                                    fontSize: '14px', color: '#0f3460',
+                                    fontSize: '14px', color: '#e6edf3',
                                     transition: 'all 0.15s', userSelect: 'none',
                                   }}
                                 >
@@ -1876,15 +1876,15 @@ function CuttingView({ user, onLogout }) {
                                     type="checkbox"
                                     checked={isChecked}
                                     onChange={() => plToggleOp(op)}
-                                    style={{ accentColor: '#0f3460', width: '15px', height: '15px' }}
+                                    style={{ accentcolor: '#e6edf3', width: '15px', height: '15px' }}
                                   />
                                   {op}
                                   {rate !== null && plPoRateData && (
-                                    <span style={{ fontSize: '12px', color: '#555', fontWeight: '400' }}>
+                                    <span style={{ fontSize: '12px', color: '#8b949e', fontWeight: '400' }}>
                                       &nbsp;@ PKR {rate.toLocaleString()}
                                     </span>
                                   )}
-                                  {plRateLoading && <span style={{ fontSize: '11px', color: '#aaa' }}>…</span>}
+                                  {plRateLoading && <span style={{ fontSize: '11px', color: '#8b949e' }}>…</span>}
                                 </label>
                               );
                             })}
@@ -1907,15 +1907,15 @@ function CuttingView({ user, onLogout }) {
 
                       {/* Per-op breakdown + combined total */}
                       {plSelectedOps.length > 0 && plPoRateData && plForm.qty_claimed && (
-                        <div style={{ gridColumn: '1 / -1', background: '#f8fafc', border: '1px solid #e0e7ff', borderRadius: '8px', padding: '14px 16px' }}>
-                          <p style={{ fontWeight: '700', fontSize: '12px', color: '#0f3460', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '10px' }}>Breakdown</p>
+                        <div style={{ gridColumn: '1 / -1', background: '#161b22', border: '1px solid #30363d', borderRadius: '8px', padding: '14px 16px' }}>
+                          <p style={{ fontWeight: '700', fontSize: '12px', color: '#e6edf3', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '10px' }}>Breakdown</p>
                           {plOpRates.map(({ op, rate, amount }) => (
-                            <div key={op} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '6px', color: '#333' }}>
+                            <div key={op} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '6px', color: '#e6edf3' }}>
                               <span>{op} — {plForm.qty_claimed} pcs × PKR {rate.toLocaleString()}</span>
                               <span style={{ fontWeight: '600' }}>PKR {amount.toLocaleString()}</span>
                             </div>
                           ))}
-                          <div style={{ borderTop: '2px solid #e0e7ff', marginTop: '8px', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontWeight: '700', fontSize: '15px', color: '#0f3460' }}>
+                          <div style={{ borderTop: '1px solid #30363d', marginTop: '8px', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontWeight: '700', fontSize: '15px', color: '#e6edf3' }}>
                             <span>Combined Total</span>
                             <span>PKR {plCombinedTotal.toLocaleString()}</span>
                           </div>
@@ -1924,7 +1924,7 @@ function CuttingView({ user, onLogout }) {
 
                       {plRateError && (
                         <div style={{ gridColumn: '1 / -1' }}>
-                          <p style={{ color: '#dc2626', fontWeight: '600', fontSize: '13px' }}>⚠ No approved CMT rate found for this PO. Cannot log entries.</p>
+                          <p style={{ color: '#f85149', fontWeight: '600', fontSize: '13px' }}>⚠ No approved CMT rate found for this PO. Cannot log entries.</p>
                         </div>
                       )}
 
@@ -1962,7 +1962,7 @@ function CuttingView({ user, onLogout }) {
                             : 'Submit Entry'}
                       </button>
                       {plCombinedTotal > 0 && (
-                        <span style={{ fontSize: '15px', fontWeight: '700', color: '#0f3460' }}>
+                        <span style={{ fontSize: '15px', fontWeight: '700', color: '#e6edf3' }}>
                           Total: PKR {plCombinedTotal.toLocaleString()}
                         </span>
                       )}
@@ -2033,7 +2033,7 @@ function CuttingView({ user, onLogout }) {
                                     <select
                                       value={row.department}
                                       onChange={e => bulkHandleRowChange(i, 'department', e.target.value)}
-                                      style={{ padding: '4px 8px', fontSize: '13px', border: '1px solid #e8e8e8', borderRadius: '6px', minWidth: '150px' }}
+                                      style={{ padding: '4px 8px', fontSize: '13px', border: '1px solid #30363d', borderRadius: '6px', minWidth: '150px' }}
                                     >
                                       <option value="">Select...</option>
                                       {PL_DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
@@ -2044,7 +2044,7 @@ function CuttingView({ user, onLogout }) {
                                       value={row.operation}
                                       onChange={e => bulkHandleRowChange(i, 'operation', e.target.value)}
                                       disabled={!row.department}
-                                      style={{ padding: '4px 8px', fontSize: '13px', border: '1px solid #e8e8e8', borderRadius: '6px', minWidth: '120px' }}
+                                      style={{ padding: '4px 8px', fontSize: '13px', border: '1px solid #30363d', borderRadius: '6px', minWidth: '120px' }}
                                     >
                                       <option value="">Select...</option>
                                       {(PL_OPERATION_OPTIONS[row.department] || []).map(op => (
@@ -2060,7 +2060,7 @@ function CuttingView({ user, onLogout }) {
                                       onChange={e => bulkHandleRowChange(i, 'qty_claimed', e.target.value)}
                                       min="0"
                                       max={row.qty_accepted}
-                                      style={{ width: '80px', padding: '4px 8px', border: '1px solid #e8e8e8', borderRadius: '6px', fontSize: '13px' }}
+                                      style={{ width: '80px', padding: '4px 8px', border: '1px solid #30363d', borderRadius: '6px', fontSize: '13px' }}
                                     />
                                   </td>
                                   <td style={{ textAlign: 'right' }}>
@@ -2071,11 +2071,11 @@ function CuttingView({ user, onLogout }) {
                                   </td>
                                   <td>
                                     {row.alreadyLogged ? (
-                                      <span style={{ padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '700', background: '#fef3c7', color: '#92400e' }}>
+                                      <span style={{ padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '700', background: '#2d2208', color: '#d29922' }}>
                                         Already Logged
                                       </span>
                                     ) : (
-                                      <span style={{ padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '700', background: '#dcfce7', color: '#166534' }}>
+                                      <span style={{ padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '700', background: '#0d2818', color: '#3fb950' }}>
                                         Pending
                                       </span>
                                     )}
@@ -2154,7 +2154,7 @@ function CuttingView({ user, onLogout }) {
 
                 {!sdStitcher ? (
                   <div className="card">
-                    <p style={{ color: '#888', textAlign: 'center', padding: '32px' }}>
+                    <p style={{ color: '#8b949e', textAlign: 'center', padding: '32px' }}>
                       Select a stitcher to view their performance
                     </p>
                   </div>
@@ -2162,18 +2162,18 @@ function CuttingView({ user, onLogout }) {
                   <div className="loading"><div className="spinner" />Loading...</div>
                 ) : sdLoaded && sdEntries.length === 0 ? (
                   <div className="card">
-                    <p style={{ color: '#888', textAlign: 'center', padding: '32px' }}>No entries found for this stitcher.</p>
+                    <p style={{ color: '#8b949e', textAlign: 'center', padding: '32px' }}>No entries found for this stitcher.</p>
                   </div>
                 ) : sdLoaded && sdEntries.length > 0 ? (
                   <>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
                       {[
-                        { label: 'Total POs',      value: new Set(sdEntries.map(e => e.po_number)).size,                                         color: '#0f3460' },
-                        { label: 'Total Pieces',   value: sdEntries.reduce((s, e) => s + Number(e.qty_claimed || 0), 0).toLocaleString(),        color: '#0f3460' },
-                        { label: 'Total Earnings', value: `PKR ${sdEntries.reduce((s, e) => s + Number(e.amount || 0), 0).toLocaleString()}`,    color: '#16a34a' },
+                        { label: 'Total POs',      value: new Set(sdEntries.map(e => e.po_number)).size,                                         color: '#e6edf3' },
+                        { label: 'Total Pieces',   value: sdEntries.reduce((s, e) => s + Number(e.qty_claimed || 0), 0).toLocaleString(),        color: '#e6edf3' },
+                        { label: 'Total Earnings', value: `PKR ${sdEntries.reduce((s, e) => s + Number(e.amount || 0), 0).toLocaleString()}`,    color: '#3fb950' },
                       ].map(c => (
                         <div key={c.label} className="card" style={{ marginBottom: 0, textAlign: 'center' }}>
-                          <p style={{ fontSize: '12px', color: '#888', fontWeight: '600', textTransform: 'uppercase', marginBottom: '8px' }}>{c.label}</p>
+                          <p style={{ fontSize: '12px', color: '#8b949e', fontWeight: '600', textTransform: 'uppercase', marginBottom: '8px' }}>{c.label}</p>
                           <p style={{ fontSize: '26px', fontWeight: '700', color: c.color }}>{c.value}</p>
                         </div>
                       ))}
@@ -2184,7 +2184,7 @@ function CuttingView({ user, onLogout }) {
                         <h3 style={{ margin: 0, borderBottom: 'none', padding: 0 }}>
                           Breakdown — {sdStitcher}
                           {(sdDateFrom || sdDateTo) && (
-                            <span style={{ fontSize: '13px', fontWeight: '400', color: '#888', marginLeft: '8px' }}>
+                            <span style={{ fontSize: '13px', fontWeight: '400', color: '#8b949e', marginLeft: '8px' }}>
                               {sdDateFrom || 'All'} to {sdDateTo || 'Now'}
                             </span>
                           )}
@@ -2193,14 +2193,14 @@ function CuttingView({ user, onLogout }) {
                           <button
                             className="btn btn-small"
                             onClick={sdHandleExport}
-                            style={{ width: 'auto', background: '#16a34a', color: 'white' }}
+                            style={{ width: 'auto', background: '#3fb950', color: 'white' }}
                           >
                             ↓ Excel
                           </button>
                           <button
                             className="btn btn-small"
                             onClick={() => window.print()}
-                            style={{ width: 'auto', background: '#0f3460', color: 'white' }}
+                            style={{ width: 'auto', background: '#4a7cc9', color: 'white' }}
                           >
                             Print
                           </button>
@@ -2274,7 +2274,7 @@ function CuttingView({ user, onLogout }) {
                 {plEntriesLoading ? (
                   <div className="loading"><div className="spinner" />Loading entries...</div>
                 ) : plEntries.length === 0 ? (
-                  <p style={{ color: '#888', textAlign: 'center', padding: '24px' }}>No entries yet.</p>
+                  <p style={{ color: '#8b949e', textAlign: 'center', padding: '24px' }}>No entries yet.</p>
                 ) : (
                   <div className="table-container">
                     <table>

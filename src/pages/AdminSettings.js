@@ -367,7 +367,7 @@ function AdminSettings({ user, onLogout }) {
           <button
             className="btn btn-small"
             onClick={() => navigate(backPath)}
-            style={{ width: 'auto', background: '#e0e7ff', color: '#0f3460' }}
+            style={{ width: 'auto', background: '#1c2d4a', color: '#e6edf3' }}
           >
             ← Back
           </button>
@@ -396,7 +396,7 @@ function AdminSettings({ user, onLogout }) {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                 <h3 style={{ margin: 0, borderBottom: 'none', padding: 0 }}>Users</h3>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <button className="btn btn-small" onClick={loadUsers} style={{ width: 'auto', background: '#f0f2f5', color: '#333' }}>
+                  <button className="btn btn-small" onClick={loadUsers} style={{ width: 'auto', background: '#161b22', color: '#e6edf3' }}>
                     ↻ Refresh
                   </button>
                   <button className="btn btn-small btn-success" onClick={openAddUser} style={{ width: 'auto' }}>
@@ -408,7 +408,7 @@ function AdminSettings({ user, onLogout }) {
               {usersLoading ? (
                 <div className="loading"><div className="spinner"></div>Loading users...</div>
               ) : users.length === 0 ? (
-                <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>No users found.</p>
+                <p style={{ color: '#8b949e', textAlign: 'center', padding: '20px' }}>No users found.</p>
               ) : (
                 <div className="table-container">
                   <table>
@@ -432,7 +432,7 @@ function AdminSettings({ user, onLogout }) {
                           </td>
                           <td>
                             <div style={{ display: 'flex', gap: '8px' }}>
-                              <button className="btn btn-small" onClick={() => openEditUser(u)} style={{ background: '#fff3cd', color: '#856404', width: 'auto' }}>
+                              <button className="btn btn-small" onClick={() => openEditUser(u)} style={{ background: '#2d2208', color: '#d29922', width: 'auto' }}>
                                 Edit
                               </button>
                               <button
@@ -460,7 +460,7 @@ function AdminSettings({ user, onLogout }) {
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                 <h3 style={{ margin: 0, borderBottom: 'none', padding: 0 }}>Dropdown Values</h3>
-                <button className="btn btn-small" onClick={loadDropdowns} style={{ width: 'auto', background: '#f0f2f5', color: '#333' }}>
+                <button className="btn btn-small" onClick={loadDropdowns} style={{ width: 'auto', background: '#161b22', color: '#e6edf3' }}>
                   ↻ Refresh
                 </button>
               </div>
@@ -472,15 +472,15 @@ function AdminSettings({ user, onLogout }) {
                   {DROPDOWN_FIELDS.map(fieldDef => {
                     const values = dropdowns[fieldDef.key] || [];
                     return (
-                      <div key={fieldDef.field} style={{ border: '1px solid #e0e7ff', borderRadius: '10px', padding: '16px' }}>
-                        <p style={{ fontWeight: '700', color: '#0f3460', marginBottom: '12px', fontSize: '13px', textTransform: 'uppercase' }}>
+                      <div key={fieldDef.field} style={{ border: '1px solid #30363d', borderRadius: '10px', padding: '16px' }}>
+                        <p style={{ fontWeight: '700', color: '#e6edf3', marginBottom: '12px', fontSize: '13px', textTransform: 'uppercase' }}>
                           {fieldDef.label}
                         </p>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px', minHeight: '32px' }}>
                           {values.length === 0 ? (
-                            <span style={{ color: '#aaa', fontSize: '13px' }}>No values yet</span>
+                            <span style={{ color: '#8b949e', fontSize: '13px' }}>No values yet</span>
                           ) : values.map(v => (
-                            <span key={v} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#e0e7ff', color: '#0f3460', borderRadius: '20px', padding: '4px 10px', fontSize: '13px' }}>
+                            <span key={v} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#1c2d4a', color: '#e6edf3', borderRadius: '20px', padding: '4px 10px', fontSize: '13px' }}>
                               {v}
                               <button
                                 onClick={() => handleRemoveDropdown(fieldDef, v)}
@@ -498,7 +498,7 @@ function AdminSettings({ user, onLogout }) {
                             value={newValues[fieldDef.field]}
                             onChange={e => setNewValues(prev => ({ ...prev, [fieldDef.field]: e.target.value }))}
                             onKeyDown={e => e.key === 'Enter' && handleAddDropdown(fieldDef)}
-                            style={{ flex: 1, padding: '7px 10px', border: '2px solid #e8e8e8', borderRadius: '7px', fontSize: '13px' }}
+                            style={{ flex: 1, padding: '7px 10px', border: '1px solid #30363d', borderRadius: '7px', fontSize: '13px' }}
                           />
                           <button
                             className="btn btn-small btn-success"
@@ -528,25 +528,25 @@ function AdminSettings({ user, onLogout }) {
                     placeholder="Search by name or code..."
                     value={stitcherSearch}
                     onChange={e => setStitcherSearch(e.target.value)}
-                    style={{ padding: '7px 12px', border: '2px solid #e8e8e8', borderRadius: '8px', fontSize: '13px', width: '200px' }}
+                    style={{ padding: '7px 12px', border: '1px solid #30363d', borderRadius: '8px', fontSize: '13px', width: '200px' }}
                   />
                   <select
                     value={stitcherStatusFilter}
                     onChange={e => setStitcherStatusFilter(e.target.value)}
-                    style={{ padding: '7px 10px', border: '2px solid #e8e8e8', borderRadius: '8px', fontSize: '13px' }}
+                    style={{ padding: '7px 10px', border: '1px solid #30363d', borderRadius: '8px', fontSize: '13px' }}
                   >
                     <option value="All">All</option>
                     <option value="Active">Active</option>
                     <option value="Inactive">Inactive</option>
                   </select>
-                  <button className="btn btn-small" onClick={loadStitchers} style={{ width: 'auto', background: '#f0f2f5', color: '#333' }}>
+                  <button className="btn btn-small" onClick={loadStitchers} style={{ width: 'auto', background: '#161b22', color: '#e6edf3' }}>
                     ↻ Refresh
                   </button>
                   <button
                     className="btn btn-small"
                     onClick={handleExcelExport}
                     disabled={filteredStitchers.length === 0}
-                    style={{ width: 'auto', background: '#16a34a', color: 'white', whiteSpace: 'nowrap' }}
+                    style={{ width: 'auto', background: '#3fb950', color: 'white', whiteSpace: 'nowrap' }}
                   >
                     ↓ Excel
                   </button>
@@ -556,7 +556,7 @@ function AdminSettings({ user, onLogout }) {
               {stitchersLoading ? (
                 <div className="loading"><div className="spinner"></div>Loading stitchers...</div>
               ) : filteredStitchers.length === 0 ? (
-                <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>
+                <p style={{ color: '#8b949e', textAlign: 'center', padding: '20px' }}>
                   {stitchers.length === 0 ? 'No stitchers found.' : 'No results match your search.'}
                 </p>
               ) : (
@@ -600,7 +600,7 @@ function AdminSettings({ user, onLogout }) {
                             <button
                               className="btn btn-small"
                               onClick={() => openEditStitcher(s)}
-                              style={{ background: '#fff3cd', color: '#856404', width: 'auto' }}
+                              style={{ background: '#2d2208', color: '#d29922', width: 'auto' }}
                             >
                               Edit
                             </button>
@@ -619,8 +619,8 @@ function AdminSettings({ user, onLogout }) {
       {/* ── USER ADD / EDIT MODAL ── */}
       {userModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: 'white', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '420px', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
-            <h3 style={{ marginBottom: '20px', color: '#0f3460' }}>
+          <div style={{ background: '#161b22', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '420px', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            <h3 style={{ marginBottom: '20px', color: '#e6edf3' }}>
               {userModal.mode === 'add' ? 'Add New User' : 'Edit User'}
             </h3>
 
@@ -678,10 +678,10 @@ function AdminSettings({ user, onLogout }) {
         <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setEditModal(null); }}>
           <div className="modal-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#0f3460' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#e6edf3' }}>
                 Edit Stitcher — {editModal.stitcher_code}
               </h3>
-              <button onClick={() => setEditModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: '#888', lineHeight: 1, padding: '0 4px' }}>✕</button>
+              <button onClick={() => setEditModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: '#8b949e', lineHeight: 1, padding: '0 4px' }}>✕</button>
             </div>
 
             {editErrors._server && (
@@ -691,33 +691,33 @@ function AdminSettings({ user, onLogout }) {
             <div className="form-group">
               <label>Name *</label>
               <input type="text" name="name" value={editForm.name} onChange={handleEditFormChange} placeholder="Full name"
-                style={editErrors.name ? { borderColor: '#dc2626' } : {}} />
-              {editErrors.name && <p style={{ fontSize: '12px', color: '#dc2626', marginTop: '4px', fontWeight: '600' }}>{editErrors.name}</p>}
+                style={editErrors.name ? { bordercolor: '#f85149' } : {}} />
+              {editErrors.name && <p style={{ fontSize: '12px', color: '#f85149', marginTop: '4px', fontWeight: '600' }}>{editErrors.name}</p>}
             </div>
 
             <div className="form-group">
               <label>Phone *</label>
               <input type="text" name="phone" value={editForm.phone} onChange={handleEditFormChange} placeholder="0300-1234567"
-                style={editErrors.phone ? { borderColor: '#dc2626' } : {}} />
-              {editErrors.phone && <p style={{ fontSize: '12px', color: '#dc2626', marginTop: '4px', fontWeight: '600' }}>{editErrors.phone}</p>}
+                style={editErrors.phone ? { bordercolor: '#f85149' } : {}} />
+              {editErrors.phone && <p style={{ fontSize: '12px', color: '#f85149', marginTop: '4px', fontWeight: '600' }}>{editErrors.phone}</p>}
             </div>
 
             <div className="form-group">
               <label>CNIC *</label>
               <input type="text" name="cnic" value={editForm.cnic} onChange={handleEditFormChange} placeholder="00000-0000000-0"
-                style={editErrors.cnic ? { borderColor: '#dc2626' } : {}} />
-              {editErrors.cnic && <p style={{ fontSize: '12px', color: '#dc2626', marginTop: '4px', fontWeight: '600' }}>{editErrors.cnic}</p>}
+                style={editErrors.cnic ? { bordercolor: '#f85149' } : {}} />
+              {editErrors.cnic && <p style={{ fontSize: '12px', color: '#f85149', marginTop: '4px', fontWeight: '600' }}>{editErrors.cnic}</p>}
             </div>
 
             <div className="form-grid" style={{ marginBottom: 0 }}>
               <div className="form-group">
                 <label>Specialization *</label>
                 <select name="specialization" value={editForm.specialization} onChange={handleEditFormChange}
-                  style={editErrors.specialization ? { borderColor: '#dc2626' } : {}}>
+                  style={editErrors.specialization ? { bordercolor: '#f85149' } : {}}>
                   <option value="">Select</option>
                   {SPECIALIZATIONS.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
-                {editErrors.specialization && <p style={{ fontSize: '12px', color: '#dc2626', marginTop: '4px', fontWeight: '600' }}>{editErrors.specialization}</p>}
+                {editErrors.specialization && <p style={{ fontSize: '12px', color: '#f85149', marginTop: '4px', fontWeight: '600' }}>{editErrors.specialization}</p>}
               </div>
 
               <div className="form-group">

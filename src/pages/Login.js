@@ -75,7 +75,7 @@ function Login({ onLogin }) {
                   border: 'none',
                   cursor: 'pointer',
                   padding: '4px',
-                  color: '#888',
+                  color: '#8b949e',
                   display: 'flex',
                   alignItems: 'center',
                 }}

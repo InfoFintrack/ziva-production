@@ -1,6 +1,6 @@
 import React from 'react';
 const PoweredByFintrack = () => (
-  <div style={{ textAlign: 'center', padding: '24px 0 12px', marginTop: '40px', borderTop: '1px solid #eee' }}>
+  <div style={{ textAlign: 'center', padding: '24px 0 12px', marginTop: '40px', borderTop: '1px solid #30363d' }}>
     <div style={{ fontSize: '10px', letterSpacing: '1.5px', color: '#9ca3af', marginBottom: '6px' }}>POWERED AND ENGINEERED BY</div>
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
       <svg height="18" viewBox="0 0 80 24" xmlns="http://www.w3.org/2000/svg">
