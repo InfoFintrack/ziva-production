@@ -586,7 +586,7 @@ function AdminSettings({ user, onLogout }) {
                           <td>{s.phone}</td>
                           <td>
                             {s.cnic ? s.cnic : (
-                              <span style={{ background: '#fef9c3', color: '#854d0e', borderRadius: '20px', padding: '3px 10px', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                              <span style={{ background: '#2d2208', color: '#d29922', borderRadius: '20px', padding: '3px 10px', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
                                 Missing
                               </span>
                             )}

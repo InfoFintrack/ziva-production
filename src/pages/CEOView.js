@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { getCMTRates, approveCMTRate, getPOs, getStitchers, getAllocations, getPaymentEntries } from '../api';
+import { getCMTRates, approveCMTRate, getPOs, getAllocations, getPaymentEntries } from '../api';
 import ProdFlowLogo from '../components/ProdFlowLogo';
 import PoweredByFintrack from '../components/PoweredByFintrack';
 
@@ -121,18 +121,16 @@ function CEOView({ user, onLogout }) {
   const loadDashboard = async () => {
     setDashLoading(true);
     try {
-      const [posRes, ratesRes, allocRes, payRes, stitRes] = await Promise.all([
+      const [posRes, ratesRes, allocRes, payRes] = await Promise.all([
         getPOs(),
         getCMTRates('?status=Approved'),
         getAllocations(),
         getPaymentEntries(),
-        getStitchers(),
       ]);
       const allPOs = posRes.success ? posRes.pos : [];
       const rates = ratesRes.success ? ratesRes.rates : [];
       const allocs = allocRes.success ? allocRes.allocations : [];
       const payments = payRes.success ? payRes.payments : [];
-      const stitchers = stitRes.success ? stitRes.stitchers : [];
 
       // KPI calculations
       const activePOs = allPOs.filter(p => p.status === 'Active');

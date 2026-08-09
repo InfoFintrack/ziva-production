@@ -1001,7 +1001,7 @@ function AccountsView({ user, onLogout }) {
                                   {expandedRow === g.code && g.entries.map(e => {
                                     const po = pos.find(p => p.po_number === e.po_number);
                                     return (
-                                      <tr key={e.id} style={{ background: '#fafbff' }}>
+                                      <tr key={e.id} style={{ background: '#1c2129' }}>
                                         <td style={{ paddingLeft: '32px', color: '#8b949e', fontSize: '13px' }}>
                                           {e.entry_date ? String(e.entry_date).slice(0, 10) : '—'}
                                           &nbsp;·&nbsp;{e.po_number}
@@ -1106,7 +1106,7 @@ function AccountsView({ user, onLogout }) {
                                       {expandedRow === expandKey && g.entries.map(e => {
                                         const po = pos.find(p => p.po_number === e.po_number);
                                         return (
-                                          <tr key={e.id} style={{ background: '#fafbff' }}>
+                                          <tr key={e.id} style={{ background: '#1c2129' }}>
                                             <td style={{ paddingLeft: '32px', color: '#8b949e', fontSize: '13px' }}>
                                               {e.entry_date ? String(e.entry_date).slice(0, 10) : '—'}
                                               &nbsp;·&nbsp;{e.po_number}

@@ -2026,7 +2026,7 @@ function CuttingView({ user, onLogout }) {
                             </thead>
                             <tbody>
                               {bulkRows.map((row, i) => (
-                                <tr key={i} style={row.alreadyLogged ? { background: '#fffbeb' } : {}}>
+                                <tr key={i} style={row.alreadyLogged ? { background: '#2d2208' } : {}}>
                                   <td>{row.po_number}</td>
                                   <td style={{ textTransform: 'capitalize' }}>{row.component}</td>
                                   <td>
@@ -2084,7 +2084,7 @@ function CuttingView({ user, onLogout }) {
                               ))}
                             </tbody>
                             <tfoot>
-                              <tr style={{ fontWeight: '700', background: '#f0f7ff' }}>
+                              <tr style={{ fontWeight: '700', background: '#1c2d4a' }}>
                                 <td colSpan={5} style={{ textAlign: 'right' }}>TOTAL</td>
                                 <td style={{ textAlign: 'right' }}>
                                   {bulkRows.reduce((s, r) => s + (Number(r.qty_claimed) || 0), 0).toLocaleString()}
@@ -2242,7 +2242,7 @@ function CuttingView({ user, onLogout }) {
                                 </tr>
                               );
                             })}
-                            <tr style={{ fontWeight: '700', background: '#f0f7ff' }}>
+                            <tr style={{ fontWeight: '700', background: '#1c2d4a' }}>
                               <td colSpan={8} style={{ textAlign: 'right' }}>TOTAL</td>
                               <td>{sdEntries.reduce((s, e) => s + Number(e.qty_claimed || 0), 0).toLocaleString()}</td>
                               <td>—</td>

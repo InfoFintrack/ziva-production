@@ -82,7 +82,7 @@ export const ColourInput = React.forwardRef(function ColourInput(
         value={value}
         disabled
         className="auto-field"
-        style={{ width: '100%', padding: '12px 16px', border: '1px solid #30363d', borderRadius: '8px', fontSize: '15px', background: '#f0f0f0', color: '#8b949e', boxSizing: 'border-box' }}
+        style={{ width: '100%', padding: '12px 16px', border: '1px solid #30363d', borderRadius: '8px', fontSize: '15px', background: '#21262d', color: '#8b949e', boxSizing: 'border-box' }}
       />
     );
   }
@@ -1272,7 +1272,7 @@ function PPView({ user, onLogout }) {
                               </p>
                             )}
                           </div>
-                          <button type="button" onClick={() => removeAccessory(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#f85149', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
+                          <button type="button" onClick={() => removeAccessory(i)} style={{ background: '#3d1417', border: 'none', borderRadius: '6px', color: '#f85149', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
                         </div>
                       );
                     }
@@ -1287,7 +1287,7 @@ function PPView({ user, onLogout }) {
                           <option value="">Unit</option>
                           {ACCESSORY_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
                         </select>
-                        <button type="button" onClick={() => removeAccessory(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#f85149', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
+                        <button type="button" onClick={() => removeAccessory(i)} style={{ background: '#3d1417', border: 'none', borderRadius: '6px', color: '#f85149', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
                       </div>
                     );
                   })}
@@ -1307,7 +1307,7 @@ function PPView({ user, onLogout }) {
                       <input type="text" placeholder="Lace type" value={lace.laceType} onChange={e => handleLaceChange(i, 'laceType', e.target.value)} style={{ flex: 2, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }} />
                       <input type="number" placeholder="Qty" value={lace.qty} onChange={e => handleLaceChange(i, 'qty', e.target.value)} onWheel={e => e.target.blur()} min="0" style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }} />
                       <input type="text" placeholder="Unit" value={lace.unit} onChange={e => handleLaceChange(i, 'unit', e.target.value)} style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }} />
-                      <button type="button" onClick={() => removeLace(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#f85149', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
+                      <button type="button" onClick={() => removeLace(i)} style={{ background: '#3d1417', border: 'none', borderRadius: '6px', color: '#f85149', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
                     </div>
                   ))}
                   {laces.length === 0 && <p style={{ color: '#8b949e', fontSize: '13px', margin: '4px 0 0' }}>No laces added.</p>}
@@ -1481,7 +1481,7 @@ function PPView({ user, onLogout }) {
                     />
                     <input type="number" placeholder="Qty" value={acc.quantity} onChange={e => handlePOAccessoryChange(i, 'quantity', e.target.value)} onWheel={e => e.target.blur()} min="0" style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }} />
                     {poAccessories.length > 1 && (
-                      <button type="button" onClick={() => removePOAccessoryRow(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#f85149', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
+                      <button type="button" onClick={() => removePOAccessoryRow(i)} style={{ background: '#3d1417', border: 'none', borderRadius: '6px', color: '#f85149', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
                     )}
                   </div>
                 ))}
@@ -1608,7 +1608,7 @@ function PPView({ user, onLogout }) {
 
                 <div className="form-group">
                   <label>PO Number</label>
-                  <input type="text" value={editPOForm.po_number || ''} disabled style={{ background: '#f0f0f0', color: '#8b949e', width: '100%', padding: '12px 16px', border: '1px solid #30363d', borderRadius: '8px', fontSize: '15px', boxSizing: 'border-box' }} />
+                  <input type="text" value={editPOForm.po_number || ''} disabled style={{ background: '#21262d', color: '#8b949e', width: '100%', padding: '12px 16px', border: '1px solid #30363d', borderRadius: '8px', fontSize: '15px', boxSizing: 'border-box' }} />
                 </div>
 
                 <div className="form-group">
@@ -1685,7 +1685,7 @@ function PPView({ user, onLogout }) {
                     style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}
                   />
                   {editPOAccessories.length > 1 && (
-                    <button type="button" onClick={() => removeEditPOAccessoryRow(i)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', color: '#f85149', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
+                    <button type="button" onClick={() => removeEditPOAccessoryRow(i)} style={{ background: '#3d1417', border: 'none', borderRadius: '6px', color: '#f85149', cursor: 'pointer', padding: '8px 12px', fontWeight: '700' }}>✕</button>
                   )}
                 </div>
               ))}
