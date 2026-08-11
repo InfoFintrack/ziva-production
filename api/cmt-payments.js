@@ -7,6 +7,10 @@ const DEPT_OP_TO_RATE_FIELD = {
   'Stitching|Trouser':            'trouser',
   'Stitching|Dupatta':            'dupatta',
   'Stitching|Patching':           'patching',
+  'Cutting|Shirt':                'cutting',
+  'Cutting|Trouser':              'cutting',
+  'Cutting|Dupatta':              'cutting',
+  'Cutting|Patching':             'patching',
   'Finishing Shirt|Clipping':     'fs_clipping',
   'Finishing Shirt|Heming':       'fs_heming',
   'Finishing Shirt|Tussling':     'fs_tussling',
@@ -283,13 +287,37 @@ export default async function handler(req, res) {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
 
-    const { id, stitcher_code, week_ending, action, payment_date } = req.body;
+    const { id, stitcher_code, week_ending, action, payment_date, qty_claimed, po_number, amount } = req.body;
 
     if (!action) {
       return res.json({ success: false, message: 'action is required.' });
     }
-    if (!['verify', 'pay', 'mark_paid', 'mark_paid_flexible'].includes(action)) {
-      return res.json({ success: false, message: 'action must be "verify", "pay", "mark_paid", or "mark_paid_flexible".' });
+    if (!['verify', 'pay', 'mark_paid', 'mark_paid_flexible', 'edit'].includes(action)) {
+      return res.json({ success: false, message: 'action must be "verify", "pay", "mark_paid", "mark_paid_flexible", or "edit".' });
+    }
+
+    // ── edit action: update qty_claimed, po_number, amount on a single entry ──
+    if (action === 'edit') {
+      if (!id) return res.json({ success: false, message: 'id is required for edit.' });
+      const setClauses = [];
+      const values = [];
+      let pi = 1;
+      if (qty_claimed !== undefined)  { setClauses.push(`qty_claimed = $${pi++}`);  values.push(Number(qty_claimed)); }
+      if (po_number !== undefined)    { setClauses.push(`po_number = $${pi++}`);    values.push(po_number); }
+      if (amount !== undefined)       { setClauses.push(`amount = $${pi++}`);       values.push(Number(amount)); }
+      if (setClauses.length === 0) return res.json({ success: false, message: 'Nothing to update.' });
+      values.push(id);
+      try {
+        const result = await pool.query(
+          `UPDATE cmt_payments SET ${setClauses.join(', ')} WHERE id = $${pi}`,
+          values
+        );
+        if (result.rowCount === 0) return res.json({ success: false, message: 'Payment record not found.' });
+        return res.json({ success: true });
+      } catch (err) {
+        console.error('CMT Payments EDIT error:', err.message);
+        return res.status(500).json({ success: false, message: 'Server error.' });
+      }
     }
 
     // mark_paid_flexible — marks a single payment record as Paid by id only (no week_ending restriction)

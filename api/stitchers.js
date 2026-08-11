@@ -95,6 +95,9 @@ export default async function handler(req, res) {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
 
+    // Ensure worker_type column exists before updating
+    await pool.query(`ALTER TABLE stitchers ADD COLUMN IF NOT EXISTS worker_type VARCHAR(50)`).catch(() => {});
+
     const { id, ...body } = req.body;
     if (!id) {
       return res.json({ success: false, message: 'id is required.' });

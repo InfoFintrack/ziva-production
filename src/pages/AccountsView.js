@@ -321,6 +321,47 @@ function AccountsView({ user, onLogout }) {
     setPayActing(prev => ({ ...prev, [id]: false }));
   };
 
+  // ── Payment entry edit ────────────────────────────────────────────────────
+  const [editPayModal, setEditPayModal] = useState(null);
+  const [editPayForm, setEditPayForm]   = useState({ qty_claimed: '', po_number: '', amount: '' });
+  const [editPaySaving, setEditPaySaving] = useState(false);
+  const [editPayMsg, setEditPayMsg]     = useState(null);
+
+  const openEditPay = (entry) => {
+    setEditPayForm({
+      qty_claimed: String(entry.qty_claimed || ''),
+      po_number: entry.po_number || '',
+      amount: String(entry.amount || ''),
+    });
+    setEditPayModal(entry);
+    setEditPayMsg(null);
+  };
+
+  const handleEditPaySave = async () => {
+    if (!editPayModal) return;
+    setEditPaySaving(true);
+    setEditPayMsg(null);
+    try {
+      const res = await updatePayment({
+        id: editPayModal.id,
+        action: 'edit',
+        qty_claimed: Number(editPayForm.qty_claimed),
+        po_number: editPayForm.po_number,
+        amount: Number(editPayForm.amount),
+      });
+      if (res.success) {
+        setPayMsg({ type: 'success', text: '✓ Payment entry updated.' });
+        setEditPayModal(null);
+        loadWeekData(payWeek);
+      } else {
+        setEditPayMsg({ type: 'error', text: res.message || 'Save failed.' });
+      }
+    } catch {
+      setEditPayMsg({ type: 'error', text: 'Request failed.' });
+    }
+    setEditPaySaving(false);
+  };
+
   const handleAdvanceChange = (e) => setAdvForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
 
   const handleAdvanceSubmit = async (e) => {
@@ -1011,8 +1052,15 @@ function AccountsView({ user, onLogout }) {
                                         <td style={{ fontSize: '13px', color: '#8b949e' }}>{e.operation}</td>
                                         <td style={{ fontSize: '13px' }}>{e.qty_claimed}</td>
                                         <td style={{ fontSize: '13px' }}>PKR {Number(e.rate || 0).toLocaleString()}</td>
-                                        <td style={{ fontSize: '13px', fontWeight: '600' }} colSpan={2}>
+                                        <td style={{ fontSize: '13px', fontWeight: '600' }}>
                                           PKR {Number(e.amount || 0).toLocaleString()}
+                                        </td>
+                                        <td>
+                                          <button
+                                            className="btn btn-small"
+                                            onClick={(ev) => { ev.stopPropagation(); openEditPay(e); }}
+                                            style={{ background: '#2d2208', color: '#d29922', width: 'auto', fontSize: '12px', padding: '4px 10px' }}
+                                          >Edit</button>
                                         </td>
                                       </tr>
                                     );
@@ -1117,16 +1165,23 @@ function AccountsView({ user, onLogout }) {
                                             <td style={{ fontSize: '13px' }}>PKR {Number(e.amount || 0).toLocaleString()}</td>
                                             <td><PayStatusBadge status={e.payment_status} /></td>
                                             <td>
-                                              {isFlexible && e.payment_status !== 'Paid' && (
+                                              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                                                 <button
                                                   className="btn btn-small"
-                                                  style={{ background: '#3fb950', color: 'white', whiteSpace: 'nowrap' }}
-                                                  onClick={() => handleMarkPaidFlexible(e.id)}
-                                                  disabled={!!payActing[e.id]}
-                                                >
-                                                  {payActing[e.id] ? '...' : 'Mark Paid'}
-                                                </button>
-                                              )}
+                                                  onClick={(ev) => { ev.stopPropagation(); openEditPay(e); }}
+                                                  style={{ background: '#2d2208', color: '#d29922', width: 'auto', fontSize: '12px', padding: '4px 10px' }}
+                                                >Edit</button>
+                                                {isFlexible && e.payment_status !== 'Paid' && (
+                                                  <button
+                                                    className="btn btn-small"
+                                                    style={{ background: '#3fb950', color: 'white', whiteSpace: 'nowrap' }}
+                                                    onClick={() => handleMarkPaidFlexible(e.id)}
+                                                    disabled={!!payActing[e.id]}
+                                                  >
+                                                    {payActing[e.id] ? '...' : 'Mark Paid'}
+                                                  </button>
+                                                )}
+                                              </div>
                                             </td>
                                           </tr>
                                         );
@@ -1250,6 +1305,71 @@ function AccountsView({ user, onLogout }) {
       </div>
 
       {renderRateModal()}
+
+      {/* ── EDIT PAYMENT ENTRY MODAL ── */}
+      {editPayModal && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setEditPayModal(null); }}>
+          <div className="modal-card" style={{ maxWidth: '440px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#e6edf3' }}>
+                Edit Payment Entry
+              </h3>
+              <button onClick={() => setEditPayModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: '#8b949e', lineHeight: 1, padding: '0 4px' }}>✕</button>
+            </div>
+
+            {editPayMsg && (
+              <div className={`alert alert-${editPayMsg.type}`}>{editPayMsg.text}</div>
+            )}
+
+            <div style={{ marginBottom: '12px', padding: '10px 14px', background: '#1c2d4a', borderRadius: '8px' }}>
+              <FieldGrid>
+                <FieldView label="Stitcher" value={`${editPayModal.stitcher_code} — ${editPayModal.stitcher_name}`} />
+                <FieldView label="Department" value={editPayModal.department} />
+                <FieldView label="Operation" value={editPayModal.operation} />
+                <FieldView label="Rate (PKR)" value={editPayModal.rate != null ? Number(editPayModal.rate).toLocaleString() : '—'} />
+              </FieldGrid>
+            </div>
+
+            <div className="form-group">
+              <label>PO Number</label>
+              <input
+                type="text"
+                value={editPayForm.po_number}
+                onChange={e => setEditPayForm(prev => ({ ...prev, po_number: e.target.value }))}
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Qty Claimed</label>
+              <input
+                type="number"
+                min="0"
+                value={editPayForm.qty_claimed}
+                onChange={e => setEditPayForm(prev => ({ ...prev, qty_claimed: e.target.value }))}
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Amount (PKR)</label>
+              <input
+                type="number"
+                min="0"
+                value={editPayForm.amount}
+                onChange={e => setEditPayForm(prev => ({ ...prev, amount: e.target.value }))}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+              <button className="btn btn-primary" onClick={handleEditPaySave} disabled={editPaySaving} style={{ flex: 1 }}>
+                {editPaySaving ? 'Saving...' : 'Save Changes'}
+              </button>
+              <button className="btn btn-danger" onClick={() => setEditPayModal(null)} disabled={editPaySaving} style={{ flex: 1 }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
