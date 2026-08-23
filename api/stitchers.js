@@ -48,7 +48,7 @@ export default async function handler(req, res) {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
 
-    const { name, cnic, phone, specialization, status, date_joined } = req.body;
+    const { name, cnic, phone, specialization, status, date_joined, worker_type } = req.body;
 
     if (!name || !phone || !specialization) {
       return res.json({ success: false, message: 'name, phone, and specialization are required.' });
@@ -70,8 +70,8 @@ export default async function handler(req, res) {
 
       const { rows } = await pool.query(
         `INSERT INTO stitchers
-           (stitcher_code, name, cnic, phone, specialization, status, date_joined, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+           (stitcher_code, name, cnic, phone, specialization, status, date_joined, worker_type, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
          RETURNING *`,
         [
           stitcher_code,
@@ -81,6 +81,7 @@ export default async function handler(req, res) {
           specialization,
           status     || 'Active',
           date_joined || null,
+          worker_type || null,
         ]
       );
 

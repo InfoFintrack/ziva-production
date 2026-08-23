@@ -219,13 +219,20 @@ export default async function handler(req, res) {
     if (!po_number || !stitcher_code || !department || !operation || !qty_claimed) {
       return res.json({ success: false, message: 'po_number, stitcher_code, department, operation, and qty_claimed are required.' });
     }
-
-    const rateField = DEPT_OP_TO_RATE_FIELD[`${department}|${operation}`];
+    // For Cutting dept, operation may be combined like "Shirt, Trouser" since they share the same rate
+    let rateField;
+    let component;
+    if (department === 'Cutting' && operation.includes(',')) {
+      const firstOp = operation.split(',')[0].trim();
+      rateField = DEPT_OP_TO_RATE_FIELD[`${department}|${firstOp}`];
+      component = operation.split(',').map(o => o.trim().toLowerCase()).join(', ');
+    } else {
+      rateField = DEPT_OP_TO_RATE_FIELD[`${department}|${operation}`];
+      component = deriveComponent(department, operation);
+    }
     if (!rateField) {
       return res.json({ success: false, message: `Unknown department/operation combination: "${department} / ${operation}".` });
     }
-
-    const component = deriveComponent(department, operation);
 
     try {
       // Look up stitcher

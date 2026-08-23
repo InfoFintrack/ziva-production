@@ -6,6 +6,7 @@ import {
   getAllocations, createAllocation, updateAllocation,
   getPaymentEntries, logPaymentEntry, updatePayment,
   logFabricIssuance, getFinishingIntakeLog,
+  createStitcher, updateStitcher,
 } from '../api';
 import ProdFlowLogo from '../components/ProdFlowLogo';
 import PoweredByFintrack from '../components/PoweredByFintrack';
@@ -209,6 +210,20 @@ function FinishingView({ user, onLogout }) {
   const [sdLoading, setSdLoading] = useState(false);
   const [sdEntries, setSdEntries] = useState([]);
   const [sdLoaded, setSdLoaded] = useState(false);
+
+  // ── Tab 5: Worker Management ─────────────────────────────────────────────────
+  const PHONE_REGEX_FIN = /^\d{4}-\d{7}$/;
+  const [wkWorkers, setWkWorkers] = useState([]);
+  const [wkLoading, setWkLoading] = useState(false);
+  const [wkMsg, setWkMsg] = useState(null);
+  const [wkSearch, setWkSearch] = useState('');
+  const [wkForm, setWkForm] = useState({ name: '', phone: '', specialization: 'Mixed', worker_type: 'Finishing_InHouse' });
+  const [wkSubmitting, setWkSubmitting] = useState(false);
+  const [wkPhoneError, setWkPhoneError] = useState('');
+  const [wkEditModal, setWkEditModal] = useState(null);
+  const [wkEditForm, setWkEditForm] = useState({ name: '', phone: '', specialization: '', status: 'Active', worker_type: '' });
+  const [wkEditSaving, setWkEditSaving] = useState(false);
+  const [wkEditErr, setWkEditErr] = useState(null);
 
   // ── Initial load ─────────────────────────────────────────────────────────────
 
@@ -761,6 +776,7 @@ function FinishingView({ user, onLogout }) {
           <button style={tabStyle('allocate')}  onClick={() => setActiveTab('allocate')}>Allocate</button>
           <button style={tabStyle('paylog')}    onClick={() => setActiveTab('paylog')}>Payment Log</button>
           <button style={tabStyle('dashboard')} onClick={() => setActiveTab('dashboard')}>Stitcher Dashboard</button>
+          <button style={tabStyle('workers')} onClick={() => setActiveTab('workers')}>Workers</button>
         </div>
 
         {/* ── Tab 1: Receive Pieces ─────────────────────────────────────────── */}
@@ -1944,6 +1960,209 @@ function FinishingView({ user, onLogout }) {
             ) : null}
           </div>
         )}
+
+        {/* ── Tab 5: Worker Management ──────────────────────────────────────── */}
+        {activeTab === 'workers' && (() => {
+          const loadWorkers = async () => {
+            setWkLoading(true);
+            setWkMsg(null);
+            try {
+              const [r1, r2] = await Promise.all([
+                getStitchers('?worker_type=Finishing_InHouse'),
+                getStitchers('?worker_type=Finishing_OutOfFactory'),
+              ]);
+              setWkWorkers([...(r1.success ? r1.stitchers : []), ...(r2.success ? r2.stitchers : [])]);
+            } catch { setWkMsg({ type: 'error', text: 'Failed to load workers.' }); }
+            setWkLoading(false);
+          };
+
+          if (wkWorkers.length === 0 && !wkLoading) loadWorkers();
+
+          const fmtPhone = (val) => {
+            const d = val.replace(/\D/g, '').slice(0, 11);
+            return d.length <= 4 ? d : d.slice(0, 4) + '-' + d.slice(4);
+          };
+
+          const handleAdd = async (e) => {
+            e.preventDefault();
+            if (!wkForm.name.trim()) { setWkMsg({ type: 'error', text: 'Name is required.' }); return; }
+            if (!wkForm.phone || !PHONE_REGEX_FIN.test(wkForm.phone)) { setWkPhoneError('Phone required in format XXXX-XXXXXXX'); return; }
+            setWkSubmitting(true); setWkMsg(null);
+            try {
+              const res = await createStitcher({
+                name: wkForm.name.trim(), phone: wkForm.phone,
+                specialization: wkForm.specialization || 'Mixed',
+                worker_type: wkForm.worker_type,
+              });
+              if (res.success) {
+                setWkMsg({ type: 'success', text: `✓ Worker ${res.stitcher.stitcher_code} — ${res.stitcher.name} added.` });
+                setWkForm({ name: '', phone: '', specialization: 'Mixed', worker_type: 'Finishing_InHouse' });
+                setWkPhoneError('');
+                loadWorkers(); loadSharedData();
+              } else { setWkMsg({ type: 'error', text: res.message || 'Failed.' }); }
+            } catch { setWkMsg({ type: 'error', text: 'Request failed.' }); }
+            setWkSubmitting(false);
+          };
+
+          const openEdit = (w) => {
+            setWkEditForm({ name: w.name || '', phone: w.phone || '', specialization: w.specialization || 'Mixed', status: w.status || 'Active', worker_type: w.worker_type || 'Finishing_InHouse' });
+            setWkEditModal(w); setWkEditErr(null);
+          };
+
+          const saveEdit = async () => {
+            if (!wkEditForm.name.trim()) { setWkEditErr('Name is required.'); return; }
+            if (!wkEditForm.phone || !PHONE_REGEX_FIN.test(wkEditForm.phone)) { setWkEditErr('Phone required in format XXXX-XXXXXXX'); return; }
+            setWkEditSaving(true); setWkEditErr(null);
+            try {
+              const res = await updateStitcher({
+                id: wkEditModal.id, name: wkEditForm.name.trim(), phone: wkEditForm.phone,
+                specialization: wkEditForm.specialization, status: wkEditForm.status, worker_type: wkEditForm.worker_type,
+              });
+              if (res.success) {
+                setWkMsg({ type: 'success', text: `✓ Worker "${wkEditForm.name}" updated.` });
+                setWkEditModal(null); loadWorkers(); loadSharedData();
+              } else { setWkEditErr(res.message || 'Save failed.'); }
+            } catch { setWkEditErr('Request failed.'); }
+            setWkEditSaving(false);
+          };
+
+          const filtered = wkWorkers.filter(w => !wkSearch.trim() || w.name?.toLowerCase().includes(wkSearch.toLowerCase()) || w.stitcher_code?.toLowerCase().includes(wkSearch.toLowerCase()));
+
+          return (
+            <>
+              <div className="card" style={{ borderRadius: '0 0 12px 12px', marginTop: 0 }}>
+                <h3>Worker Management</h3>
+                {wkMsg && <div className={`alert alert-${wkMsg.type}`}>{wkMsg.text}</div>}
+
+                {/* Add Form */}
+                <div style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: '10px', padding: '20px', marginBottom: '24px' }}>
+                  <p style={{ fontSize: '13px', fontWeight: '700', color: '#e6edf3', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '14px' }}>Add New Finishing Worker</p>
+                  <form onSubmit={handleAdd}>
+                    <div className="form-grid">
+                      <div className="form-group">
+                        <label>Name *</label>
+                        <input type="text" value={wkForm.name} onChange={e => setWkForm(prev => ({ ...prev, name: e.target.value }))} placeholder="Worker name" />
+                      </div>
+                      <div className="form-group">
+                        <label>Phone *</label>
+                        <input type="text" value={wkForm.phone} onChange={e => { setWkForm(prev => ({ ...prev, phone: fmtPhone(e.target.value) })); if (wkPhoneError) setWkPhoneError(''); }} placeholder="0300-1234567" />
+                        {wkPhoneError && <p style={{ fontSize: '12px', color: '#f85149', marginTop: '4px' }}>{wkPhoneError}</p>}
+                      </div>
+                      <div className="form-group">
+                        <label>Specialization</label>
+                        <select value={wkForm.specialization} onChange={e => setWkForm(prev => ({ ...prev, specialization: e.target.value }))}>
+                          <option value="Mixed">Mixed</option>
+                          <option value="Shirt">Shirt</option>
+                          <option value="Trouser">Trouser</option>
+                          <option value="Dupatta">Dupatta</option>
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label>Worker Type *</label>
+                        <select value={wkForm.worker_type} onChange={e => setWkForm(prev => ({ ...prev, worker_type: e.target.value }))}>
+                          <option value="Finishing_InHouse">In-House</option>
+                          <option value="Finishing_OutOfFactory">Out of Factory</option>
+                        </select>
+                      </div>
+                    </div>
+                    <button className="btn btn-success" type="submit" disabled={wkSubmitting} style={{ marginTop: '8px' }}>
+                      {wkSubmitting ? 'Adding...' : 'Add Worker'}
+                    </button>
+                  </form>
+                </div>
+
+                {/* Worker List */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                  <p style={{ fontSize: '13px', fontWeight: '700', color: '#e6edf3', textTransform: 'uppercase', margin: 0 }}>Current Workers ({filtered.length})</p>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input type="text" placeholder="Search..." value={wkSearch} onChange={e => setWkSearch(e.target.value)}
+                      style={{ padding: '7px 12px', border: '1px solid #30363d', borderRadius: '8px', fontSize: '13px', width: '180px' }} />
+                    <button className="btn btn-small" onClick={loadWorkers} style={{ width: 'auto', background: '#161b22', color: '#e6edf3' }}>↻ Refresh</button>
+                  </div>
+                </div>
+
+                {wkLoading ? (
+                  <div className="loading"><div className="spinner"></div>Loading workers...</div>
+                ) : filtered.length === 0 ? (
+                  <p style={{ color: '#8b949e', textAlign: 'center', padding: '20px' }}>
+                    {wkWorkers.length === 0 ? 'No finishing workers found. Add one above.' : 'No results match.'}
+                  </p>
+                ) : (
+                  <div className="table-container">
+                    <table>
+                      <thead>
+                        <tr><th>Code</th><th>Name</th><th>Phone</th><th>Type</th><th>Specialization</th><th>Status</th><th>Actions</th></tr>
+                      </thead>
+                      <tbody>
+                        {filtered.map(w => (
+                          <tr key={w.id}>
+                            <td>{w.stitcher_code}</td>
+                            <td>{w.name}</td>
+                            <td>{w.phone || '—'}</td>
+                            <td>{w.worker_type === 'Finishing_OutOfFactory' ? 'Out of Factory' : 'In-House'}</td>
+                            <td>{w.specialization || '—'}</td>
+                            <td><span className={`badge ${w.status === 'Active' ? 'badge-accepted' : 'badge-rejected'}`}>{w.status}</span></td>
+                            <td><button className="btn btn-small" onClick={() => openEdit(w)} style={{ background: '#2d2208', color: '#d29922', width: 'auto' }}>Edit</button></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Edit Worker Modal */}
+              {wkEditModal && (
+                <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setWkEditModal(null); }}>
+                  <div className="modal-card" style={{ maxWidth: '440px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                      <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#e6edf3' }}>Edit Worker — {wkEditModal.stitcher_code}</h3>
+                      <button onClick={() => setWkEditModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: '#8b949e', lineHeight: 1, padding: '0 4px' }}>✕</button>
+                    </div>
+                    {wkEditErr && <div className="alert alert-error">{wkEditErr}</div>}
+                    <div className="form-group">
+                      <label>Name *</label>
+                      <input type="text" value={wkEditForm.name} onChange={e => setWkEditForm(prev => ({ ...prev, name: e.target.value }))} />
+                    </div>
+                    <div className="form-group">
+                      <label>Phone *</label>
+                      <input type="text" value={wkEditForm.phone} onChange={e => setWkEditForm(prev => ({ ...prev, phone: fmtPhone(e.target.value) }))} placeholder="0300-1234567" />
+                    </div>
+                    <div className="form-grid" style={{ marginBottom: 0 }}>
+                      <div className="form-group">
+                        <label>Specialization</label>
+                        <select value={wkEditForm.specialization} onChange={e => setWkEditForm(prev => ({ ...prev, specialization: e.target.value }))}>
+                          <option value="Mixed">Mixed</option>
+                          <option value="Shirt">Shirt</option>
+                          <option value="Trouser">Trouser</option>
+                          <option value="Dupatta">Dupatta</option>
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label>Status</label>
+                        <select value={wkEditForm.status} onChange={e => setWkEditForm(prev => ({ ...prev, status: e.target.value }))}>
+                          <option value="Active">Active</option>
+                          <option value="Inactive">Inactive</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label>Worker Type</label>
+                      <select value={wkEditForm.worker_type} onChange={e => setWkEditForm(prev => ({ ...prev, worker_type: e.target.value }))}>
+                        <option value="Finishing_InHouse">In-House</option>
+                        <option value="Finishing_OutOfFactory">Out of Factory</option>
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+                      <button className="btn btn-primary" onClick={saveEdit} disabled={wkEditSaving} style={{ flex: 1 }}>{wkEditSaving ? 'Saving...' : 'Save Changes'}</button>
+                      <button className="btn btn-danger" onClick={() => setWkEditModal(null)} disabled={wkEditSaving} style={{ flex: 1 }}>Cancel</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         <PoweredByFintrack />
       </div>

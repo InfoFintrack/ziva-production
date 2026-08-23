@@ -684,12 +684,21 @@ function CuttingView({ user, onLogout }) {
   const plEligiblePOs = plPos.filter(p => p.status === 'Active' && plApprovedSet.has(p.po_number));
 
   // Multi-op derived values: per-op rates and combined total
-  const plOpRates = plSelectedOps.map(op => {
-    const rf = plPoRateData ? PL_DEPT_OP_TO_RATE_FIELD[`${plForm.department}|${op}`] : null;
-    const rate = rf && plPoRateData ? Number(plPoRateData[rf] || 0) : 0;
-    const qty = Number(plForm.qty_claimed) || 0;
-    return { op, rate, amount: rate * qty };
-  });
+  // For Cutting dept, all ops share the same 'cutting' rate, so group them into one line
+  const plOpRates = (() => {
+    if (plForm.department === 'Cutting' && plSelectedOps.length > 0) {
+      const rf = plPoRateData ? PL_DEPT_OP_TO_RATE_FIELD[`Cutting|${plSelectedOps[0]}`] : null;
+      const rate = rf && plPoRateData ? Number(plPoRateData[rf] || 0) : 0;
+      const qty = Number(plForm.qty_claimed) || 0;
+      return [{ op: plSelectedOps.join(', '), rate, amount: rate * qty }];
+    }
+    return plSelectedOps.map(op => {
+      const rf = plPoRateData ? PL_DEPT_OP_TO_RATE_FIELD[`${plForm.department}|${op}`] : null;
+      const rate = rf && plPoRateData ? Number(plPoRateData[rf] || 0) : 0;
+      const qty = Number(plForm.qty_claimed) || 0;
+      return { op, rate, amount: rate * qty };
+    });
+  })();
   const plCombinedTotal = plOpRates.reduce((s, r) => s + r.amount, 0);
 
 
@@ -743,15 +752,17 @@ function CuttingView({ user, onLogout }) {
     setPlFormMsg(null);
     let submitted = 0;
     let failed = 0;
-    for (const op of plSelectedOps) {
+
+    // For Cutting dept, all ops share the same rate — submit ONE entry with combined component
+    if (plForm.department === 'Cutting') {
       try {
-        const color = deriveColor(plPos, plForm.po_number, plForm.department, op);
+        const color = deriveColor(plPos, plForm.po_number, plForm.department, plSelectedOps[0]);
         const res = await logPaymentEntry({
           entry_date:    plForm.entry_date || PL_TODAY,
           po_number:     plForm.po_number,
           stitcher_code: plForm.stitcher_code,
           department:    plForm.department,
-          operation:     op,
+          operation:     plSelectedOps.join(', '),
           qty_claimed:   Number(plForm.qty_claimed),
           ...(color            ? { color }            : {}),
           ...(plForm.remarks   ? { remarks: plForm.remarks } : {}),
@@ -760,6 +771,27 @@ function CuttingView({ user, onLogout }) {
         else failed++;
       } catch {
         failed++;
+      }
+    } else {
+      // For other depts (Stitching, Finishing), each op has a different rate — submit separately
+      for (const op of plSelectedOps) {
+        try {
+          const color = deriveColor(plPos, plForm.po_number, plForm.department, op);
+          const res = await logPaymentEntry({
+            entry_date:    plForm.entry_date || PL_TODAY,
+            po_number:     plForm.po_number,
+            stitcher_code: plForm.stitcher_code,
+            department:    plForm.department,
+            operation:     op,
+            qty_claimed:   Number(plForm.qty_claimed),
+            ...(color            ? { color }            : {}),
+            ...(plForm.remarks   ? { remarks: plForm.remarks } : {}),
+          });
+          if (res.success) submitted++;
+          else failed++;
+        } catch {
+          failed++;
+        }
       }
     }
     setPlSubmitting(false);
