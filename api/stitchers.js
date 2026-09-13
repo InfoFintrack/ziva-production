@@ -44,7 +44,7 @@ export default async function handler(req, res) {
     }
 
   } else if (req.method === 'POST') {
-    if (!['Cutting', 'Admin'].includes(user.role)) {
+    if (!['Cutting', 'Admin', 'Finishing'].includes(user.role)) {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
 
@@ -61,6 +61,9 @@ export default async function handler(req, res) {
     }
 
     try {
+      // Ensure worker_type column exists before inserting
+      await pool.query(`ALTER TABLE stitchers ADD COLUMN IF NOT EXISTS worker_type VARCHAR(50)`).catch(() => {});
+
       // Auto-generate stitcher_code: MAX + 1, padded to 4 digits
       const { rows: maxRows } = await pool.query(
         `SELECT MAX(stitcher_code::int) AS max_code FROM stitchers`
@@ -92,7 +95,7 @@ export default async function handler(req, res) {
     }
 
   } else if (req.method === 'PUT') {
-    if (!['Cutting', 'Admin', 'Accounts'].includes(user.role)) {
+    if (!['Cutting', 'Admin', 'Accounts', 'Finishing'].includes(user.role)) {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
 
