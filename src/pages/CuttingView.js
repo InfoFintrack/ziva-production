@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { submitAcceptance, getRecords, getDropdowns, getPOs, submitCMTRate, getCMTRates, approveCMTRate, getStitchers, createStitcher, logPaymentEntry, getPaymentEntries, getAllocations } from '../api';
+import { submitAcceptance, getRecords, getDropdowns, getPOs, submitCMTRate, getCMTRates, approveCMTRate, getStitchers, createStitcher, updateStitcher, logPaymentEntry, getPaymentEntries, getAllocations } from '../api';
 import { ColourInput } from './PPView';
 import ProdFlowLogo from '../components/ProdFlowLogo';
 import PoweredByFintrack from '../components/PoweredByFintrack';
@@ -251,6 +251,12 @@ function CuttingView({ user, onLogout }) {
   const [stitcherPhoneError, setStitcherPhoneError] = useState('');
   const [stitcherSearch, setStitcherSearch] = useState('');
   const [stitcherStatusFilter, setStitcherStatusFilter] = useState('Active');
+
+  // Stitcher edit modal
+  const [stEditModal, setStEditModal] = useState(null);
+  const [stEditForm, setStEditForm] = useState({ name: '', phone: '', specialization: '', status: 'Active' });
+  const [stEditSaving, setStEditSaving] = useState(false);
+  const [stEditErr, setStEditErr] = useState(null);
 
   // ── Payment Log state ──────────────────────────────────────────────────
   const [plPos,            setPlPos]            = useState([]);
@@ -1765,6 +1771,7 @@ function CuttingView({ user, onLogout }) {
                         <th>Specialization</th>
                         <th>Phone</th>
                         <th>Status</th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1779,6 +1786,12 @@ function CuttingView({ user, onLogout }) {
                               {s.status}
                             </span>
                           </td>
+                          <td>
+                            <button className="btn btn-small" onClick={() => {
+                              setStEditForm({ name: s.name || '', phone: s.phone || '', specialization: s.specialization || '', status: s.status || 'Active' });
+                              setStEditModal(s); setStEditErr(null);
+                            }} style={{ background: '#2d2208', color: '#d29922', width: 'auto' }}>Edit</button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1786,6 +1799,64 @@ function CuttingView({ user, onLogout }) {
                 </div>
               )}
             </div>
+
+            {/* Stitcher Edit Modal */}
+            {stEditModal && (
+              <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setStEditModal(null); }}>
+                <div className="modal-card" style={{ maxWidth: '440px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                    <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#e6edf3' }}>Edit Stitcher — {stEditModal.stitcher_code}</h3>
+                    <button onClick={() => setStEditModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: '#8b949e', lineHeight: 1, padding: '0 4px' }}>✕</button>
+                  </div>
+                  {stEditErr && <div className="alert alert-error">{stEditErr}</div>}
+                  <div className="form-group">
+                    <label>Name *</label>
+                    <input type="text" value={stEditForm.name} onChange={e => setStEditForm(prev => ({ ...prev, name: e.target.value }))} />
+                  </div>
+                  <div className="form-group">
+                    <label>Phone</label>
+                    <input type="text" value={stEditForm.phone} onChange={e => {
+                      const d = e.target.value.replace(/\D/g, '').slice(0, 11);
+                      setStEditForm(prev => ({ ...prev, phone: d.length <= 4 ? d : d.slice(0, 4) + '-' + d.slice(4) }));
+                    }} placeholder="0300-1234567" />
+                  </div>
+                  <div className="form-grid" style={{ marginBottom: 0 }}>
+                    <div className="form-group">
+                      <label>Specialization</label>
+                      <select value={stEditForm.specialization} onChange={e => setStEditForm(prev => ({ ...prev, specialization: e.target.value }))}>
+                        <option value="Mixed">Mixed</option>
+                        <option value="Shirt">Shirt</option>
+                        <option value="Trouser">Trouser</option>
+                        <option value="Dupatta">Dupatta</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label>Status</label>
+                      <select value={stEditForm.status} onChange={e => setStEditForm(prev => ({ ...prev, status: e.target.value }))}>
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+                    <button className="btn btn-primary" disabled={stEditSaving} style={{ flex: 1 }} onClick={async () => {
+                      if (!stEditForm.name.trim()) { setStEditErr('Name is required.'); return; }
+                      setStEditSaving(true); setStEditErr(null);
+                      try {
+                        const res = await updateStitcher({ id: stEditModal.id, ...stEditForm });
+                        if (res.success) {
+                          setStEditModal(null);
+                          setStitcherMessage({ type: 'success', text: `✓ Stitcher "${stEditForm.name}" updated.` });
+                          loadStitchers();
+                        } else { setStEditErr(res.message || 'Save failed.'); }
+                      } catch { setStEditErr('Request failed.'); }
+                      setStEditSaving(false);
+                    }}>{stEditSaving ? 'Saving...' : 'Save Changes'}</button>
+                    <button className="btn btn-danger" onClick={() => setStEditModal(null)} disabled={stEditSaving} style={{ flex: 1 }}>Cancel</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
 
