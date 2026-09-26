@@ -149,8 +149,8 @@ export default async function handler(req, res) {
       dupatta_colour, dupatta_fabric, dupatta_qty,
     } = req.body;
 
-    if (!po_number || !collection_name) {
-      return res.json({ success: false, message: 'po_number and collection_name are required.' });
+    if (!po_number) {
+      return res.json({ success: false, message: 'po_number is required.' });
     }
 
     try {
@@ -178,7 +178,7 @@ export default async function handler(req, res) {
          RETURNING *`,
         [
           po_number,
-          collection_name,
+          collection_name   || null,
           article_name      || null,
           garment_type      || null,
           po_date           || null,

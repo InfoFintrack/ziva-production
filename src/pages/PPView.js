@@ -624,12 +624,7 @@ function PPView({ user, onLogout }) {
     if (!poForm.po_number.trim()) {
       setPOMessage({ type: 'error', text: 'PO Number is required.' }); return;
     }
-    if (!poForm.collection_name.trim()) {
-      setPOMessage({ type: 'error', text: 'Collection Name is required.' }); return;
-    }
-    if (!poForm.article_name.trim()) {
-      setPOMessage({ type: 'error', text: 'Article Name is required.' }); return;
-    }
+
     if (!poForm.garment_type) {
       setPOMessage({ type: 'error', text: 'Garment Type is required.' }); return;
     }
@@ -806,9 +801,7 @@ function PPView({ user, onLogout }) {
 
   const handleEditPOSubmit = async (e) => {
     e.preventDefault();
-    if (!editPOForm.collection_name?.trim()) {
-      setEditPOMessage({ type: 'error', text: 'Collection Name is required.' }); return;
-    }
+
 
     const isEditKids = editPOForm.garment_type === 'Kids';
     const shirtOk   = editShirtColourRef.current?.validate()   ?? true;
@@ -1416,12 +1409,12 @@ function PPView({ user, onLogout }) {
                   </div>
 
                   <div className="form-group">
-                    <label>Collection Name *</label>
+                    <label>Collection Name</label>
                     <input type="text" name="collection_name" placeholder="e.g. Linen Collection 2026" value={poForm.collection_name} onChange={handlePOChange} />
                   </div>
 
                   <div className="form-group">
-                    <label>Article Name *</label>
+                    <label>Article Name</label>
                     <input type="text" name="article_name" placeholder="e.g. 3-Piece Suit" value={poForm.article_name} onChange={handlePOChange} />
                   </div>
 
@@ -1612,7 +1605,7 @@ function PPView({ user, onLogout }) {
                 </div>
 
                 <div className="form-group">
-                  <label>Collection Name *</label>
+                  <label>Collection Name</label>
                   <input type="text" name="collection_name" value={editPOForm.collection_name || ''} onChange={handleEditPOChange} placeholder="e.g. Linen Collection 2026" />
                 </div>
 
