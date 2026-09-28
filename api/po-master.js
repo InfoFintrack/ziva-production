@@ -152,6 +152,9 @@ export default async function handler(req, res) {
     if (!po_number) {
       return res.json({ success: false, message: 'po_number is required.' });
     }
+    if (!collection_name || !collection_name.trim() || !article_name || !article_name.trim()) {
+      return res.json({ success: false, message: 'Collection Name and Article Name are required. Use TBD if not decided yet.' });
+    }
 
     try {
       const { rows: existing } = await pool.query(
@@ -178,8 +181,8 @@ export default async function handler(req, res) {
          RETURNING *`,
         [
           po_number,
-          collection_name   || null,
-          article_name      || null,
+          collection_name.trim(),
+          article_name.trim(),
           garment_type      || null,
           po_date           || null,
           delivery_date     || null,
@@ -234,6 +237,33 @@ export default async function handler(req, res) {
         return res.status(500).json({ success: false, message: 'Server error.' });
       }
 
+    } else if (action === 'update_names') {
+      if (!['PP', 'Admin'].includes(user.role)) {
+        return res.status(403).json({ success: false, error: 'Access denied' });
+      }
+      const { po_number, collection_name, article_name } = req.body;
+      if (!po_number) {
+        return res.json({ success: false, message: 'po_number is required.' });
+      }
+      if (!collection_name || !collection_name.trim() || !article_name || !article_name.trim()) {
+        return res.json({ success: false, message: 'Collection Name and Article Name are required. Use TBD if not decided yet.' });
+      }
+      try {
+        const result = await pool.query(
+          `UPDATE po_master
+             SET collection_name = $1, article_name = $2
+           WHERE po_number = $3`,
+          [collection_name.trim(), article_name.trim(), po_number]
+        );
+        if (result.rowCount === 0) {
+          return res.json({ success: false, message: 'PO not found.' });
+        }
+        return res.json({ success: true });
+      } catch (err) {
+        console.error('PO Master PUT update_names error:', err.message);
+        return res.status(500).json({ success: false, message: 'Server error.' });
+      }
+
     } else if (action === 'update_details') {
       if (!['PP', 'Admin'].includes(user.role)) {
         return res.status(403).json({ success: false, error: 'Access denied' });
@@ -248,6 +278,9 @@ export default async function handler(req, res) {
       if (!po_number) {
         return res.json({ success: false, message: 'po_number is required.' });
       }
+      if (!collection_name || !collection_name.trim() || !article_name || !article_name.trim()) {
+        return res.json({ success: false, message: 'Collection Name and Article Name are required. Use TBD if not decided yet.' });
+      }
       try {
         const result = await pool.query(
           `UPDATE po_master SET
@@ -258,7 +291,7 @@ export default async function handler(req, res) {
              dupatta_colour = $14, dupatta_fabric = $15, dupatta_qty = $16
            WHERE po_number = $17`,
           [
-            collection_name || null, article_name || null, garment_type || null,
+            collection_name.trim(), article_name.trim(), garment_type || null,
             po_date || null, delivery_date || null, remarks || null, batch_number || null,
             shirt_colour || null, shirt_fabric || null, shirt_qty != null ? Number(shirt_qty) : null,
             trouser_colour || null, trouser_fabric || null, trouser_qty != null ? Number(trouser_qty) : null,

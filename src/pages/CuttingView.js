@@ -166,6 +166,8 @@ function PaymentStatusBadge({ status }) {
 
 const isStitchingWorker = (worker) =>
   !worker.worker_type || worker.worker_type === 'Stitching';
+const hasPOComponentQty = (po, component) =>
+  Number(po?.[`${component.toLowerCase()}_qty`] || 0) > 0;
 
 const sectionHeader = (text) => (
   <div style={{
@@ -692,6 +694,17 @@ function CuttingView({ user, onLogout }) {
 
   // Payment Log derived values
   const plEligiblePOs = plPos.filter(p => p.status === 'Active' && plApprovedSet.has(p.po_number));
+  const selectedPaymentPO = plPos.find(p => p.po_number === plForm.po_number);
+  const plDepartments = PL_DEPARTMENTS.filter(d =>
+    !plForm.po_number ||
+    !d.includes('Dupatta') ||
+    hasPOComponentQty(selectedPaymentPO, 'dupatta')
+  );
+  const plOperations = (PL_OPERATION_OPTIONS[plForm.department] || []).filter(op =>
+    !plForm.po_number ||
+    op !== 'Dupatta' ||
+    hasPOComponentQty(selectedPaymentPO, 'dupatta')
+  );
 
   // Multi-op derived values: per-op rates and combined total
   // For Cutting dept, all ops share the same 'cutting' rate, so group them into one line
@@ -718,6 +731,15 @@ function CuttingView({ user, onLogout }) {
     if (name === 'department') {
       patch.operation = '';
       setPlSelectedOps([]);
+    }
+    if (name === 'po_number') {
+      const nextPO = plPos.find(p => p.po_number === value);
+      const nextHasDupatta = hasPOComponentQty(nextPO, 'dupatta');
+      if (!nextHasDupatta && (plForm.department.includes('Dupatta') || plSelectedOps.includes('Dupatta'))) {
+        patch.department = '';
+        patch.operation = '';
+        setPlSelectedOps([]);
+      }
     }
     if (['po_number', 'department'].includes(name)) {
       const newPO   = name === 'po_number'  ? value : plForm.po_number;
@@ -1952,7 +1974,7 @@ function CuttingView({ user, onLogout }) {
                         <label>Department *</label>
                         <select name="department" value={plForm.department} onChange={plHandleFormChange} required>
                           <option value="">Select department...</option>
-                          {PL_DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                          {plDepartments.map(d => <option key={d} value={d}>{d}</option>)}
                         </select>
                       </div>
 
@@ -1962,7 +1984,7 @@ function CuttingView({ user, onLogout }) {
                           <p style={{ color: '#8b949e', fontStyle: 'italic', fontSize: '13px', margin: '8px 0 0' }}>Select a department first</p>
                         ) : (
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '8px' }}>
-                            {(PL_OPERATION_OPTIONS[plForm.department] || []).map(op => {
+                            {plOperations.map(op => {
                               const isChecked = plSelectedOps.includes(op);
                               const rf = plPoRateData ? PL_DEPT_OP_TO_RATE_FIELD[`${plForm.department}|${op}`] : null;
                               const rate = rf && plPoRateData ? Number(plPoRateData[rf] || 0) : null;

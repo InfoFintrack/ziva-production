@@ -13,6 +13,10 @@ import PoweredByFintrack from '../components/PoweredByFintrack';
 
 const TODAY = new Date().toISOString().split('T')[0];
 const COMPONENTS = ['Shirt', 'Trouser', 'Dupatta'];
+const availableComponentsForPO = (po) =>
+  COMPONENTS.filter(component => Number(po?.[`${component.toLowerCase()}_qty`] || 0) > 0);
+const hasPOComponentQty = (po, component) =>
+  Number(po?.[`${component.toLowerCase()}_qty`] || 0) > 0;
 
 const FINISHING_OPERATIONS = {
   Shirt:   ['Clipping', 'Heming', 'Tussling', 'Pressing'],
@@ -278,6 +282,10 @@ function FinishingView({ user, onLogout }) {
   }, [activeTab]);
 
   const eligiblePOs = pos.filter(p => p.status === 'Active' && approvedSet.has(p.po_number));
+  const selectedReceivePO = pos.find(p => p.po_number === rcvForm.po_number);
+  const receiveComponents = rcvForm.po_number ? availableComponentsForPO(selectedReceivePO) : COMPONENTS;
+  const selectedAllocPO = pos.find(p => p.po_number === allocForm.po_number);
+  const allocComponents = allocForm.po_number ? availableComponentsForPO(selectedAllocPO) : COMPONENTS;
 
   // ── Tab 1: Receive Pieces ────────────────────────────────────────────────────
 
@@ -294,6 +302,14 @@ function FinishingView({ user, onLogout }) {
     const { name, value } = e.target;
     const patch = { [name]: value };
     if (name === 'component') patch.operation = '';
+    if (name === 'po_number') {
+      const nextPO = pos.find(p => p.po_number === value);
+      const nextComponents = availableComponentsForPO(nextPO);
+      if (rcvForm.component && !nextComponents.includes(rcvForm.component)) {
+        patch.component = '';
+        patch.operation = '';
+      }
+    }
     setRcvForm(prev => ({ ...prev, ...patch }));
     if (rcvMsg) setRcvMsg(null);
   };
@@ -343,6 +359,14 @@ function FinishingView({ user, onLogout }) {
     const { name, value } = e.target;
     const patch = { [name]: value };
     if (name === 'component') patch.operation = '';
+    if (name === 'po_number') {
+      const nextPO = pos.find(p => p.po_number === value);
+      const nextComponents = availableComponentsForPO(nextPO);
+      if (allocForm.component && !nextComponents.includes(allocForm.component)) {
+        patch.component = '';
+        patch.operation = '';
+      }
+    }
     setAllocForm(prev => ({ ...prev, ...patch }));
     if (allocFormMsg) setAllocFormMsg(null);
   };
@@ -481,6 +505,12 @@ function FinishingView({ user, onLogout }) {
   }, [plForm.po_number]);
 
   const plEligiblePOs = plPos.filter(p => p.status === 'Active' && plApprovedSet.has(p.po_number));
+  const selectedPaymentPO = plPos.find(p => p.po_number === plForm.po_number);
+  const plDepartments = FL_DEPARTMENTS.filter(d =>
+    !plForm.po_number ||
+    !d.includes('Dupatta') ||
+    hasPOComponentQty(selectedPaymentPO, 'dupatta')
+  );
 
   // Multi-op derived values: per-op rates and combined total
   const plOpRates = plSelectedOps.map(op => {
@@ -497,6 +527,14 @@ function FinishingView({ user, onLogout }) {
     if (name === 'department') {
       patch.operation = '';
       setPlSelectedOps([]);
+    }
+    if (name === 'po_number') {
+      const nextPO = plPos.find(p => p.po_number === value);
+      if (!hasPOComponentQty(nextPO, 'dupatta') && plForm.department.includes('Dupatta')) {
+        patch.department = '';
+        patch.operation = '';
+        setPlSelectedOps([]);
+      }
     }
     if (['po_number', 'department'].includes(name)) {
       const newPO   = name === 'po_number'   ? value : plForm.po_number;
@@ -842,7 +880,7 @@ function FinishingView({ user, onLogout }) {
                       <label>Component *</label>
                       <select name="component" value={rcvForm.component} onChange={handleRcvChange} required>
                         <option value="">Select component...</option>
-                        {COMPONENTS.map(c => <option key={c} value={c}>{c}</option>)}
+                        {receiveComponents.map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                     </div>
 
@@ -1005,7 +1043,7 @@ function FinishingView({ user, onLogout }) {
                         <label>Component *</label>
                         <select name="component" value={allocForm.component} onChange={handleAllocFormChange} required>
                           <option value="">Select component...</option>
-                          {COMPONENTS.map(c => <option key={c} value={c}>{c}</option>)}
+                          {allocComponents.map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
                       </div>
 
@@ -1301,7 +1339,7 @@ function FinishingView({ user, onLogout }) {
                             <label>Department *</label>
                             <select name="department" value={plForm.department} onChange={plHandleFormChange} required>
                               <option value="">Select department...</option>
-                              {FL_DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                              {plDepartments.map(d => <option key={d} value={d}>{d}</option>)}
                             </select>
                           </div>
 

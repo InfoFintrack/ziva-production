@@ -25,6 +25,21 @@ const FABRIC_TYPES = [
 ];
 
 const ACCESSORY_UNITS = ['Meters','Yards','Pieces','KG'];
+const PO_COMPONENTS = [
+  { key: 'shirt', label: 'Shirt' },
+  { key: 'trouser', label: 'Trouser' },
+  { key: 'dupatta', label: 'Dupatta' },
+];
+
+const hasComponentDetails = (form, key) =>
+  Boolean(
+    form[`${key}_colour`]?.trim() ||
+    form[`${key}_fabric`] ||
+    form[`${key}_qty`]
+  );
+
+const hasComponentQty = (po, key) =>
+  Number(po?.[`${key}_qty`] || 0) > 0;
 
 const getEmptyPOForm = () => ({
   batch_number_b:  '',
@@ -624,17 +639,22 @@ function PPView({ user, onLogout }) {
     if (!poForm.po_number.trim()) {
       setPOMessage({ type: 'error', text: 'PO Number is required.' }); return;
     }
+    if (!poForm.collection_name.trim()) {
+      setPOMessage({ type: 'error', text: 'Collection Name is required. Use TBD if not decided yet.' }); return;
+    }
+    if (!poForm.article_name.trim()) {
+      setPOMessage({ type: 'error', text: 'Article Name is required. Use TBD if not decided yet.' }); return;
+    }
 
     if (!poForm.garment_type) {
       setPOMessage({ type: 'error', text: 'Garment Type is required.' }); return;
     }
 
-    // Validate component required fields (dupatta skipped for Kids garments)
+    // Shirt and Trouser are required. Dupatta is optional, but must be complete if used.
     const isKids = poForm.garment_type === 'Kids';
     const components = [
       { key: 'shirt',   label: 'Shirt' },
       { key: 'trouser', label: 'Trouser' },
-      ...(!isKids ? [{ key: 'dupatta', label: 'Dupatta' }] : []),
     ];
     for (const { key, label } of components) {
       if (!poForm[`${key}_colour`].trim()) {
@@ -647,11 +667,22 @@ function PPView({ user, onLogout }) {
         setPOMessage({ type: 'error', text: `${label} Quantity is required.` }); return;
       }
     }
+    if (!isKids && hasComponentDetails(poForm, 'dupatta')) {
+      if (!poForm.dupatta_colour.trim()) {
+        setPOMessage({ type: 'error', text: 'Dupatta Colour is required when Dupatta is added.' }); return;
+      }
+      if (!poForm.dupatta_fabric) {
+        setPOMessage({ type: 'error', text: 'Dupatta Fabric Type is required when Dupatta is added.' }); return;
+      }
+      if (!poForm.dupatta_qty) {
+        setPOMessage({ type: 'error', text: 'Dupatta Quantity is required when Dupatta is added.' }); return;
+      }
+    }
 
     // Validate colour inputs
     const shirtOk   = shirtColourRef.current?.validate()   ?? true;
     const trouserOk = trouserColourRef.current?.validate() ?? true;
-    const dupattaOk = isKids ? true : (dupattaColourRef.current?.validate() ?? true);
+    const dupattaOk = isKids || !hasComponentDetails(poForm, 'dupatta') ? true : (dupattaColourRef.current?.validate() ?? true);
     if (!shirtOk || !trouserOk || !dupattaOk) {
       setPOMessage({ type: 'error', text: 'Please fix all colour fields.' }); return;
     }
@@ -662,8 +693,8 @@ function PPView({ user, onLogout }) {
       const res = await createPO({
         batch_number:   `B-${poForm.batch_number_b}-PO-${poForm.batch_number_po}`,
         po_number:      `PO-${poForm.po_number.trim()}`,
-        collection_name:poForm.collection_name,
-        article_name:   poForm.article_name   || undefined,
+        collection_name:poForm.collection_name.trim(),
+        article_name:   poForm.article_name.trim(),
         garment_type:   poForm.garment_type   || undefined,
         po_date:        poForm.po_date         || undefined,
         delivery_date:  poForm.delivery_date   || undefined,
@@ -802,11 +833,53 @@ function PPView({ user, onLogout }) {
   const handleEditPOSubmit = async (e) => {
     e.preventDefault();
 
+    if (!editPOForm.collection_name?.trim()) {
+      setEditPOMessage({ type: 'error', text: 'Collection Name is required. Use TBD if not decided yet.' }); return;
+    }
+    if (!editPOForm.article_name?.trim()) {
+      setEditPOMessage({ type: 'error', text: 'Article Name is required. Use TBD if not decided yet.' }); return;
+    }
+
+    const isIssuedPO = poHasIssuance.has(editPOForm.po_number);
+    if (isIssuedPO) {
+      setEditPOSubmitting(true);
+      setEditPOMessage(null);
+      try {
+        const res = await updatePO({
+          action: 'update_names',
+          po_number: editPOForm.po_number,
+          collection_name: editPOForm.collection_name.trim(),
+          article_name: editPOForm.article_name.trim(),
+        });
+        if (res.success) {
+          setEditPOMessage({ type: 'success', text: `✓ PO ${editPOForm.po_number} names updated successfully.` });
+          loadPOs();
+          setTimeout(closeEditPO, 1200);
+        } else {
+          setEditPOMessage({ type: 'error', text: res.message || 'Failed to update PO names.' });
+        }
+      } catch {
+        setEditPOMessage({ type: 'error', text: 'Update failed. Please try again.' });
+      }
+      setEditPOSubmitting(false);
+      return;
+    }
 
     const isEditKids = editPOForm.garment_type === 'Kids';
+    if (!isEditKids && hasComponentDetails(editPOForm, 'dupatta')) {
+      if (!editPOForm.dupatta_colour.trim()) {
+        setEditPOMessage({ type: 'error', text: 'Dupatta Colour is required when Dupatta is added.' }); return;
+      }
+      if (!editPOForm.dupatta_fabric) {
+        setEditPOMessage({ type: 'error', text: 'Dupatta Fabric Type is required when Dupatta is added.' }); return;
+      }
+      if (!editPOForm.dupatta_qty) {
+        setEditPOMessage({ type: 'error', text: 'Dupatta Quantity is required when Dupatta is added.' }); return;
+      }
+    }
     const shirtOk   = editShirtColourRef.current?.validate()   ?? true;
     const trouserOk = editTrouserColourRef.current?.validate() ?? true;
-    const dupattaOk = isEditKids ? true : (editDupattaColourRef.current?.validate() ?? true);
+    const dupattaOk = isEditKids || !hasComponentDetails(editPOForm, 'dupatta') ? true : (editDupattaColourRef.current?.validate() ?? true);
     if (!shirtOk || !trouserOk || !dupattaOk) {
       setEditPOMessage({ type: 'error', text: 'Please fix all colour fields.' }); return;
     }
@@ -822,8 +895,8 @@ function PPView({ user, onLogout }) {
         action:          'update_details',
         po_number:        editPOForm.po_number,
         batch_number:     batchStr,
-        collection_name:  editPOForm.collection_name,
-        article_name:     editPOForm.article_name    || null,
+        collection_name:  editPOForm.collection_name.trim(),
+        article_name:     editPOForm.article_name.trim(),
         garment_type:     editPOForm.garment_type    || null,
         po_date:          editPOForm.po_date         || null,
         delivery_date:    editPOForm.delivery_date   || null,
@@ -873,7 +946,7 @@ function PPView({ user, onLogout }) {
 
   // ── Helpers ────────────────────────────────────────────────────────────
 
-  const componentCard = (compKey, compLabel, colourRef) => (
+  const componentCard = (compKey, compLabel, colourRef, optional = false) => (
     <div key={compKey} style={{ border: '1px solid #30363d', borderRadius: '8px', marginBottom: '12px', overflow: 'hidden' }}>
       <div
         style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#161b22', cursor: 'pointer' }}
@@ -886,17 +959,17 @@ function PPView({ user, onLogout }) {
         <div style={{ padding: '16px' }}>
           <div className="form-grid">
             <div className="form-group">
-              <label>Colour *</label>
+              <label>Colour{optional ? '' : ' *'}</label>
               <ColourInput
                 ref={colourRef}
                 value={poForm[`${compKey}_colour`]}
                 onChange={(v) => handlePOColourChange(compKey, v)}
                 placeholder="e.g. Navy Blue"
-                required
+                required={!optional}
               />
             </div>
             <div className="form-group">
-              <label>Fabric Type *</label>
+              <label>Fabric Type{optional ? '' : ' *'}</label>
               <select
                 name={`${compKey}_fabric`}
                 value={poForm[`${compKey}_fabric`]}
@@ -907,7 +980,7 @@ function PPView({ user, onLogout }) {
               </select>
             </div>
             <div className="form-group">
-              <label>Quantity (Pieces) *</label>
+              <label>Quantity (Pieces){optional ? '' : ' *'}</label>
               <input
                 type="number"
                 name={`${compKey}_qty`}
@@ -1053,13 +1126,12 @@ function PPView({ user, onLogout }) {
                       </p>
                     </div>
                     <div style={{ padding: '12px 16px' }}>
-                      {['shirt','trouser','dupatta'].map(comp => {
+                      {PO_COMPONENTS.filter(({ key }) => hasComponentQty(issuePODetails, key)).map(({ key: comp, label }) => {
                         const totalQty  = Number(issuePODetails[`${comp}_qty`] || 0);
                         const issued    = Number(issuePODetails[`${comp}_meters_issued`] || 0);
                         const remaining = totalQty - issued;
                         const inputVal  = compQtys[comp];
                         const overLimit = inputVal !== '' && Number(inputVal) > remaining;
-                        const label     = comp.charAt(0).toUpperCase() + comp.slice(1);
                         return (
                           <div key={comp} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0', borderBottom: '1px solid #30363d' }}>
                             <div style={{ width: '72px', fontWeight: '700', color: '#e6edf3', fontSize: '14px' }}>{label}</div>
@@ -1409,13 +1481,19 @@ function PPView({ user, onLogout }) {
                   </div>
 
                   <div className="form-group">
-                    <label>Collection Name</label>
+                    <label>Collection Name *</label>
                     <input type="text" name="collection_name" placeholder="e.g. Linen Collection 2026" value={poForm.collection_name} onChange={handlePOChange} />
+                    <p style={{ color: '#8b949e', fontSize: '12px', margin: '4px 0 0' }}>
+                      If undecided, write TBD and update it later.
+                    </p>
                   </div>
 
                   <div className="form-group">
-                    <label>Article Name</label>
+                    <label>Article Name *</label>
                     <input type="text" name="article_name" placeholder="e.g. 3-Piece Suit" value={poForm.article_name} onChange={handlePOChange} />
+                    <p style={{ color: '#8b949e', fontSize: '12px', margin: '4px 0 0' }}>
+                      If undecided, write TBD and update it later.
+                    </p>
                   </div>
 
                   <div className="form-group">
@@ -1454,7 +1532,7 @@ function PPView({ user, onLogout }) {
                       ℹ Dupatta not applicable for Kids garments — skipped.
                     </p>
                   </div>
-                ) : componentCard('dupatta', 'Dupatta', dupattaColourRef)}
+                ) : componentCard('dupatta', 'Dupatta (Optional)', dupattaColourRef, true)}
 
                 {/* Section C: Accessories */}
                 <div style={{ marginTop: '24px', marginBottom: '8px', paddingBottom: '8px', borderBottom: '1px solid #30363d' }}>
@@ -1525,11 +1603,11 @@ function PPView({ user, onLogout }) {
                               </button>
                             </td>
                             <td>
-                              {poHasIssuance.has(p.po_number) ? (
+                              {false ? (
                                 <span title="Cannot edit — fabric already issued" style={{ fontSize: '12px', color: '#8b949e', cursor: 'not-allowed' }}>Locked</span>
                               ) : (
                                 <button className="btn btn-small" onClick={() => openEditPO(p)} style={{ background: '#2d2208', color: '#d29922', width: 'auto' }}>
-                                  Edit
+                                  {poHasIssuance.has(p.po_number) ? 'Edit Names' : 'Edit'}
                                 </button>
                               )}
                             </td>
@@ -1562,7 +1640,11 @@ function PPView({ user, onLogout }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
               <div>
                 <h2 style={{ color: '#e6edf3', marginBottom: '4px' }}>Edit PO — {editPOTarget.po_number}</h2>
-                <p style={{ color: '#666', fontSize: '13px' }}>Changes to Batch No., Collection, components, and accessories only. PO Number cannot change.</p>
+                <p style={{ color: '#666', fontSize: '13px' }}>
+                  {poHasIssuance.has(editPOTarget.po_number)
+                    ? 'Fabric has been issued. Only Collection Name and Article Name can be edited.'
+                    : 'Changes to Batch No., Collection, components, and accessories only. PO Number cannot change.'}
+                </p>
               </div>
               <button className="btn btn-small btn-danger" onClick={closeEditPO} style={{ width: 'auto' }}>Close</button>
             </div>
@@ -1584,6 +1666,7 @@ function PPView({ user, onLogout }) {
                       name="batch_number_b"
                       value={editPOForm.batch_number_b || ''}
                       onChange={handleEditPOChange}
+                      disabled={poHasIssuance.has(editPOTarget.po_number)}
                       maxLength={4}
                       style={{ border: 'none', width: '48px', padding: '12px 8px', outline: 'none', background: 'transparent', fontSize: '15px', textAlign: 'center' }}
                     />
@@ -1593,6 +1676,7 @@ function PPView({ user, onLogout }) {
                       name="batch_number_po"
                       value={editPOForm.batch_number_po || ''}
                       onChange={handleEditPOChange}
+                      disabled={poHasIssuance.has(editPOTarget.po_number)}
                       maxLength={4}
                       style={{ border: 'none', flex: 1, padding: '12px 8px', outline: 'none', background: 'transparent', fontSize: '15px' }}
                     />
@@ -1605,18 +1689,24 @@ function PPView({ user, onLogout }) {
                 </div>
 
                 <div className="form-group">
-                  <label>Collection Name</label>
+                  <label>Collection Name *</label>
                   <input type="text" name="collection_name" value={editPOForm.collection_name || ''} onChange={handleEditPOChange} placeholder="e.g. Linen Collection 2026" />
+                  <p style={{ color: '#8b949e', fontSize: '12px', margin: '4px 0 0' }}>
+                    If undecided, write TBD and update it later.
+                  </p>
                 </div>
 
                 <div className="form-group">
-                  <label>Article Name</label>
+                  <label>Article Name *</label>
                   <input type="text" name="article_name" value={editPOForm.article_name || ''} onChange={handleEditPOChange} placeholder="e.g. 3-Piece Suit" />
+                  <p style={{ color: '#8b949e', fontSize: '12px', margin: '4px 0 0' }}>
+                    If undecided, write TBD and update it later.
+                  </p>
                 </div>
 
                 <div className="form-group">
                   <label>Garment Type</label>
-                  <select name="garment_type" value={editPOForm.garment_type || ''} onChange={handleEditPOChange}>
+                  <select name="garment_type" value={editPOForm.garment_type || ''} onChange={handleEditPOChange} disabled={poHasIssuance.has(editPOTarget.po_number)}>
                     <option value="">Select type</option>
                     {dropdowns.garmentTypes.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
@@ -1624,20 +1714,22 @@ function PPView({ user, onLogout }) {
 
                 <div className="form-group">
                   <label>PO Date</label>
-                  <input type="date" name="po_date" value={editPOForm.po_date || ''} onChange={handleEditPOChange} />
+                  <input type="date" name="po_date" value={editPOForm.po_date || ''} onChange={handleEditPOChange} disabled={poHasIssuance.has(editPOTarget.po_number)} />
                 </div>
 
                 <div className="form-group">
                   <label>Delivery Date</label>
-                  <input type="date" name="delivery_date" value={editPOForm.delivery_date || ''} onChange={handleEditPOChange} />
+                  <input type="date" name="delivery_date" value={editPOForm.delivery_date || ''} onChange={handleEditPOChange} disabled={poHasIssuance.has(editPOTarget.po_number)} />
                 </div>
 
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                   <label>Remarks</label>
-                  <textarea name="remarks" value={editPOForm.remarks || ''} onChange={handleEditPOChange} rows={2} placeholder="Optional notes" />
+                  <textarea name="remarks" value={editPOForm.remarks || ''} onChange={handleEditPOChange} rows={2} placeholder="Optional notes" disabled={poHasIssuance.has(editPOTarget.po_number)} />
                 </div>
               </div>
 
+              {!poHasIssuance.has(editPOTarget.po_number) && (
+                <>
               {/* Section B: Components */}
               <div style={{ marginTop: '24px', marginBottom: '8px', paddingBottom: '8px', borderBottom: '1px solid #30363d' }}>
                 <p style={{ fontSize: '13px', fontWeight: '700', color: '#e6edf3', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 16px' }}>B — Components</p>
@@ -1650,7 +1742,7 @@ function PPView({ user, onLogout }) {
                     ℹ Dupatta not applicable for Kids garments — skipped.
                   </p>
                 </div>
-              ) : editComponentCard('dupatta', 'Dupatta', editDupattaColourRef)}
+              ) : editComponentCard('dupatta', 'Dupatta (Optional)', editDupattaColourRef)}
 
               {/* Section C: Accessories */}
               <div style={{ marginTop: '24px', marginBottom: '8px', paddingBottom: '8px', borderBottom: '1px solid #30363d' }}>
@@ -1683,10 +1775,12 @@ function PPView({ user, onLogout }) {
                 </div>
               ))}
               <p style={{ color: '#8b949e', fontSize: '12px', margin: '4px 0 16px' }}>Accessories will be replaced entirely on save. Leave rows blank to remove all.</p>
+                </>
+              )}
 
               <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
                 <button type="submit" className="btn btn-primary" disabled={editPOSubmitting} style={{ flex: 1 }}>
-                  {editPOSubmitting ? 'Saving...' : 'Save Changes'}
+                  {editPOSubmitting ? 'Saving...' : poHasIssuance.has(editPOTarget.po_number) ? 'Save Names' : 'Save Changes'}
                 </button>
                 <button type="button" className="btn" onClick={closeEditPO} style={{ flex: 1, background: '#161b22', color: '#e6edf3' }}>
                   Cancel

@@ -9,6 +9,8 @@ const TODAY = new Date().toISOString().split('T')[0];
 const isStitchingWorker = (worker) =>
   !worker.worker_type || worker.worker_type === 'Stitching';
 const COMPONENTS = ['Shirt', 'Trouser', 'Dupatta'];
+const availableComponentsForPO = (po) =>
+  COMPONENTS.filter(component => Number(po?.[`${component.toLowerCase()}_qty`] || 0) > 0);
 
 const EMPTY_FORM = {
   allocation_date: TODAY,
@@ -189,11 +191,22 @@ function SupervisorView({ user, onLogout }) {
 
   // Only Active POs that have at least one approved CMT rate
   const eligiblePOs = pos.filter(p => p.status === 'Active' && approvedSet.has(p.po_number));
+  const selectedPO = pos.find(p => p.po_number === form.po_number);
+  const availableComponents = form.po_number ? availableComponentsForPO(selectedPO) : COMPONENTS;
 
   // ── Form handlers ────────────────────────────────────────────────────────────
 
   const handleFormChange = (e) => {
-    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    setForm(prev => {
+      const patch = { [name]: value };
+      if (name === 'po_number') {
+        const nextPO = pos.find(p => p.po_number === value);
+        const nextComponents = availableComponentsForPO(nextPO);
+        if (prev.component && !nextComponents.includes(prev.component)) patch.component = '';
+      }
+      return { ...prev, ...patch };
+    });
     if (formMsg) setFormMsg(null);
   };
 
@@ -368,7 +381,7 @@ function SupervisorView({ user, onLogout }) {
                     <label>Component *</label>
                     <select name="component" value={form.component} onChange={handleFormChange} required>
                       <option value="">Select component...</option>
-                      {COMPONENTS.map(c => <option key={c} value={c}>{c}</option>)}
+                      {availableComponents.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
 
