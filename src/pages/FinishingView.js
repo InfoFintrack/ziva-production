@@ -217,6 +217,7 @@ function FinishingView({ user, onLogout }) {
   const [wkLoading, setWkLoading] = useState(false);
   const [wkMsg, setWkMsg] = useState(null);
   const [wkSearch, setWkSearch] = useState('');
+  const [wkStatusFilter, setWkStatusFilter] = useState('Active');
   const [wkForm, setWkForm] = useState({ name: '', phone: '', specialization: 'Mixed', worker_type: 'Finishing_InHouse' });
   const [wkSubmitting, setWkSubmitting] = useState(false);
   const [wkPhoneError, setWkPhoneError] = useState('');
@@ -254,6 +255,27 @@ function FinishingView({ user, onLogout }) {
     } catch { /* silently fail */ }
     setDataLoading(false);
   };
+
+  const loadWorkers = async () => {
+    setWkLoading(true);
+    setWkMsg(null);
+    try {
+      const [r1, r2] = await Promise.all([
+        getStitchers('?worker_type=Finishing_InHouse'),
+        getStitchers('?worker_type=Finishing_OutOfFactory'),
+      ]);
+      setWkWorkers([...(r1.success ? r1.stitchers : []), ...(r2.success ? r2.stitchers : [])]);
+    } catch {
+      setWkMsg({ type: 'error', text: 'Failed to load workers.' });
+    }
+    setWkLoading(false);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'workers' && wkWorkers.length === 0 && !wkLoading) {
+      loadWorkers();
+    }
+  }, [activeTab]);
 
   const eligiblePOs = pos.filter(p => p.status === 'Active' && approvedSet.has(p.po_number));
 
@@ -1963,21 +1985,6 @@ function FinishingView({ user, onLogout }) {
 
         {/* ── Tab 5: Worker Management ──────────────────────────────────────── */}
         {activeTab === 'workers' && (() => {
-          const loadWorkers = async () => {
-            setWkLoading(true);
-            setWkMsg(null);
-            try {
-              const [r1, r2] = await Promise.all([
-                getStitchers('?worker_type=Finishing_InHouse'),
-                getStitchers('?worker_type=Finishing_OutOfFactory'),
-              ]);
-              setWkWorkers([...(r1.success ? r1.stitchers : []), ...(r2.success ? r2.stitchers : [])]);
-            } catch { setWkMsg({ type: 'error', text: 'Failed to load workers.' }); }
-            setWkLoading(false);
-          };
-
-          if (wkWorkers.length === 0 && !wkLoading) loadWorkers();
-
           const fmtPhone = (val) => {
             const d = val.replace(/\D/g, '').slice(0, 11);
             return d.length <= 4 ? d : d.slice(0, 4) + '-' + d.slice(4);
@@ -2026,7 +2033,14 @@ function FinishingView({ user, onLogout }) {
             setWkEditSaving(false);
           };
 
-          const filtered = wkWorkers.filter(w => !wkSearch.trim() || w.name?.toLowerCase().includes(wkSearch.toLowerCase()) || w.stitcher_code?.toLowerCase().includes(wkSearch.toLowerCase()));
+          const filtered = wkWorkers.filter(w => {
+            const term = wkSearch.toLowerCase();
+            const matchSearch = !term.trim() ||
+              w.name?.toLowerCase().includes(term) ||
+              w.stitcher_code?.toLowerCase().includes(term);
+            const matchStatus = wkStatusFilter === 'All' || w.status === wkStatusFilter;
+            return matchSearch && matchStatus;
+          });
 
           return (
             <>
@@ -2077,6 +2091,12 @@ function FinishingView({ user, onLogout }) {
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <input type="text" placeholder="Search..." value={wkSearch} onChange={e => setWkSearch(e.target.value)}
                       style={{ padding: '7px 12px', border: '1px solid #30363d', borderRadius: '8px', fontSize: '13px', width: '180px' }} />
+                    <select value={wkStatusFilter} onChange={e => setWkStatusFilter(e.target.value)}
+                      style={{ padding: '7px 10px', border: '1px solid #30363d', borderRadius: '8px', fontSize: '13px' }}>
+                      <option value="Active">Active</option>
+                      <option value="Inactive">Inactive</option>
+                      <option value="All">All</option>
+                    </select>
                     <button className="btn btn-small" onClick={loadWorkers} style={{ width: 'auto', background: '#161b22', color: '#e6edf3' }}>↻ Refresh</button>
                   </div>
                 </div>

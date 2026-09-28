@@ -164,6 +164,9 @@ function PaymentStatusBadge({ status }) {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
+const isStitchingWorker = (worker) =>
+  !worker.worker_type || worker.worker_type === 'Stitching';
+
 const sectionHeader = (text) => (
   <div style={{
     marginTop: '24px',
@@ -544,7 +547,7 @@ function CuttingView({ user, onLogout }) {
     setStitchersLoading(true);
     try {
       const res = await getStitchers();
-      if (res.success) setStitchers(res.stitchers);
+      if (res.success) setStitchers(res.stitchers.filter(isStitchingWorker));
     } catch { /* silently fail */ }
     setStitchersLoading(false);
   };
@@ -592,6 +595,7 @@ function CuttingView({ user, onLogout }) {
         cnic:           stitcherForm.cnic  || undefined,
         specialization: stitcherForm.specialization,
         date_joined:    stitcherForm.date_joined || undefined,
+        worker_type:    'Stitching',
       });
       if (res.success) {
         setStitcherMessage({ type: 'success', text: `✓ Stitcher ${res.stitcher.stitcher_code} — ${res.stitcher.name} added successfully.` });
@@ -627,7 +631,7 @@ function CuttingView({ user, onLogout }) {
       ]);
       if (posRes.success)       setPlPos(posRes.pos);
       if (ratesRes.success)     setPlApprovedSet(new Set(ratesRes.rates.map(r => r.po_number)));
-      if (stitchersRes.success) setPlStitchers(stitchersRes.stitchers);
+      if (stitchersRes.success) setPlStitchers(stitchersRes.stitchers.filter(isStitchingWorker));
     } catch { /* silently fail */ }
     setPlDataLoading(false);
   };
@@ -2229,7 +2233,7 @@ function CuttingView({ user, onLogout }) {
                       <label>Select Stitcher</label>
                       <select value={sdStitcher} onChange={e => setSdStitcher(e.target.value)}>
                         <option value="">Select stitcher...</option>
-                        {stitchers.map(s => (
+                        {plStitchers.map(s => (
                           <option key={s.stitcher_code} value={s.name}>
                             {s.stitcher_code} — {s.name}
                           </option>

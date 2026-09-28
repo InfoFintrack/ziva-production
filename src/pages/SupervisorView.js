@@ -6,6 +6,8 @@ import ProdFlowLogo from '../components/ProdFlowLogo';
 import PoweredByFintrack from '../components/PoweredByFintrack';
 
 const TODAY = new Date().toISOString().split('T')[0];
+const isStitchingWorker = (worker) =>
+  !worker.worker_type || worker.worker_type === 'Stitching';
 const COMPONENTS = ['Shirt', 'Trouser', 'Dupatta'];
 
 const EMPTY_FORM = {
@@ -113,7 +115,7 @@ function SupervisorView({ user, onLogout }) {
       ]);
       if (posRes.success)      setPos(posRes.pos);
       if (ratesRes.success)    setApprovedSet(new Set(ratesRes.rates.map(r => r.po_number)));
-      if (stitchersRes.success) setStitchers(stitchersRes.stitchers);
+      if (stitchersRes.success) setStitchers(stitchersRes.stitchers.filter(isStitchingWorker));
     } catch { /* silently fail */ }
     setDataLoading(false);
   };
@@ -130,7 +132,7 @@ function SupervisorView({ user, onLogout }) {
   // Load all stitchers lazily when dashboard tab is first opened
   useEffect(() => {
     if (activeTab === 'dashboard' && sdAllStitchers.length === 0) {
-      getStitchers().then(r => { if (r.success) setSdAllStitchers(r.stitchers); }).catch(() => {});
+      getStitchers().then(r => { if (r.success) setSdAllStitchers(r.stitchers.filter(isStitchingWorker)); }).catch(() => {});
     }
   }, [activeTab]);
 
