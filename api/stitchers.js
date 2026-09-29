@@ -79,7 +79,7 @@ export default async function handler(req, res) {
         [
           stitcher_code,
           name,
-          cnic,
+          cnic || null,
           phone,
           specialization,
           status     || 'Active',
