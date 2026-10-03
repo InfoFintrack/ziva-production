@@ -79,7 +79,7 @@ export const createPO = (data) => post('/api/po-master', data);
 export const updatePO = (data) => authFetch('/api/po-master', { method: 'PUT', body: JSON.stringify(data) });
 
 // CMT Rates
-export const getCMTRates = (params = '') => authFetch(`/api/cmt-rates${params}`);
+export const getCMTRates = (params = '') => authFetch(`/api/cmt-rates${params}`, { cache: 'no-store' });
 export const submitCMTRate = (data) => post('/api/cmt-rates', data);
 export const approveCMTRate = (data) => authFetch('/api/cmt-rates', { method: 'PUT', body: JSON.stringify(data) });
 
