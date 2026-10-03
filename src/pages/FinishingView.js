@@ -487,21 +487,33 @@ function FinishingView({ user, onLogout }) {
   };
 
   useEffect(() => {
-    if (!plForm.po_number) {
+    const requestedPO = plForm.po_number;
+    if (!requestedPO) {
       setPlPoRateData(null);
       setPlRateError('');
+      setPlRateLoading(false);
       return;
     }
+    let isCurrentRequest = true;
     setPlRateLoading(true);
     setPlPoRateData(null);
     setPlRateError('');
-    getCMTRates(`?status=Approved&po_number=${encodeURIComponent(plForm.po_number)}`)
+    getCMTRates(`?status=Approved&po_number=${encodeURIComponent(requestedPO)}`)
       .then(res => {
-        if (res.success && res.rates.length > 0) setPlPoRateData(res.rates[0]);
+        if (!isCurrentRequest) return;
+        const matchingRate = res.success && Array.isArray(res.rates)
+          ? res.rates.find(rate => rate.po_number === requestedPO && rate.status === 'Approved')
+          : null;
+        if (matchingRate) setPlPoRateData(matchingRate);
         else setPlRateError('No approved rate found for this PO');
       })
-      .catch(() => setPlRateError('Rate lookup failed'))
-      .finally(() => setPlRateLoading(false));
+      .catch(() => {
+        if (isCurrentRequest) setPlRateError('Rate lookup failed');
+      })
+      .finally(() => {
+        if (isCurrentRequest) setPlRateLoading(false);
+      });
+    return () => { isCurrentRequest = false; };
   }, [plForm.po_number]);
 
   const plEligiblePOs = plPos.filter(p => p.status === 'Active' && plApprovedSet.has(p.po_number));
@@ -628,7 +640,10 @@ function FinishingView({ user, onLogout }) {
       const rateMap = {};
       await Promise.all(uniquePOs.map(async (po) => {
         const r = await getCMTRates(`?status=Approved&po_number=${encodeURIComponent(po)}`);
-        if (r.success && r.rates.length > 0) rateMap[po] = r.rates[0];
+        const matchingRate = r.success && Array.isArray(r.rates)
+          ? r.rates.find(rate => rate.po_number === po && rate.status === 'Approved')
+          : null;
+        if (matchingRate) rateMap[po] = matchingRate;
       }));
       const loggedSet = new Set(
         plEntries
