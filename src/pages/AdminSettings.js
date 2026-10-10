@@ -62,7 +62,8 @@ function AdminSettings({ user, onLogout }) {
   const [stitchersLoading, setStitchersLoading] = useState(false);
   const [stitcherMessage, setStitcherMessage] = useState(null);
   const [stitcherSearch, setStitcherSearch] = useState('');
-  const [stitcherStatusFilter, setStitcherStatusFilter] = useState('All');
+  const [stitcherStatusFilter, setStitcherStatusFilter] = useState('Active');
+  const [stitcherStatusWorking, setStitcherStatusWorking] = useState({});
   const [editModal, setEditModal] = useState(null); // null | stitcher object
   const [editForm, setEditForm] = useState(EMPTY_STITCHER_EDIT);
   const [editSaving, setEditSaving] = useState(false);
@@ -269,6 +270,24 @@ function AdminSettings({ user, onLogout }) {
     setStitcherMessage(null);
   };
 
+  const handleStitcherStatusToggle = async (stitcher) => {
+    const nextStatus = stitcher.status === 'Active' ? 'Inactive' : 'Active';
+    setStitcherStatusWorking(prev => ({ ...prev, [stitcher.id]: true }));
+    setStitcherMessage(null);
+    try {
+      const res = await updateStitcher({ id: stitcher.id, status: nextStatus });
+      if (res.success) {
+        setStitchers(prev => prev.map(s => s.id === stitcher.id ? { ...s, status: nextStatus } : s));
+        setStitcherMessage({ type: 'success', text: `✓ ${stitcher.name} marked ${nextStatus.toLowerCase()}.` });
+      } else {
+        setStitcherMessage({ type: 'error', text: res.message || 'Failed to update stitcher status.' });
+      }
+    } catch {
+      setStitcherMessage({ type: 'error', text: 'Failed to update stitcher status.' });
+    }
+    setStitcherStatusWorking(prev => ({ ...prev, [stitcher.id]: false }));
+  };
+
   const handleEditFormChange = (e) => {
     const { name, value } = e.target;
     if (name === 'phone') {
@@ -290,8 +309,8 @@ function AdminSettings({ user, onLogout }) {
     if (!editForm.name.trim()) errs.name = 'Name is required.';
     if (!editForm.phone || !PHONE_REGEX.test(editForm.phone))
       errs.phone = 'Phone number required in format XXXX-XXXXXXX';
-    if (!editForm.cnic || !CNIC_REGEX.test(editForm.cnic))
-      errs.cnic = 'CNIC required in format XXXXX-XXXXXXX-X';
+    if (editForm.cnic && !CNIC_REGEX.test(editForm.cnic))
+      errs.cnic = 'CNIC must be in format XXXXX-XXXXXXX-X';
     if (!editForm.specialization) errs.specialization = 'Specialization is required.';
 
     if (Object.keys(errs).length > 0) {
@@ -305,7 +324,7 @@ function AdminSettings({ user, onLogout }) {
         id:             editModal.id,
         name:           editForm.name.trim(),
         phone:          editForm.phone,
-        cnic:           editForm.cnic,
+        cnic:           editForm.cnic.trim() || null,
         specialization: editForm.specialization,
         group_parent:   editForm.group_parent || null,
         status:         editForm.status,
@@ -597,13 +616,27 @@ function AdminSettings({ user, onLogout }) {
                             </span>
                           </td>
                           <td>
-                            <button
-                              className="btn btn-small"
-                              onClick={() => openEditStitcher(s)}
-                              style={{ background: '#2d2208', color: '#d29922', width: 'auto' }}
-                            >
-                              Edit
-                            </button>
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                              <button
+                                className="btn btn-small"
+                                onClick={() => handleStitcherStatusToggle(s)}
+                                disabled={stitcherStatusWorking[s.id]}
+                                style={{
+                                  background: s.status === 'Active' ? '#3a1719' : '#12331e',
+                                  color: s.status === 'Active' ? '#f85149' : '#3fb950',
+                                  width: 'auto',
+                                }}
+                              >
+                                {stitcherStatusWorking[s.id] ? 'Saving...' : s.status === 'Active' ? 'Deactivate' : 'Reactivate'}
+                              </button>
+                              <button
+                                className="btn btn-small"
+                                onClick={() => openEditStitcher(s)}
+                                style={{ background: '#2d2208', color: '#d29922', width: 'auto' }}
+                              >
+                                Edit
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -703,7 +736,7 @@ function AdminSettings({ user, onLogout }) {
             </div>
 
             <div className="form-group">
-              <label>CNIC *</label>
+              <label>CNIC (optional)</label>
               <input type="text" name="cnic" value={editForm.cnic} onChange={handleEditFormChange} placeholder="00000-0000000-0"
                 style={editErrors.cnic ? { bordercolor: '#f85149' } : {}} />
               {editErrors.cnic && <p style={{ fontSize: '12px', color: '#f85149', marginTop: '4px', fontWeight: '600' }}>{editErrors.cnic}</p>}
