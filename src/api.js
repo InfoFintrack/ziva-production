@@ -44,6 +44,8 @@ export const adminOverride = (recordId, field, newValue, adminName) =>
 export const getRecords = () =>
   authFetch(`${BASE_URL}/api/records`);
 
+export const getFinancialAudit = () => authFetch('/api/records?type=financial_audit');
+
 export const getDropdowns = () =>
   authFetch(`${BASE_URL}/api/dropdowns`);
 

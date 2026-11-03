@@ -1,4 +1,5 @@
 const { getPool } = require('./_lib/db');
+const { auditedQuery } = require('./_lib/auditedQuery');
 const { authenticateToken } = require('./_lib/auth');
 
 // Maps department|operation → cmt_rates column name (whitelisted — safe to interpolate)
@@ -263,7 +264,7 @@ export default async function handler(req, res) {
       const resolvedEntryDate = entry_date || new Date().toISOString().split('T')[0];
       const week_ending = getWeekEnding(resolvedEntryDate);
 
-      const { rows } = await pool.query(
+      const { rows } = await auditedQuery(pool, user.name,
         `INSERT INTO cmt_payments
            (entry_date, po_number, stitcher_id, stitcher_code, stitcher_name,
             component, department, operation, qty_claimed, rate, amount,
@@ -315,7 +316,7 @@ export default async function handler(req, res) {
       if (setClauses.length === 0) return res.json({ success: false, message: 'Nothing to update.' });
       values.push(id);
       try {
-        const result = await pool.query(
+        const result = await auditedQuery(pool, user.name,
           `UPDATE cmt_payments SET ${setClauses.join(', ')} WHERE id = $${pi}`,
           values
         );
@@ -331,7 +332,7 @@ export default async function handler(req, res) {
     if (action === 'mark_paid_flexible') {
       if (!id) return res.json({ success: false, message: 'id is required for mark_paid_flexible.' });
       try {
-        const result = await pool.query(
+        const result = await auditedQuery(pool, user.name,
           `UPDATE cmt_payments SET payment_status = 'Paid', payment_date = $1 WHERE id = $2`,
           [new Date().toISOString().split('T')[0], id]
         );
@@ -349,14 +350,14 @@ export default async function handler(req, res) {
     if (stitcher_code && week_ending) {
       try {
         if (action === 'verify') {
-          await pool.query(
+          await auditedQuery(pool, user.name,
             `UPDATE cmt_payments
              SET payment_status = 'Verified', verified_by = $1, verified_at = NOW()
              WHERE stitcher_code = $2 AND week_ending = $3`,
             [user.name, stitcher_code, week_ending]
           );
         } else if (action === 'mark_paid') {
-          await pool.query(
+          await auditedQuery(pool, user.name,
             `UPDATE cmt_payments
              SET payment_status = 'Paid', payment_date = $1
              WHERE stitcher_code = $2 AND week_ending = $3`,
@@ -381,12 +382,12 @@ export default async function handler(req, res) {
     try {
       let result;
       if (action === 'verify') {
-        result = await pool.query(
+        result = await auditedQuery(pool, user.name,
           `UPDATE cmt_payments SET payment_status = 'Verified', verified_by = $1, verified_at = NOW() WHERE id = $2`,
           [user.name, id]
         );
       } else {
-        result = await pool.query(
+        result = await auditedQuery(pool, user.name,
           `UPDATE cmt_payments SET payment_status = 'Paid', payment_date = $1 WHERE id = $2`,
           [payment_date || new Date().toISOString().split('T')[0], id]
         );

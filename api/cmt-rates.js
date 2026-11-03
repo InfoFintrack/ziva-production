@@ -1,4 +1,5 @@
 const { getPool } = require('./_lib/db');
+const { auditedQuery } = require('./_lib/auditedQuery');
 const { authenticateToken } = require('./_lib/auth');
 
 export default async function handler(req, res) {
@@ -30,6 +31,7 @@ export default async function handler(req, res) {
       const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
       const { rows } = await pool.query(
         `SELECT t.*,
+           EXISTS (SELECT 1 FROM users u WHERE LOWER(u.name) = LOWER(t.approved_by_ceo) AND u.role = 'CEO') AS ceo_signoff_valid,
            (COALESCE(t.cutting,0)+COALESCE(t.shirt,0)+COALESCE(t.trouser,0)+COALESCE(t.dupatta,0)+
             COALESCE(t.patching,0)+COALESCE(t.fs_clipping,0)+COALESCE(t.fs_heming,0)+
             COALESCE(t.fs_tussling,0)+COALESCE(t.fs_pressing,0)+COALESCE(t.ft_clipping,0)+
@@ -81,7 +83,7 @@ export default async function handler(req, res) {
         return res.json({ success: false, message: 'CMT rates for this PO number already exist.' });
       }
 
-      const { rows } = await pool.query(
+      const { rows } = await auditedQuery(pool, user.name,
         `INSERT INTO cmt_rates
            (po_number, color_design, cutting, shirt, trouser, dupatta, patching,
             fs_clipping, fs_heming, fs_tussling, fs_pressing,
@@ -178,7 +180,7 @@ export default async function handler(req, res) {
       ];
 
       if (action === 'resubmit') {
-        await pool.query(
+        await auditedQuery(pool, user.name,
           `UPDATE cmt_rates
            SET status = 'Pending_Accounts',
                cutting=$1, shirt=$2, trouser=$3, dupatta=$4, patching=$5,
@@ -194,17 +196,19 @@ export default async function handler(req, res) {
         );
 
       } else if (action === 'admin_edit') {
-        await pool.query(
+        await auditedQuery(pool, user.name,
           `UPDATE cmt_rates
-           SET status = 'Approved',
+           SET status = 'Pending_Accounts',
                cutting=$1, shirt=$2, trouser=$3, dupatta=$4, patching=$5,
                fs_clipping=$6, fs_heming=$7, fs_tussling=$8, fs_pressing=$9,
                ft_clipping=$10, ft_heming=$11, ft_pressing=$12, ft_patching=$13,
                fd_heming=$14, fd_tussling=$15, fd_pressing=$16, fd_patching=$17,
                quality_packing=$18, color_design=$19,
-               approved_by_ceo=$20, ceo_approved_at=NOW()
-           WHERE id = $21`,
-          [...rateValues, user.name, id]
+               approved_by_accounts=NULL, accounts_approved_at=NULL,
+               approved_by_ceo=NULL, ceo_approved_at=NULL,
+               accounts_remarks=NULL, ceo_remarks=NULL
+           WHERE id = $20`,
+          [...rateValues, id]
         );
 
       } else if (user.role === 'Accounts') {
@@ -212,14 +216,14 @@ export default async function handler(req, res) {
           return res.json({ success: false, message: 'Rate is not pending Accounts review.' });
         }
         if (action === 'approve') {
-          await pool.query(
+          await auditedQuery(pool, user.name,
             `UPDATE cmt_rates
              SET status = 'Pending_CEO', approved_by_accounts = $1, accounts_approved_at = NOW()
              WHERE id = $2`,
             [user.name, id]
           );
         } else {
-          await pool.query(
+          await auditedQuery(pool, user.name,
             `UPDATE cmt_rates SET status = 'Rejected', accounts_remarks = $1 WHERE id = $2`,
             [remarks || null, id]
           );
@@ -230,14 +234,14 @@ export default async function handler(req, res) {
           return res.json({ success: false, message: 'Rate is not pending CEO review.' });
         }
         if (action === 'approve') {
-          await pool.query(
+          await auditedQuery(pool, user.name,
             `UPDATE cmt_rates
              SET status = 'Approved', approved_by_ceo = $1, ceo_approved_at = NOW()
              WHERE id = $2`,
             [user.name, id]
           );
         } else {
-          await pool.query(
+          await auditedQuery(pool, user.name,
             `UPDATE cmt_rates SET status = 'Rejected', ceo_remarks = $1 WHERE id = $2`,
             [remarks || null, id]
           );

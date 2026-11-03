@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { getCMTRates, approveCMTRate, getPaymentEntries, getAdvances, addAdvance, updatePayment, getStitchers, getPOs } from '../api';
 import ProdFlowLogo from '../components/ProdFlowLogo';
+import ExecutiveDashboard from '../components/ExecutiveDashboard';
 import PoweredByFintrack from '../components/PoweredByFintrack';
 
 // ── Rate field definitions ────────────────────────────────────────────────────
@@ -454,7 +455,7 @@ function AccountsView({ user, onLogout }) {
       ALL_RATE_KEYS.forEach(k => { payload[k] = editForm[k] !== '' ? Number(editForm[k]) : 0; });
       const res = await approveCMTRate(payload);
       if (res.success) {
-        setActionMessage({ type: 'success', text: `✓ CMT rates for ${modalRate.po_number} updated and approved.` });
+        setActionMessage({ type: 'success', text: `CMT rates for ${modalRate.po_number} updated and sent to Accounts for review.` });
         closeModal();
         loadPending();
         loadAll();
@@ -811,7 +812,12 @@ function AccountsView({ user, onLogout }) {
           <button onClick={() => setActiveTab('payments')} style={tabBtnStyle('payments')}>
             Payments
           </button>
+          <button onClick={() => setActiveTab('finance')} style={tabBtnStyle('finance')}>
+            Finance Overview
+          </button>
         </div>
+
+        {activeTab === 'finance' && <ExecutiveDashboard finance />}
 
         {/* ── TAB 1: PENDING RATES ──────────────────────────────────────── */}
         {activeTab === 'pending' && (

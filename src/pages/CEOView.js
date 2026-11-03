@@ -1,8 +1,9 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { getCMTRates, approveCMTRate, getPOs, getAllocations, getPaymentEntries } from '../api';
+import { getCMTRates, approveCMTRate } from '../api';
 import ProdFlowLogo from '../components/ProdFlowLogo';
+import ExecutiveDashboard from '../components/ExecutiveDashboard';
 import PoweredByFintrack from '../components/PoweredByFintrack';
 
 // ── Rate field definitions ────────────────────────────────────────────────────
@@ -107,82 +108,10 @@ function CEOView({ user, onLogout }) {
   const [modalMessage, setModalMessage] = useState(null);
   const [editSubmitting, setEditSubmitting] = useState(false);
 
-  // Dashboard state
-  const [dashLoading, setDashLoading] = useState(false);
-  const [dashData, setDashData] = useState(null);
-
   useEffect(() => {
     loadPending();
     loadAll();
-    loadDashboard();
   }, []);
-
-  // ── Dashboard data loader ──────────────────────────────────────────────────
-  const loadDashboard = async () => {
-    setDashLoading(true);
-    try {
-      const [posRes, allocRes, payRes] = await Promise.all([
-        getPOs(),
-        getAllocations(),
-        getPaymentEntries(),
-      ]);
-      const allPOs = posRes.success ? posRes.pos : [];
-      const allocs = allocRes.success ? allocRes.allocations : [];
-      const payments = payRes.success ? payRes.payments : [];
-
-      // KPI calculations
-      const activePOs = allPOs.filter(p => p.status === 'Active');
-      const totalFabricIssued = activePOs.reduce((s, p) => s + (Number(p.total_qty) || 0), 0);
-      const totalAllocated = allocs.reduce((s, a) => s + (Number(a.qty_allocated) || 0), 0);
-      const totalCompleted = allocs.filter(a => a.status === 'Complete').reduce((s, a) => s + (Number(a.qty_allocated) || 0), 0);
-      const wip = totalAllocated - totalCompleted;
-      const totalCost = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-      const pendingPayments = payments.filter(p => p.payment_status !== 'Paid');
-      const pendingAmount = pendingPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-
-      // Stitcher leaderboard
-      const stitcherMap = {};
-      payments.forEach(p => {
-        const key = p.stitcher_name || p.stitcher_code || 'Unknown';
-        if (!stitcherMap[key]) stitcherMap[key] = { name: key, sets: 0, amount: 0, pending: 0 };
-        stitcherMap[key].sets += Number(p.qty_claimed) || 0;
-        stitcherMap[key].amount += Number(p.amount) || 0;
-        if (p.payment_status !== 'Paid') stitcherMap[key].pending += Number(p.amount) || 0;
-      });
-      const leaderboard = Object.values(stitcherMap).sort((a, b) => b.sets - a.sets).slice(0, 10);
-
-      // Cost by department
-      const deptCost = {};
-      payments.forEach(p => {
-        const dept = p.department || 'Other';
-        if (!deptCost[dept]) deptCost[dept] = { department: dept, qty: 0, amount: 0 };
-        deptCost[dept].qty += Number(p.qty_claimed) || 0;
-        deptCost[dept].amount += Number(p.amount) || 0;
-      });
-      const costBreakdown = Object.values(deptCost).sort((a, b) => b.amount - a.amount);
-
-      // Alerts
-      const alerts = [];
-      if (pendingAmount > 0) {
-        const unitCount = new Set(pendingPayments.map(p => p.stitcher_name || p.stitcher_code)).size;
-        alerts.push({ priority: 'Critical', text: `PKR ${pendingAmount.toLocaleString()} pending across ${unitCount} stitching unit${unitCount !== 1 ? 's' : ''}` });
-      }
-      const overdueAllocs = allocs.filter(a => a.status === 'Overdue');
-      if (overdueAllocs.length > 0) {
-        alerts.push({ priority: 'Warning', text: `${overdueAllocs.length} allocation${overdueAllocs.length !== 1 ? 's' : ''} overdue` });
-      }
-      const allRatesCheck = await getCMTRates('?status=Pending_CEO');
-      if (allRatesCheck.success && allRatesCheck.rates.length > 0) {
-        alerts.push({ priority: 'Warning', text: `${allRatesCheck.rates.length} CMT rate${allRatesCheck.rates.length !== 1 ? 's' : ''} awaiting CEO approval` });
-      }
-
-      setDashData({
-        totalFabricIssued, totalAllocated, totalCompleted, wip, totalCost, pendingAmount,
-        leaderboard, costBreakdown, alerts, poCount: activePOs.length,
-      });
-    } catch { /* silently fail */ }
-    setDashLoading(false);
-  };
 
   const loadPending = async () => {
     setPendingLoading(true);
@@ -251,7 +180,7 @@ function CEOView({ user, onLogout }) {
       ALL_RATE_KEYS.forEach(k => { payload[k] = editForm[k] !== '' ? Number(editForm[k]) : 0; });
       const res = await approveCMTRate(payload);
       if (res.success) {
-        setActionMessage({ type: 'success', text: `✓ CMT rates for ${modalRate.po_number} updated and approved.` });
+        setActionMessage({ type: 'success', text: `CMT rates for ${modalRate.po_number} updated and sent to Accounts for review.` });
         closeModal();
         loadPending();
         loadAll();
@@ -684,136 +613,7 @@ function CEOView({ user, onLogout }) {
           </button>
         </div>
 
-        {/* ── DASHBOARD TAB ────────────────────────────────────────────── */}
-        {activeTab === 'dashboard' && (
-          <>
-            {dashLoading ? (
-              <div className="loading"><div className="spinner" />Loading dashboard...</div>
-            ) : !dashData ? (
-              <p style={{ color: '#8b949e', textAlign: 'center', padding: '40px' }}>Failed to load dashboard data.</p>
-            ) : (
-              <>
-                {/* KPI CARDS */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-                  {[
-                    { label: 'Active POs', value: dashData.poCount, color: '#4a7cc9' },
-                    { label: 'Fabric Issued', value: dashData.totalFabricIssued.toLocaleString() + ' pcs', color: '#4a7cc9' },
-                    { label: 'Allocated', value: dashData.totalAllocated.toLocaleString() + ' pcs', color: '#d29922' },
-                    { label: 'Completed', value: dashData.totalCompleted.toLocaleString() + ' pcs', color: '#3fb950' },
-                    { label: 'Work in Process', value: dashData.wip.toLocaleString() + ' pcs', color: '#d29922' },
-                    { label: 'Total Cost', value: 'PKR ' + dashData.totalCost.toLocaleString(), color: '#4a7cc9' },
-                    { label: 'Pending Payments', value: 'PKR ' + dashData.pendingAmount.toLocaleString(), color: dashData.pendingAmount > 0 ? '#f85149' : '#3fb950' },
-                  ].map(kpi => (
-                    <div key={kpi.label} style={{
-                      background: '#161b22', border: '1px solid #30363d', borderRadius: '12px',
-                      padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px',
-                    }}>
-                      <span style={{ fontSize: '12px', fontWeight: '600', color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{kpi.label}</span>
-                      <span style={{ fontSize: '22px', fontWeight: '700', color: kpi.color }}>{kpi.value}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* ALERTS */}
-                {dashData.alerts.length > 0 && (
-                  <div className="card" style={{ marginBottom: '24px' }}>
-                    <h3 style={{ margin: 0, borderBottom: 'none', padding: 0, marginBottom: '14px' }}>⚠ Attention Required</h3>
-                    {dashData.alerts.map((a, i) => (
-                      <div key={i} style={{
-                        display: 'flex', alignItems: 'center', gap: '12px',
-                        padding: '12px 14px', marginBottom: '8px', borderRadius: '8px',
-                        background: a.priority === 'Critical' ? '#3d1417' : '#2d2208',
-                        border: `1px solid ${a.priority === 'Critical' ? '#5c2124' : '#4d3a0e'}`,
-                      }}>
-                        <span style={{
-                          fontSize: '11px', fontWeight: '700', textTransform: 'uppercase',
-                          padding: '2px 8px', borderRadius: '4px',
-                          background: a.priority === 'Critical' ? '#f85149' : '#d29922',
-                          color: '#fff',
-                        }}>{a.priority}</span>
-                        <span style={{ fontSize: '14px', color: '#e6edf3' }}>{a.text}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* TWO-COLUMN: COST BREAKDOWN + LEADERBOARD */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
-                  <div className="card" style={{ margin: 0 }}>
-                    <h3 style={{ margin: 0, borderBottom: 'none', padding: 0, marginBottom: '16px' }}>Cost by Department</h3>
-                    <div className="table-container">
-                      <table>
-                        <thead><tr><th>Department</th><th>Qty</th><th>Amount (PKR)</th></tr></thead>
-                        <tbody>
-                          {dashData.costBreakdown.map(c => (
-                            <tr key={c.department}>
-                              <td>{c.department}</td>
-                              <td>{c.qty.toLocaleString()}</td>
-                              <td style={{ fontWeight: '600' }}>{c.amount.toLocaleString()}</td>
-                            </tr>
-                          ))}
-                          <tr style={{ borderTop: '1px solid #30363d' }}>
-                            <td style={{ fontWeight: '700', color: '#4a7cc9' }}>Total</td>
-                            <td style={{ fontWeight: '700' }}>{dashData.costBreakdown.reduce((s, c) => s + c.qty, 0).toLocaleString()}</td>
-                            <td style={{ fontWeight: '700', color: '#4a7cc9' }}>{dashData.costBreakdown.reduce((s, c) => s + c.amount, 0).toLocaleString()}</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  <div className="card" style={{ margin: 0 }}>
-                    <h3 style={{ margin: 0, borderBottom: 'none', padding: 0, marginBottom: '16px' }}>Stitching Leaderboard</h3>
-                    <div className="table-container">
-                      <table>
-                        <thead><tr><th>Unit</th><th>Pcs</th><th>Amount</th><th>Pending</th></tr></thead>
-                        <tbody>
-                          {dashData.leaderboard.map(s => (
-                            <tr key={s.name}>
-                              <td style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</td>
-                              <td>{s.sets.toLocaleString()}</td>
-                              <td>{s.amount.toLocaleString()}</td>
-                              <td style={{ color: s.pending > 0 ? '#f85149' : '#3fb950', fontWeight: '600' }}>
-                                {s.pending > 0 ? s.pending.toLocaleString() : '✓'}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-
-                {/* PRODUCTION PIPELINE */}
-                <div className="card">
-                  <h3 style={{ margin: 0, borderBottom: 'none', padding: 0, marginBottom: '16px' }}>Production Pipeline</h3>
-                  <div style={{ display: 'flex', gap: '0', alignItems: 'stretch' }}>
-                    {[
-                      { label: 'Fabric Issued', value: dashData.totalFabricIssued, color: '#4a7cc9' },
-                      { label: 'Allocated', value: dashData.totalAllocated, color: '#d29922' },
-                      { label: 'Completed', value: dashData.totalCompleted, color: '#3fb950' },
-                    ].map((stage, i, arr) => {
-                      const pct = dashData.totalFabricIssued > 0 ? Math.round((stage.value / dashData.totalFabricIssued) * 100) : 0;
-                      return (
-                        <div key={stage.label} style={{ flex: 1, textAlign: 'center', padding: '16px 12px', position: 'relative' }}>
-                          <div style={{ fontSize: '24px', fontWeight: '700', color: stage.color }}>{stage.value.toLocaleString()}</div>
-                          <div style={{ fontSize: '12px', color: '#8b949e', marginTop: '4px' }}>{stage.label}</div>
-                          {i < arr.length - 1 && (
-                            <div style={{ position: 'absolute', right: '-8px', top: '50%', transform: 'translateY(-50%)', color: '#30363d', fontSize: '20px' }}>→</div>
-                          )}
-                          <div style={{ marginTop: '10px', background: '#21262d', borderRadius: '4px', height: '6px', overflow: 'hidden' }}>
-                            <div style={{ width: `${pct}%`, height: '100%', background: stage.color, borderRadius: '4px', transition: 'width 0.5s' }} />
-                          </div>
-                          <div style={{ fontSize: '11px', color: '#8b949e', marginTop: '4px' }}>{pct}%</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </>
-            )}
-          </>
-        )}
+        {activeTab === 'dashboard' && <ExecutiveDashboard />}
 
         {/* ── TAB 1: PENDING RATES ──────────────────────────────────────── */}
         {activeTab === 'pending' && (

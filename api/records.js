@@ -17,6 +17,22 @@ export default async function handler(req, res) {
 
   const pool = getPool();
 
+  if (req.query.type === 'financial_audit') {
+    if (!['CEO', 'Accounts', 'Admin'].includes(user.role)) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+    try {
+      const { rows } = await pool.query(
+        `SELECT id, entity, record_id, field, old_value, new_value, status_at_change, actor, changed_at
+         FROM financial_audit ORDER BY changed_at DESC, id DESC LIMIT 200`
+      );
+      return res.json({ success: true, changes: rows });
+    } catch (err) {
+      console.error('Financial audit GET error:', err.message);
+      return res.status(503).json({ success: false, message: err.code === '42P01' ? 'Financial audit is unavailable until its database migration is applied.' : 'Financial audit is currently unavailable.' });
+    }
+  }
+
   try {
     const { rows } = await pool.query(
       `SELECT * FROM fabric_movement ORDER BY created_at DESC`
