@@ -1,14 +1,15 @@
 const { getPool } = require('./_lib/db');
 const { authenticateToken } = require('./_lib/auth');
+const { readProductionFlow, recordProductionFlow } = require('./_lib/productionFlow');
 
 export default async function handler(req, res) {
   // CORS preflight
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  if (req.method !== 'GET') {
+  if (req.method !== 'GET' && !(req.method === 'POST' && req.query.type === 'production_flow')) {
     return res.status(405).json({ success: false, message: 'Method not allowed.' });
   }
 
@@ -16,6 +17,17 @@ export default async function handler(req, res) {
   if (!user) return;
 
   const pool = getPool();
+
+  if (req.query.type === 'production_flow') {
+    try {
+      if (req.method === 'GET') return res.json({ success: true, ...await readProductionFlow(pool) });
+      const result = await recordProductionFlow(pool, user, req.body || {});
+      return res.status(result.status).json(result.body);
+    } catch (err) {
+      console.error('Production flow error:', err.message);
+      return res.status(500).json({ success: false, message: 'Production flow is unavailable.' });
+    }
+  }
 
   if (req.query.type === 'financial_audit') {
     if (!['CEO', 'Accounts', 'Admin'].includes(user.role)) {

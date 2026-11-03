@@ -49,6 +49,7 @@ export default async function handler(req, res) {
 
   // ── POST /api/users — add user ──────────────────────────────────────────────
   if (req.method === 'POST') {
+    if (user.role !== 'Admin') return res.status(403).json({ success: false, message: 'Only Admin can create user accounts.' });
     const { name, passcode, role } = req.body;
     if (!name?.trim() || !passcode?.toString().trim() || !role) {
       return res.json({ success: false, message: 'Name, passcode, and role are required.' });
@@ -82,6 +83,7 @@ export default async function handler(req, res) {
 
   // ── PUT /api/users?id=USR-001 — edit or toggle status ──────────────────────
   if (req.method === 'PUT') {
+    if (user.role !== 'Admin') return res.status(403).json({ success: false, message: 'Only Admin can change user accounts.' });
     const userId = req.query.id;
     if (!userId) {
       return res.json({ success: false, message: 'User ID is required as a query parameter (?id=USR-001).' });

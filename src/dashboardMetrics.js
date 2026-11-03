@@ -42,7 +42,10 @@ export function poBoard(pos, allocations, payments, rates, today = new Date()) {
     const expected = po.po_date && delivery && delivery > day(po.po_date)
       ? Math.max(0, Math.min(100, Math.round((today - new Date(po.po_date)) / (new Date(delivery) - new Date(po.po_date)) * 100)))
       : null;
-    const risk = po.status !== 'Completed' && daysLeft !== null && ((daysLeft <= 0 && complete < 100) || (expected !== null && complete + 10 < expected));
+    const daysOpen = po.po_date ? Math.max(1, Math.floor((new Date(`${todayText}T00:00:00Z`) - new Date(`${day(po.po_date)}T00:00:00Z`)) / 86400000)) : null;
+    const pace = daysOpen && finished > 0 ? finished / daysOpen : 0;
+    const projectedDate = pace && ordered > finished ? new Date(Date.parse(`${todayText}T00:00:00Z`) + Math.ceil((ordered - finished) / pace) * 86400000).toISOString().slice(0, 10) : finished >= ordered && ordered > 0 ? todayText : null;
+    const risk = po.status !== 'Completed' && daysLeft !== null && ((daysLeft <= 0 && complete < 100) || (projectedDate && projectedDate > delivery) || (expected !== null && complete + 10 < expected));
     const approved = rates.find(rate => rate.po_number === po.po_number && rate.status === 'Approved');
     const actual = ownPayments.reduce((sum, p) => sum + num(p.amount), 0);
     const mappedRates = {
@@ -52,7 +55,7 @@ export function poBoard(pos, allocations, payments, rates, today = new Date()) {
     };
     const approvedPerPiece = approved && ordered ? components.reduce((total, key) =>
       total + num(po[`${key}_qty`]) * mappedRates[key].reduce((rateTotal, field) => rateTotal + num(approved[field]), 0), 0) / ordered : null;
-    return { ...po, ordered, cut, stitched, finished, rejected, daysLeft, complete, risk,
+    return { ...po, ordered, cut, stitched, finished, rejected, daysLeft, complete, risk, projectedDate,
       unallocated: Math.max(0, ordered - cut), sewingBalance: Math.max(0, cut - stitched),
       finishingBalance: Math.max(0, stitched - finished), actual,
       actualPerPiece: finished && ownPayments.length ? actual / finished : null,
@@ -106,11 +109,11 @@ export function exceptions(allocations, payments, rates, today = new Date(), aud
   return issues;
 }
 
-export function payrollPack(payments, advances, week) {
+export function payrollPack(payments, advances, week, recoveries = []) {
   const workers = new Map();
   const get = (code, name) => {
     const key = String(code || name || 'Unknown').trim();
-    if (!workers.has(key)) workers.set(key, { code: key, name: name || key, gross: 0, advances: 0, paid: 0, unpaid: 0 });
+    if (!workers.has(key)) workers.set(key, { code: key, name: name || key, gross: 0, advances: 0, recovered: 0, paid: 0, unpaid: 0 });
     return workers.get(key);
   };
   payments.filter(p => day(p.week_ending) === week).forEach(p => {
@@ -119,5 +122,21 @@ export function payrollPack(payments, advances, week) {
     row[p.payment_status === 'Paid' ? 'paid' : 'unpaid'] += num(p.amount);
   });
   advances.filter(a => day(a.week_ending) === week).forEach(a => { get(a.stitcher_code, a.stitcher_name).advances += num(a.amount); });
-  return [...workers.values()].map(row => ({ ...row, net: row.gross - row.advances })).sort((a, b) => a.name.localeCompare(b.name));
+  recoveries.filter(r => day(r.week_ending) === week).forEach(r => { get(r.stitcher_code).recovered += num(r.amount); });
+  return [...workers.values()].map(row => ({ ...row, net: row.paid - row.recovered })).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function advanceLedger(ledger, payments = []) {
+  if (!ledger) return [];
+  const rows = new Map();
+  const get = code => {
+    const key = String(code || '').trim();
+    if (!rows.has(key)) rows.set(key, { code: key, name: payments.find(p => String(p.stitcher_code).trim() === key)?.stitcher_name || ledger.advances.find(a => String(a.stitcher_code).trim() === key)?.stitcher_name || key, opening: 0, given: 0, recovered: 0, unreconciled: false });
+    return rows.get(key);
+  };
+  ledger.opening.forEach(o => { get(o.stitcher_code).opening += num(o.balance); });
+  ledger.advances.filter(a => new Date(a.created_at) < new Date(ledger.activated_at)).forEach(a => { if (!ledger.opening.some(o => String(o.stitcher_code).trim() === String(a.stitcher_code).trim())) get(a.stitcher_code).unreconciled = true; });
+  ledger.advances.filter(a => new Date(a.created_at) >= new Date(ledger.activated_at)).forEach(a => { get(a.stitcher_code).given += num(a.amount); });
+  ledger.recoveries.forEach(r => { get(r.stitcher_code).recovered += num(r.amount); });
+  return [...rows.values()].map(r => ({ ...r, closing: r.unreconciled ? null : Math.max(0, r.opening + r.given - r.recovered) })).sort((a, b) => b.unreconciled - a.unreconciled || b.closing - a.closing);
 }

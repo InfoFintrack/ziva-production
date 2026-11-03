@@ -1,4 +1,4 @@
-import { exceptions, payrollPack, poBoard, weeklyTrend } from './dashboardMetrics';
+import { advanceLedger, exceptions, payrollPack, poBoard, weeklyTrend } from './dashboardMetrics';
 
 const po = { po_number: 'PO-1', article_name: 'Oxford', status: 'Active', shirt_qty: 100, trouser_qty: 0, dupatta_qty: 0, po_date: '2026-01-01', delivery_date: '2026-02-01' };
 const base = { po_number: 'PO-1', stitcher_code: '0001', stitcher_name: 'Ali', qty_rejected: 0 };
@@ -28,13 +28,13 @@ test('claims are summed by operation before comparing to accepted pieces', () =>
   expect(exceptions(allocations, payments, [], new Date('2026-01-12T00:00:00Z')).some(issue => issue.severity === 'Claim')).toBe(true);
 });
 
-test('payroll preserves paid and unpaid amounts and deducts recorded advances', () => {
+test('payroll separates advances given from recoveries against paid entries', () => {
   const payments = [
     { ...base, week_ending: '2026-01-17', amount: 300, payment_status: 'Paid' },
     { ...base, week_ending: '2026-01-17', amount: 200, payment_status: 'Verified' },
   ];
-  const [row] = payrollPack(payments, [{ ...base, week_ending: '2026-01-17', amount: 100 }], '2026-01-17');
-  expect(row).toMatchObject({ gross: 500, advances: 100, net: 400, paid: 300, unpaid: 200 });
+  const [row] = payrollPack(payments, [{ ...base, week_ending: '2026-01-17', amount: 100 }], '2026-01-17', [{ ...base, week_ending: '2026-01-17', amount: 80 }]);
+  expect(row).toMatchObject({ gross: 500, advances: 100, recovered: 80, net: 220, paid: 300, unpaid: 200 });
 });
 
 test('weekly trend separates departments using entry dates', () => {
@@ -56,4 +56,14 @@ test('a payment amount changed after Paid appears in exceptions', () => {
 test('an approved rate signed by a non-CEO is flagged', () => {
   const rates = [{ po_number: 'PO-2', status: 'Approved', approved_by_ceo: 'Accounts', ceo_approved_at: '2026-01-10', ceo_signoff_valid: false }];
   expect(exceptions([], [], rates).some(issue => issue.severity === 'Approval')).toBe(true);
+});
+
+test('advance ledger carries unrecovered balances across weeks', () => {
+  const ledger = { activated_at: '2026-01-01T00:00:00Z', opening: [{ stitcher_code: '0001', balance: 25 }], advances: [{ stitcher_code: '0001', amount: 100, created_at: '2026-01-10T00:00:00Z' }], recoveries: [{ stitcher_code: '0001', amount: 40 }] };
+  expect(advanceLedger(ledger)[0]).toMatchObject({ opening: 25, given: 100, recovered: 40, closing: 85 });
+});
+
+test('historic advances without opening balance are shown as unreconciled', () => {
+  const ledger = { activated_at: '2026-02-01T00:00:00Z', opening: [], advances: [{ stitcher_code: '0001', amount: 100, created_at: '2026-01-10T00:00:00Z' }], recoveries: [] };
+  expect(advanceLedger(ledger)[0]).toMatchObject({ unreconciled: true, closing: null });
 });

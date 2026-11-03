@@ -2,6 +2,9 @@ const { getPool } = require('./_lib/db');
 const { authenticateToken } = require('./_lib/auth');
 
 const ALLOWED_ROLES = ['Supervisor', 'Admin', 'Finishing'];
+const LIVE_STATUS = `CASE WHEN qty_allocated <= qty_returned THEN 'Complete'
+  WHEN allocation_date::date < CURRENT_DATE - 14 THEN 'Overdue'
+  ELSE 'In Progress' END`;
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -34,7 +37,7 @@ export default async function handler(req, res) {
         values.push(req.query.stitcher_name);
       }
       if (req.query.status) {
-        conditions.push(`status = $${paramIdx++}`);
+        conditions.push(`${LIVE_STATUS} = $${paramIdx++}`);
         values.push(req.query.status);
       }
       if (req.query.module_type) {
@@ -44,7 +47,7 @@ export default async function handler(req, res) {
 
       const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
       const { rows } = await pool.query(
-        `SELECT * FROM stitcher_allocations ${where} ORDER BY created_at DESC`,
+        `SELECT *, ${LIVE_STATUS} AS status FROM stitcher_allocations ${where} ORDER BY created_at DESC`,
         values
       );
       return res.json({ success: true, allocations: rows });
@@ -178,8 +181,8 @@ export default async function handler(req, res) {
         newStatus = 'Complete';
       } else {
         const allocationDate = new Date(row.allocation_date);
-        const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
-        newStatus = allocationDate < twoDaysAgo ? 'Overdue' : 'In Progress';
+        const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+        newStatus = allocationDate < fourteenDaysAgo ? 'Overdue' : 'In Progress';
       }
 
       await pool.query(

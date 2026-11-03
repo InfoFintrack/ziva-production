@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { getCMTRates, approveCMTRate, getPaymentEntries, getAdvances, addAdvance, updatePayment, getStitchers, getPOs } from '../api';
+import { getCMTRates, approveCMTRate, getPaymentEntries, getAdvances, getAdvanceLedger, addAdvance, updatePayment, getStitchers, getPOs } from '../api';
 import ProdFlowLogo from '../components/ProdFlowLogo';
 import ExecutiveDashboard from '../components/ExecutiveDashboard';
 import PoweredByFintrack from '../components/PoweredByFintrack';
@@ -139,6 +139,8 @@ function AccountsView({ user, onLogout }) {
   const [payWeek,      setPayWeek]      = useState(getUpcomingSaturday());
   const [weekPayments, setWeekPayments] = useState([]);
   const [weekAdvances, setWeekAdvances] = useState([]);
+  const [weekRecoveries, setWeekRecoveries] = useState([]);
+  const [ledgerActivated, setLedgerActivated] = useState('');
   const [payLoading,   setPayLoading]   = useState(false);
   const [expandedRow,  setExpandedRow]  = useState(null);
   const [payActing,    setPayActing]    = useState({});
@@ -189,12 +191,17 @@ function AccountsView({ user, onLogout }) {
   const loadWeekData = async (week) => {
     setPayLoading(true);
     try {
-      const [paymentsRes, advancesRes] = await Promise.all([
+      const [paymentsRes, advancesRes, ledgerRes] = await Promise.all([
         getPaymentEntries(`?week_ending=${week}`),
         getAdvances(`week_ending=${week}`),
+        getAdvanceLedger(),
       ]);
       if (paymentsRes.success) setWeekPayments(paymentsRes.payments);
       if (advancesRes.success) setWeekAdvances(advancesRes.advances);
+      if (ledgerRes.success) {
+        setWeekRecoveries(ledgerRes.recoveries.filter(r => String(r.week_ending).slice(0, 10) === week));
+        setLedgerActivated(String(ledgerRes.activated_at).slice(0, 10));
+      }
     } catch { /* silently fail */ }
     setPayLoading(false);
   };
@@ -238,7 +245,10 @@ function AccountsView({ user, onLogout }) {
       groups[k].advance += Number(a.amount || 0);
     });
     Object.values(groups).forEach(g => {
-      g.net = g.gross - g.advance;
+      const paidGross = g.entries.filter(e => e.payment_status === 'Paid').reduce((sum, e) => sum + Number(e.amount || 0), 0);
+      const recovered = weekRecoveries.filter(r => String(r.stitcher_code).trim() === String(g.code).trim()).reduce((sum, r) => sum + Number(r.amount || 0), 0);
+      g.recovered = recovered;
+      g.net = ledgerActivated && payWeek < ledgerActivated ? null : Math.max(0, paidGross - recovered);
       if (!g.entries.length) { g.status = 'Pending'; return; }
       const uniq = [...new Set(g.entries.map(e => e.payment_status))];
       if (uniq.every(s => s === 'Paid'))                         g.status = 'Paid';
@@ -324,15 +334,13 @@ function AccountsView({ user, onLogout }) {
 
   // ── Payment entry edit ────────────────────────────────────────────────────
   const [editPayModal, setEditPayModal] = useState(null);
-  const [editPayForm, setEditPayForm]   = useState({ qty_claimed: '', po_number: '', amount: '' });
+  const [editPayForm, setEditPayForm]   = useState({ qty_claimed: '' });
   const [editPaySaving, setEditPaySaving] = useState(false);
   const [editPayMsg, setEditPayMsg]     = useState(null);
 
   const openEditPay = (entry) => {
     setEditPayForm({
       qty_claimed: String(entry.qty_claimed || ''),
-      po_number: entry.po_number || '',
-      amount: String(entry.amount || ''),
     });
     setEditPayModal(entry);
     setEditPayMsg(null);
@@ -347,8 +355,6 @@ function AccountsView({ user, onLogout }) {
         id: editPayModal.id,
         action: 'edit',
         qty_claimed: Number(editPayForm.qty_claimed),
-        po_number: editPayForm.po_number,
-        amount: Number(editPayForm.amount),
       });
       if (res.success) {
         setPayMsg({ type: 'success', text: '✓ Payment entry updated.' });
@@ -402,7 +408,8 @@ function AccountsView({ user, onLogout }) {
       'Total Pieces':     g.totalPieces,
       'Gross (PKR)':      g.gross.toFixed(2),
       'Advance (PKR)':    g.advance.toFixed(2),
-      'Net Payable (PKR)':g.net.toFixed(2),
+      'Recovered (PKR)': g.recovered.toFixed(2),
+      'Net Cash Paid (PKR)':g.net === null ? '' : g.net.toFixed(2),
       'Status':           g.status,
       'Week Ending':      payWeek,
     }));
@@ -993,8 +1000,8 @@ function AccountsView({ user, onLogout }) {
                                 <th>Stitcher</th>
                                 <th>Total Pieces</th>
                                 <th>Gross (PKR)</th>
-                                <th>Advance (PKR)</th>
-                                <th>Net Payable (PKR)</th>
+                                <th>Advance Given (PKR)</th>
+                                <th>Net Cash Paid (PKR)</th>
                                 <th>Status</th>
                                 <th>Actions</th>
                               </tr>
@@ -1016,8 +1023,8 @@ function AccountsView({ user, onLogout }) {
                                     <td>{g.totalPieces.toLocaleString()}</td>
                                     <td>PKR {g.gross.toLocaleString()}</td>
                                     <td>PKR {g.advance.toLocaleString()}</td>
-                                    <td style={{ fontWeight: '700', color: g.net >= 0 ? '#16a34a' : '#dc2626' }}>
-                                      PKR {g.net.toLocaleString()}
+                                    <td style={{ fontWeight: '700', color: '#16a34a' }}>
+                                      {g.net === null ? '—' : `PKR ${g.net.toLocaleString()}`}
                                     </td>
                                     <td><PayStatusBadge status={g.status} /></td>
                                     <td onClick={e => e.stopPropagation()}>
@@ -1062,11 +1069,11 @@ function AccountsView({ user, onLogout }) {
                                           PKR {Number(e.amount || 0).toLocaleString()}
                                         </td>
                                         <td>
-                                          <button
+                                          {e.payment_status !== 'Paid' && <button
                                             className="btn btn-small"
                                             onClick={(ev) => { ev.stopPropagation(); openEditPay(e); }}
                                             style={{ background: '#2d2208', color: '#d29922', width: 'auto', fontSize: '12px', padding: '4px 10px' }}
-                                          >Edit</button>
+                                          >Edit</button>}
                                         </td>
                                       </tr>
                                     );
@@ -1172,12 +1179,12 @@ function AccountsView({ user, onLogout }) {
                                             <td><PayStatusBadge status={e.payment_status} /></td>
                                             <td>
                                               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                                                <button
+                                                {e.payment_status !== 'Paid' && <button
                                                   className="btn btn-small"
                                                   onClick={(ev) => { ev.stopPropagation(); openEditPay(e); }}
                                                   style={{ background: '#2d2208', color: '#d29922', width: 'auto', fontSize: '12px', padding: '4px 10px' }}
-                                                >Edit</button>
-                                                {isFlexible && e.payment_status !== 'Paid' && (
+                                                >Edit</button>}
+                                                {isFlexible && e.payment_status === 'Verified' && (
                                                   <button
                                                     className="btn btn-small"
                                                     style={{ background: '#3fb950', color: 'white', whiteSpace: 'nowrap' }}
@@ -1336,34 +1343,19 @@ function AccountsView({ user, onLogout }) {
               </FieldGrid>
             </div>
 
-            <div className="form-group">
-              <label>PO Number</label>
-              <input
-                type="text"
-                value={editPayForm.po_number}
-                onChange={e => setEditPayForm(prev => ({ ...prev, po_number: e.target.value }))}
-              />
-            </div>
+            <p style={{ color: '#8b949e', marginBottom: '12px' }}>PO {editPayModal.po_number} · Amount recalculates from the locked rate. Edits return to Pending verification.</p>
 
             <div className="form-group">
               <label>Qty Claimed</label>
               <input
                 type="number"
-                min="0"
+                min="1"
+                step="1"
                 value={editPayForm.qty_claimed}
                 onChange={e => setEditPayForm(prev => ({ ...prev, qty_claimed: e.target.value }))}
               />
             </div>
 
-            <div className="form-group">
-              <label>Amount (PKR)</label>
-              <input
-                type="number"
-                min="0"
-                value={editPayForm.amount}
-                onChange={e => setEditPayForm(prev => ({ ...prev, amount: e.target.value }))}
-              />
-            </div>
 
             <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
               <button className="btn btn-primary" onClick={handleEditPaySave} disabled={editPaySaving} style={{ flex: 1 }}>

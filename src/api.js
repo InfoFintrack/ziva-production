@@ -45,6 +45,8 @@ export const getRecords = () =>
   authFetch(`${BASE_URL}/api/records`);
 
 export const getFinancialAudit = () => authFetch('/api/records?type=financial_audit');
+export const getProductionFlow = () => authFetch('/api/records?type=production_flow');
+export const recordProductionFlow = data => post('/api/records?type=production_flow', data);
 
 export const getDropdowns = () =>
   authFetch(`${BASE_URL}/api/dropdowns`);
@@ -128,3 +130,5 @@ export const getAdvances = (params = '') => {
   const q = params.replace(/^\?/, '');
   return authFetch(`/api/cmt-payments?type=advance${q ? '&' + q : ''}`);
 };
+export const getAdvanceLedger = () => authFetch('/api/cmt-payments?type=advance_ledger');
+export const setAdvanceOpening = data => post('/api/cmt-payments?type=advance_ledger', data);

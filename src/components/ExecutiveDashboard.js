@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { getPOs, getAllocations, getPaymentEntries, getCMTRates, getAdvances, getFinancialAudit } from '../api';
-import { count, day, exceptions, inPeriod, money, num, payrollPack, poBoard, weeklyTrend } from '../dashboardMetrics';
+import { getPOs, getAllocations, getPaymentEntries, getCMTRates, getAdvanceLedger, getFinancialAudit } from '../api';
+import { advanceLedger, count, day, exceptions, inPeriod, money, num, payrollPack, poBoard, weeklyTrend } from '../dashboardMetrics';
 import './ExecutiveDashboard.css';
 
 const today = () => day(new Date());
@@ -37,10 +37,10 @@ export default function ExecutiveDashboard({ finance = false }) {
     setLoading(true);
     setError('');
     try {
-      const results = await Promise.all([getPOs(), getAllocations(), getPaymentEntries(), getCMTRates(), ...(finance ? [getAdvances()] : [])]);
+      const results = await Promise.all([getPOs(), getAllocations(), getPaymentEntries(), getCMTRates(), ...(finance ? [getAdvanceLedger()] : [])]);
       const failed = results.find(result => !result?.success);
       if (failed) throw new Error(failed.message || 'One or more data sources are unavailable.');
-      setData({ pos: results[0].pos || [], allocations: results[1].allocations || [], payments: results[2].payments || [], rates: results[3].rates || [], advances: finance ? results[4].advances || [] : [] });
+      setData({ pos: results[0].pos || [], allocations: results[1].allocations || [], payments: results[2].payments || [], rates: results[3].rates || [], advances: finance ? results[4].advances || [] : [], ledger: finance ? results[4] : null });
       try {
         const auditResult = await getFinancialAudit();
         if (!auditResult.success) throw new Error(auditResult.message || 'Audit history unavailable.');
@@ -57,7 +57,9 @@ export default function ExecutiveDashboard({ finance = false }) {
   const visibleBoard = board.filter(po => `${po.po_number} ${po.article_name || ''} ${po.collection_name || ''}`.toLowerCase().includes(search.toLowerCase()));
   const trend = data ? weeklyTrend(data.payments) : [];
   const issues = data ? exceptions(data.allocations, data.payments, data.rates, new Date(), audit) : [];
-  const pack = data ? payrollPack(data.payments, data.advances, week) : [];
+  const pack = data ? payrollPack(data.payments, data.advances, week, data.ledger?.recoveries || []) : [];
+  const balances = data ? advanceLedger(data.ledger, data.payments) : [];
+  const historicWeek = Boolean(data?.ledger?.activated_at && week < day(data.ledger.activated_at));
   const maxTrend = Math.max(1, ...trend.map(row => row.Stitching + row.Cutting + row.Finishing));
   const fabricMeters = data ? data.pos.reduce((total, po) => total + ['shirt', 'trouser', 'dupatta'].reduce((meters, key) => meters + num(po[`${key}_meters_issued`]), 0), 0) : 0;
   const verifiedUnpaid = data ? data.payments.filter(p => day(p.verified_at) && day(p.verified_at) <= closeDate && (!day(p.payment_date) || day(p.payment_date) > closeDate)).reduce((total, p) => total + num(p.amount), 0) : 0;
@@ -88,9 +90,9 @@ export default function ExecutiveDashboard({ finance = false }) {
       </div>
 
       {finance && <section className="executive-panel">
-        <div className="executive-heading"><div><span className="executive-eyebrow">01 / WEEKLY PAYROLL</span><h2>Cash payout pack</h2></div><div className="executive-actions"><input aria-label="Week ending" type="date" value={week} onChange={event => setWeek(event.target.value)} /><button onClick={() => exportCsv(`payroll-${week}.csv`, ['Worker code', 'Worker', 'Gross PKR', 'Advances PKR', 'Net PKR', 'Paid PKR', 'Unpaid PKR'], pack.map(p => [p.code, p.name, p.gross, p.advances, p.net, p.paid, p.unpaid]))}>Export CSV</button></div></div>
-        <p className="executive-note">Select the recorded week-ending date. “Paid” follows payment status; advances reduce calculated net but are not proof of cash disbursement.</p>
-        <div className="executive-table-wrap"><table><thead><tr><th>Worker</th><th>Gross</th><th>Advances</th><th>Net payout</th><th>Paid</th><th>Unpaid</th></tr></thead><tbody>{pack.map(p => <tr key={p.code}><td><b>{p.name}</b><small>{p.code}</small></td><td>{money(p.gross)}</td><td>{money(p.advances)}</td><td className="executive-strong">{money(p.net)}</td><td>{money(p.paid)}</td><td>{money(p.unpaid)}</td></tr>)}{!pack.length && <tr><td colSpan="6" className="executive-empty">No entries for this week.</td></tr>}</tbody></table></div>
+        <div className="executive-heading"><div><span className="executive-eyebrow">01 / WEEKLY PAYROLL</span><h2>Cash payout pack</h2></div><div className="executive-actions"><input aria-label="Week ending" type="date" value={week} onChange={event => setWeek(event.target.value)} /><button onClick={() => exportCsv(`payroll-${week}.csv`, ['Worker code', 'Worker', 'Gross PKR', 'Advances given PKR', 'Recovered PKR', 'Net cash paid PKR', 'Unpaid gross PKR'], pack.map(p => [p.code, p.name, p.gross, p.advances, p.recovered, historicWeek ? '' : p.net, p.unpaid]))}>Export CSV</button></div></div>
+        <p className="executive-note">Net cash paid = paid gross less recorded recoveries. Advances given are a separate cash outflow. {historicWeek ? 'This week predates the recovery ledger, so net cash paid is unavailable.' : 'Historic opening balances need reconciliation before the ledger is authoritative.'}</p>
+        <div className="executive-table-wrap"><table><thead><tr><th>Worker</th><th>Gross</th><th>Advances given</th><th>Recovered</th><th>Net cash paid</th><th>Unpaid gross</th></tr></thead><tbody>{pack.map(p => <tr key={p.code}><td><b>{p.name}</b><small>{p.code}</small></td><td>{money(p.gross)}</td><td>{money(p.advances)}</td><td>{money(p.recovered)}</td><td className="executive-strong">{historicWeek ? '—' : money(p.net)}</td><td>{money(p.unpaid)}</td></tr>)}{!pack.length && <tr><td colSpan="6" className="executive-empty">No entries for this week.</td></tr>}</tbody></table></div>
       </section>}
 
       <div className="executive-grid">
@@ -116,6 +118,7 @@ export default function ExecutiveDashboard({ finance = false }) {
       </section>
 
       {finance && <div className="executive-grid"><section className="executive-panel"><span className="executive-eyebrow">06 / MONTH-END CLOSE</span><h2>Verified, unpaid at close</h2><div className="executive-actions" style={{ marginTop: 16 }}><label className="executive-note">Close date <input type="date" value={closeDate} onChange={event => setCloseDate(event.target.value)} /></label></div><div className="executive-feature-value">{money(verifiedUnpaid)}</div><p className="executive-note">Verified by {closeDate} and paid later or still unpaid. Unclaimed work is excluded because the system has no dated operation-level work snapshot.</p></section><section className="executive-panel"><span className="executive-eyebrow">07 / WORK IN PROCESS</span><h2>Stage balance</h2><div className="executive-feature-value">{count(sum(board, 'sewingBalance') + sum(board, 'finishingBalance'))} pcs</div><p className="executive-note">Current accepted-piece balances. Fabric unit cost and dated stage snapshots are needed before a defensible month-end WIP value can be shown.</p></section></div>}
+      {finance && <section className="executive-panel"><div className="executive-heading"><div><span className="executive-eyebrow">08 / ADVANCES</span><h2>Worker advance ledger</h2></div><span>From {day(data.ledger?.activated_at)}</span></div><p className="executive-note">Opening balances must be reconciled for existing workers. New advances and payment recoveries carry forward automatically.</p><div className="executive-table-wrap"><table><thead><tr><th>Worker</th><th>Opening</th><th>Given</th><th>Recovered</th><th>Closing</th></tr></thead><tbody>{balances.map(r => <tr key={r.code}><td><b>{r.name}</b><small>{r.code}</small></td><td>{money(r.opening)}</td><td>{money(r.given)}</td><td>{money(r.recovered)}</td><td className="executive-strong">{r.unreconciled ? 'Reconcile opening' : money(r.closing)}</td></tr>)}{!balances.length && <tr><td colSpan="5" className="executive-empty">No advance balances recorded.</td></tr>}</tbody></table></div></section>}
       {finance && <section className="executive-panel"><div className="executive-heading"><div><span className="executive-eyebrow">08 / CONTROL LOG</span><h2>Rate & payment changes</h2></div><span>Latest 200 changes</span></div>
         {auditError ? <p className="executive-note">{auditError}</p> : <><p className="executive-note">Every new change records the actor, time and old → new value after the database migration. Historic changes cannot be reconstructed.</p><div className="executive-table-wrap"><table><thead><tr><th>When</th><th>Actor</th><th>Record</th><th>Field</th><th>Old</th><th>New</th></tr></thead><tbody>{audit.map(change => <tr key={change.id}><td>{new Date(change.changed_at).toLocaleString('en-PK')}</td><td>{change.actor}</td><td><b>{change.entity === 'cmt_rates' ? 'Rate' : 'Payment'}</b><small>{change.record_id}</small></td><td>{change.field}</td><td>{auditValue(change.old_value)}</td><td>{auditValue(change.new_value)}</td></tr>)}{!audit.length && <tr><td colSpan="6" className="executive-empty">No audited changes yet.</td></tr>}</tbody></table></div></>}
       </section>}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom';
 import Login from './pages/Login';
 import PPView from './pages/PPView';
 import CuttingView from './pages/CuttingView';
@@ -10,6 +10,7 @@ import SupervisorView from './pages/SupervisorView';
 import AccountsView from './pages/AccountsView';
 import CEOView from './pages/CEOView';
 import FinishingView from './pages/FinishingView';
+import ProductionFlowView from './pages/ProductionFlowView';
 
 const ROLE_HOME = {
   PP:         '/issue',
@@ -104,7 +105,9 @@ function App() {
             ? <AdminSettings user={user} onLogout={handleLogout} />
             : <Navigate to={home} />
         } />
+        <Route path="/flow" element={<ProductionFlowView user={user} onLogout={handleLogout} home={home} />} />
       </Routes>
+      <Link className="flow-shortcut" to="/flow">◆ Production flow</Link>
     </Router>
   );
 }

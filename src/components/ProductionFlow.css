@@ -1,0 +1,7 @@
+.flow-shortcut { position:fixed; right:20px; bottom:20px; z-index:100; padding:12px 17px; border-radius:30px; background:#244677; border:1px solid #7695d0; box-shadow:0 8px 25px #0008; color:#fff; font-size:13px; font-weight:700; text-decoration:none; }
+.flow-shortcut:hover { background:#305b97; }
+.flow-form { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; align-items:end; }
+.flow-form label { color:#9eabc0; font-size:11px; font-weight:700; display:flex; flex-direction:column; gap:6px; }
+.flow-form input,.flow-form select,.executive select { width:100%; background:#101926; border:1px solid #3c4d67; color:#eaf1ff; border-radius:8px; padding:8px 10px; min-width:0; }
+.flow-form button { height:38px; }
+@media(max-width:600px) { .flow-shortcut { right:12px; bottom:12px; } }

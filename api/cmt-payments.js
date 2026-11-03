@@ -1,5 +1,7 @@
 const { getPool } = require('./_lib/db');
-const { auditedQuery } = require('./_lib/auditedQuery');
+const { withAuditedTransaction } = require('./_lib/auditedQuery');
+const { ClaimError, validateClaim } = require('./_lib/claimPolicy');
+const { ensureProductionFlow } = require('./_lib/productionFlow');
 const { authenticateToken } = require('./_lib/auth');
 
 // Maps department|operation → cmt_rates column name (whitelisted — safe to interpolate)
@@ -56,6 +58,46 @@ const CREATE_ADVANCES_TABLE = `
   )
 `;
 
+const CREATE_ADVANCE_LEDGER = `
+  CREATE TABLE IF NOT EXISTS advance_ledger_epoch (id SMALLINT PRIMARY KEY CHECK (id=1), activated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+  INSERT INTO advance_ledger_epoch (id) VALUES (1) ON CONFLICT DO NOTHING;
+  CREATE TABLE IF NOT EXISTS advance_opening (
+    stitcher_code CHAR(4) PRIMARY KEY, balance NUMERIC(12,2) NOT NULL CHECK (balance >= 0),
+    set_by VARCHAR(100) NOT NULL, set_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+  CREATE TABLE IF NOT EXISTS advance_recoveries (
+    payment_id TEXT PRIMARY KEY, stitcher_code CHAR(4) NOT NULL,
+    amount NUMERIC(12,2) NOT NULL CHECK (amount > 0), week_ending DATE,
+    recovered_by VARCHAR(100) NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+  ALTER TABLE advance_ledger_epoch ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE advance_opening ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE advance_recoveries ENABLE ROW LEVEL SECURITY;
+`;
+
+async function ensureAdvanceLedger(pool) { await pool.query(CREATE_ADVANCES_TABLE); await pool.query(CREATE_ADVANCE_LEDGER); }
+
+async function advanceBalance(client, code) {
+  const { rows } = await client.query(`SELECT
+    COALESCE((SELECT balance FROM advance_opening WHERE stitcher_code=$1),0)
+    + COALESCE((SELECT SUM(a.amount) FROM advances a CROSS JOIN advance_ledger_epoch e WHERE e.id=1 AND a.stitcher_code=$1 AND a.created_at>=e.activated_at),0)
+    - COALESCE((SELECT SUM(amount) FROM advance_recoveries WHERE stitcher_code=$1),0) AS balance`, [code]);
+  return Math.max(0, Number(rows[0].balance));
+}
+
+async function recoverAdvance(client, payment, actor) {
+  await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`advance:${payment.stitcher_code}`]);
+  const historic = await client.query(`SELECT
+    (SELECT COUNT(*) FROM advances a CROSS JOIN advance_ledger_epoch e WHERE e.id=1 AND a.stitcher_code=$1 AND a.created_at<e.activated_at) AS old_advances,
+    (SELECT COUNT(*) FROM advance_opening WHERE stitcher_code=$1) AS reconciled`, [payment.stitcher_code]);
+  if (Number(historic.rows[0].old_advances) > 0 && Number(historic.rows[0].reconciled) === 0)
+    throw new ClaimError(`Reconcile opening advances for worker ${String(payment.stitcher_code).trim()} before payment.`);
+  const balance = await advanceBalance(client, payment.stitcher_code);
+  const recovery = Math.min(balance, Number(payment.amount));
+  if (recovery > 0) await client.query(`INSERT INTO advance_recoveries
+    (payment_id, stitcher_code, amount, week_ending, recovered_by) VALUES ($1,$2,$3,$4,$5)`,
+    [String(payment.id), payment.stitcher_code, recovery, payment.week_ending, actor]);
+  return recovery;
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
@@ -68,9 +110,46 @@ export default async function handler(req, res) {
   const pool = getPool();
   const { type } = req.query;
 
+  if (type === 'advance_ledger') {
+    if (!['Admin', 'Accounts', 'CEO'].includes(user.role)) return res.status(403).json({ success: false, message: 'Access denied.' });
+    try {
+      await ensureAdvanceLedger(pool);
+      if (req.method === 'GET') {
+        const [epoch, opening, recoveries, advances] = await Promise.all([
+          pool.query('SELECT activated_at FROM advance_ledger_epoch WHERE id=1'),
+          pool.query('SELECT * FROM advance_opening'),
+          pool.query('SELECT * FROM advance_recoveries ORDER BY created_at DESC'),
+          pool.query('SELECT * FROM advances ORDER BY created_at DESC'),
+        ]);
+        return res.json({ success: true, activated_at: epoch.rows[0].activated_at, opening: opening.rows, recoveries: recoveries.rows, advances: advances.rows });
+      }
+      if (req.method === 'POST') {
+        if (user.role !== 'Admin') return res.status(403).json({ success: false, message: 'Only Admin can set reconciled opening balances.' });
+        const code = String(req.body.stitcher_code || '').trim();
+        const balance = Number(req.body.balance);
+        if (!code || !Number.isFinite(balance) || balance < 0) return res.status(400).json({ success: false, message: 'Worker and nonnegative opening balance are required.' });
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+          await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`advance:${code}`]);
+          const worker = await client.query('SELECT 1 FROM stitchers WHERE stitcher_code=$1', [code]);
+          if (!worker.rows.length) throw new ClaimError('Worker not found.');
+          const result = await client.query('SELECT 1 FROM advance_recoveries WHERE stitcher_code=$1 LIMIT 1', [code]);
+          if (result.rows.length) throw new ClaimError('Opening balance is locked after recovery starts.');
+          await client.query(`INSERT INTO advance_opening (stitcher_code,balance,set_by) VALUES ($1,$2,$3)
+            ON CONFLICT (stitcher_code) DO UPDATE SET balance=EXCLUDED.balance,set_by=EXCLUDED.set_by,set_at=NOW()`, [code, balance, user.name]);
+          await client.query('COMMIT');
+        } catch (error) { await client.query('ROLLBACK'); throw error; }
+        finally { client.release(); }
+        return res.json({ success: true });
+      }
+      return res.status(405).json({ success: false, message: 'Method not allowed.' });
+    } catch (err) { if (!(err instanceof ClaimError)) console.error('Advance ledger error:', err.message); return res.status(err instanceof ClaimError ? 400 : 500).json({ success: false, message: err instanceof ClaimError ? err.message : 'Advance ledger unavailable.' }); }
+  }
+
   // ── ?type=advance ─────────────────────────────────────────────────────────
   if (type === 'advance') {
-    await pool.query(CREATE_ADVANCES_TABLE).catch(() => {});
+    await ensureAdvanceLedger(pool);
 
     if (req.method === 'GET') {
       try {
@@ -107,6 +186,7 @@ export default async function handler(req, res) {
       if (!stitcher_code || amount == null) {
         return res.json({ success: false, message: 'stitcher_code and amount are required.' });
       }
+      if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) return res.status(400).json({ success: false, message: 'Advance amount must be positive.' });
       try {
         const { rows: stitcherRows } = await pool.query(
           `SELECT name FROM stitchers WHERE stitcher_code = $1`,
@@ -132,7 +212,7 @@ export default async function handler(req, res) {
 
   // ── ?type=advance_balance ─────────────────────────────────────────────────
   if (type === 'advance_balance') {
-    await pool.query(CREATE_ADVANCES_TABLE).catch(() => {});
+    await ensureAdvanceLedger(pool);
 
     if (req.method === 'GET') {
       const { stitcher_code } = req.query;
@@ -140,11 +220,11 @@ export default async function handler(req, res) {
         return res.json({ success: false, message: 'stitcher_code is required.' });
       }
       try {
-        const { rows } = await pool.query(
-          `SELECT COALESCE(SUM(amount), 0) AS balance FROM advances WHERE stitcher_code = $1`,
-          [stitcher_code]
-        );
-        return res.json({ success: true, balance: Number(rows[0].balance) });
+        const historic = await pool.query(`SELECT
+          (SELECT COUNT(*) FROM advances a CROSS JOIN advance_ledger_epoch e WHERE e.id=1 AND a.stitcher_code=$1 AND a.created_at<e.activated_at) AS old_advances,
+          (SELECT COUNT(*) FROM advance_opening WHERE stitcher_code=$1) AS reconciled`, [stitcher_code]);
+        const requiresReconciliation = Number(historic.rows[0].old_advances) > 0 && Number(historic.rows[0].reconciled) === 0;
+        return res.json({ success: true, balance: requiresReconciliation ? null : await advanceBalance(pool, stitcher_code), requires_reconciliation: requiresReconciliation });
       } catch (err) {
         console.error('Advance Balance GET error:', err.message);
         return res.status(500).json({ success: false, message: 'Server error.' });
@@ -220,6 +300,9 @@ export default async function handler(req, res) {
     if (!po_number || !stitcher_code || !department || !operation || !qty_claimed) {
       return res.json({ success: false, message: 'po_number, stitcher_code, department, operation, and qty_claimed are required.' });
     }
+    if (!Number.isInteger(Number(qty_claimed)) || Number(qty_claimed) <= 0) {
+      return res.status(400).json({ success: false, message: 'Claimed pieces must be a positive whole number.' });
+    }
     // For Cutting dept, operation may be combined like "Shirt, Trouser" since they share the same rate
     let rateField;
     let component;
@@ -264,7 +347,10 @@ export default async function handler(req, res) {
       const resolvedEntryDate = entry_date || new Date().toISOString().split('T')[0];
       const week_ending = getWeekEnding(resolvedEntryDate);
 
-      const { rows } = await auditedQuery(pool, user.name,
+      await ensureProductionFlow(pool);
+      const { rows } = await withAuditedTransaction(pool, user.name, async client => {
+        await validateClaim(client, { po_number, stitcher_code, department, operation, component, qty_claimed });
+        return client.query(
         `INSERT INTO cmt_payments
            (entry_date, po_number, stitcher_id, stitcher_code, stitcher_name,
             component, department, operation, qty_claimed, rate, amount,
@@ -282,12 +368,13 @@ export default async function handler(req, res) {
           worker_type || null,
           flexible_payment === true || flexible_payment === 'true' ? true : false,
         ]
-      );
+        );
+      });
 
       return res.json({ success: true, payment: rows[0] });
     } catch (err) {
-      console.error('CMT Payments POST error:', err.message);
-      return res.status(500).json({ success: false, message: 'Server error.' });
+      if (!(err instanceof ClaimError)) console.error('CMT Payments POST error:', err.message);
+      return res.status(err instanceof ClaimError ? 400 : 500).json({ success: false, message: err instanceof ClaimError ? err.message : 'Server error.' });
     }
 
   } else if (req.method === 'PUT') {
@@ -295,7 +382,7 @@ export default async function handler(req, res) {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
 
-    const { id, stitcher_code, week_ending, action, payment_date, qty_claimed, po_number, amount } = req.body;
+    const { id, stitcher_code, week_ending, action, payment_date, qty_claimed, po_number } = req.body;
 
     if (!action) {
       return res.json({ success: false, message: 'action is required.' });
@@ -304,101 +391,58 @@ export default async function handler(req, res) {
       return res.json({ success: false, message: 'action must be "verify", "pay", "mark_paid", "mark_paid_flexible", or "edit".' });
     }
 
-    // ── edit action: update qty_claimed, po_number, amount on a single entry ──
     if (action === 'edit') {
-      if (!id) return res.json({ success: false, message: 'id is required for edit.' });
-      const setClauses = [];
-      const values = [];
-      let pi = 1;
-      if (qty_claimed !== undefined)  { setClauses.push(`qty_claimed = $${pi++}`);  values.push(Number(qty_claimed)); }
-      if (po_number !== undefined)    { setClauses.push(`po_number = $${pi++}`);    values.push(po_number); }
-      if (amount !== undefined)       { setClauses.push(`amount = $${pi++}`);       values.push(Number(amount)); }
-      if (setClauses.length === 0) return res.json({ success: false, message: 'Nothing to update.' });
-      values.push(id);
+      if (!id) return res.status(400).json({ success: false, message: 'Payment ID is required.' });
       try {
-        const result = await auditedQuery(pool, user.name,
-          `UPDATE cmt_payments SET ${setClauses.join(', ')} WHERE id = $${pi}`,
-          values
-        );
-        if (result.rowCount === 0) return res.json({ success: false, message: 'Payment record not found.' });
-        return res.json({ success: true });
+        await ensureProductionFlow(pool);
+        const updated = await withAuditedTransaction(pool, user.name, async client => {
+          const { rows } = await client.query('SELECT * FROM cmt_payments WHERE id=$1 FOR UPDATE', [id]);
+          if (!rows.length) throw new ClaimError('Payment record not found.');
+          const original = rows[0];
+          if (original.payment_status === 'Paid') throw new ClaimError('Paid entries cannot be edited. Record a separate correction.');
+          if (po_number && po_number !== original.po_number) throw new ClaimError('PO cannot be changed on a claim. Enter a new claim instead.');
+          const quantity = qty_claimed === undefined ? Number(original.qty_claimed) : Number(qty_claimed);
+          await validateClaim(client, { ...original, qty_claimed: quantity }, id);
+          const result = await client.query(`UPDATE cmt_payments SET qty_claimed=$1, amount=$2,
+            payment_status='Pending', verified_by=NULL, verified_at=NULL WHERE id=$3 RETURNING *`,
+            [quantity, quantity * Number(original.rate), id]);
+          return result.rows[0];
+        });
+        return res.json({ success: true, payment: updated });
       } catch (err) {
-        console.error('CMT Payments EDIT error:', err.message);
-        return res.status(500).json({ success: false, message: 'Server error.' });
+        if (!(err instanceof ClaimError)) console.error('CMT Payments EDIT error:', err.message);
+        return res.status(err instanceof ClaimError ? 400 : 500).json({ success: false, message: err instanceof ClaimError ? err.message : 'Server error.' });
       }
     }
 
-    // mark_paid_flexible — marks a single payment record as Paid by id only (no week_ending restriction)
-    if (action === 'mark_paid_flexible') {
-      if (!id) return res.json({ success: false, message: 'id is required for mark_paid_flexible.' });
-      try {
-        const result = await auditedQuery(pool, user.name,
-          `UPDATE cmt_payments SET payment_status = 'Paid', payment_date = $1 WHERE id = $2`,
-          [new Date().toISOString().split('T')[0], id]
-        );
-        if (result.rowCount === 0) {
-          return res.json({ success: false, message: 'Payment record not found.' });
-        }
-        return res.json({ success: true });
-      } catch (err) {
-        console.error('CMT Payments mark_paid_flexible error:', err.message);
-        return res.status(500).json({ success: false, message: 'Server error.' });
-      }
-    }
-
-    // Bulk update by stitcher_code + week_ending
-    if (stitcher_code && week_ending) {
-      try {
-        if (action === 'verify') {
-          await auditedQuery(pool, user.name,
-            `UPDATE cmt_payments
-             SET payment_status = 'Verified', verified_by = $1, verified_at = NOW()
-             WHERE stitcher_code = $2 AND week_ending = $3`,
-            [user.name, stitcher_code, week_ending]
-          );
-        } else if (action === 'mark_paid') {
-          await auditedQuery(pool, user.name,
-            `UPDATE cmt_payments
-             SET payment_status = 'Paid', payment_date = $1
-             WHERE stitcher_code = $2 AND week_ending = $3`,
-            [new Date().toISOString().split('T')[0], stitcher_code, week_ending]
-          );
-        }
-        return res.json({ success: true });
-      } catch (err) {
-        console.error('CMT Payments bulk PUT error:', err.message);
-        return res.status(500).json({ success: false, message: 'Server error.' });
-      }
-    }
-
-    // Single-record update by id (legacy)
-    if (!id) {
-      return res.json({ success: false, message: 'Either (stitcher_code + week_ending) or id is required.' });
-    }
-    if (action === 'pay' && !payment_date) {
-      return res.json({ success: false, message: 'payment_date is required for action "pay".' });
-    }
-
+    if (!id && !(stitcher_code && week_ending)) return res.status(400).json({ success: false, message: 'Payment ID or worker and week are required.' });
+    if (action === 'mark_paid_flexible' && !id) return res.status(400).json({ success: false, message: 'Payment ID is required.' });
+    const verifying = action === 'verify';
+    const expected = verifying ? 'Pending' : 'Verified';
+    const paidDate = payment_date || new Date().toISOString().split('T')[0];
     try {
-      let result;
-      if (action === 'verify') {
-        result = await auditedQuery(pool, user.name,
-          `UPDATE cmt_payments SET payment_status = 'Verified', verified_by = $1, verified_at = NOW() WHERE id = $2`,
-          [user.name, id]
-        );
-      } else {
-        result = await auditedQuery(pool, user.name,
-          `UPDATE cmt_payments SET payment_status = 'Paid', payment_date = $1 WHERE id = $2`,
-          [payment_date || new Date().toISOString().split('T')[0], id]
-        );
-      }
-      if (result.rowCount === 0) {
-        return res.json({ success: false, message: 'Payment record not found.' });
-      }
-      return res.json({ success: true });
+      if (!verifying) await ensureAdvanceLedger(pool);
+      const changed = await withAuditedTransaction(pool, user.name, async client => {
+        const result = id
+          ? await client.query('SELECT * FROM cmt_payments WHERE id=$1 FOR UPDATE', [id])
+          : await client.query('SELECT * FROM cmt_payments WHERE stitcher_code=$1 AND week_ending=$2 ORDER BY id FOR UPDATE', [stitcher_code, week_ending]);
+        if (!result.rows.length) throw new ClaimError('No matching payment entries.');
+        if (result.rows.some(row => row.payment_status !== expected)) throw new ClaimError(`Every selected entry must be ${expected} before ${verifying ? 'verification' : 'payment'}.`);
+        if (action === 'mark_paid_flexible' && result.rows.some(row => !row.flexible_payment)) throw new ClaimError('Flexible payment action requires a flexible entry.');
+        if (!verifying && result.rows.some(row => row.verified_by === user.name)) throw new ClaimError('A different Accounts or Admin user must mark verified entries paid.');
+        for (const row of result.rows) {
+          if (verifying) await client.query(`UPDATE cmt_payments SET payment_status='Verified', verified_by=$1, verified_at=NOW() WHERE id=$2`, [user.name, row.id]);
+          else {
+            await recoverAdvance(client, row, user.name);
+            await client.query(`UPDATE cmt_payments SET payment_status='Paid', payment_date=$1 WHERE id=$2`, [paidDate, row.id]);
+          }
+        }
+        return result.rows.length;
+      });
+      return res.json({ success: true, changed });
     } catch (err) {
-      console.error('CMT Payments PUT error:', err.message);
-      return res.status(500).json({ success: false, message: 'Server error.' });
+      if (!(err instanceof ClaimError)) console.error('CMT Payments status change error:', err.message);
+      return res.status(err instanceof ClaimError ? 400 : 500).json({ success: false, message: err instanceof ClaimError ? err.message : 'Server error.' });
     }
 
   } else {

@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import {
   getPOs, getCMTRates, getStitchers,
   getAllocations, createAllocation, updateAllocation,
-  getPaymentEntries, logPaymentEntry, updatePayment,
+  getPaymentEntries, logPaymentEntry,
   logFabricIssuance, getFinishingIntakeLog,
   createStitcher, updateStitcher,
 } from '../api';
@@ -205,7 +205,6 @@ function FinishingView({ user, onLogout }) {
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const [bulkMsg, setBulkMsg] = useState(null);
   const [bulkProgress, setBulkProgress] = useState('');
-  const [flexMarking, setFlexMarking] = useState({});
 
   // ── Tab 4: Stitcher Dashboard ────────────────────────────────────────────────
   const [sdStitcher, setSdStitcher] = useState('');
@@ -742,15 +741,6 @@ function FinishingView({ user, onLogout }) {
       text: `${submitted} entr${submitted === 1 ? 'y' : 'ies'} submitted${failed > 0 ? `, ${failed} failed` : ''}.`,
     });
     if (submitted > 0) { plLoadMyEntries(); loadBulkRows(bulkStitcher); }
-  };
-
-  const handleMarkPaidFlexible = async (entry) => {
-    setFlexMarking(prev => ({ ...prev, [entry.id]: true }));
-    try {
-      const res = await updatePayment({ action: 'mark_paid_flexible', id: entry.id });
-      if (res.success) plLoadMyEntries();
-    } catch { /* silently fail */ }
-    setFlexMarking(prev => ({ ...prev, [entry.id]: false }));
   };
 
   // ── Tab 4: Stitcher Dashboard ────────────────────────────────────────────────
@@ -1730,16 +1720,7 @@ function FinishingView({ user, onLogout }) {
                                 </td>
                                 <td>{e.payment_date ? String(e.payment_date).slice(0, 10) : '—'}</td>
                                 <td>
-                                  {e.payment_status !== 'Paid' && (
-                                    <button
-                                      className="btn btn-small"
-                                      style={{ background: '#3fb950', color: 'white', whiteSpace: 'nowrap' }}
-                                      onClick={() => handleMarkPaidFlexible(e)}
-                                      disabled={!!flexMarking[e.id]}
-                                    >
-                                      {flexMarking[e.id] ? '...' : 'Mark Paid'}
-                                    </button>
-                                  )}
+                                  {e.payment_status !== 'Paid' && <span style={{ color: '#8b949e' }}>Accounts verifies and pays</span>}
                                 </td>
                               </tr>
                             );
