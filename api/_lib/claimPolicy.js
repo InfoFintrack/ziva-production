@@ -26,18 +26,19 @@ async function validateClaim(client, claim, excludeId = null) {
       const allocationComponent = department.startsWith('Finishing') ? `${part} ${String(operation).toLowerCase()}` : part;
       const moduleType = department.startsWith('Finishing') ? 'Finishing' : 'Stitching';
       source = await client.query(`SELECT COALESCE(SUM(qty_accepted),0) AS qty FROM stitcher_allocations
-        WHERE po_number=$1 AND component=$2 AND stitcher_code=$3 AND COALESCE(module_type,'Stitching')=$4`,
+        WHERE po_number=$1 AND LOWER(BTRIM(component))=$2 AND stitcher_code=$3
+          AND ($4='Finishing' OR COALESCE(LOWER(BTRIM(module_type)),'stitching')='stitching')`,
       [po_number, allocationComponent, stitcher_code, moduleType]);
     }
     const accepted = Number(source.rows[0].qty);
     const earlier = department === 'Cutting'
       ? await client.query(`SELECT COALESCE(SUM(qty_claimed),0) AS qty FROM cmt_payments WHERE po_number=$1 AND stitcher_code=$2 AND department='Cutting' AND LOWER(operation) LIKE $3 AND ($4::text IS NULL OR id::text<>$4::text)`, [po_number, stitcher_code, `%${part}%`, excludeId])
-      : await client.query(`SELECT COALESCE(SUM(qty_claimed),0) AS qty FROM cmt_payments WHERE po_number=$1 AND stitcher_code=$2 AND department=$3 AND operation=$4 AND ($5::text IS NULL OR id::text<>$5::text)`, [po_number, stitcher_code, department, operation, excludeId]);
+      : await client.query(`SELECT COALESCE(SUM(qty_claimed),0) AS qty FROM cmt_payments WHERE po_number=$1 AND stitcher_code=$2 AND LOWER(BTRIM(department))=LOWER(BTRIM($3)) AND LOWER(BTRIM(operation))=LOWER(BTRIM($4)) AND ($5::text IS NULL OR id::text<>$5::text)`, [po_number, stitcher_code, department, operation, excludeId]);
     const claimed = Number(earlier.rows[0].qty);
-    if (Number(qty_claimed) > accepted - claimed) throw new ClaimError(`${part}: claimable is ${Math.max(0, accepted - claimed)} accepted pieces after earlier claims.`);
+    if (Number(qty_claimed) > accepted - claimed) throw new ClaimError(`${part}: claimable is ${Math.max(0, accepted - claimed)} accepted pieces after earlier claims. Check the matching allocation's accepted return.`);
     const total = department === 'Cutting'
       ? await client.query(`SELECT COALESCE(SUM(qty_claimed),0) AS qty FROM cmt_payments WHERE po_number=$1 AND department='Cutting' AND LOWER(operation) LIKE $2 AND ($3::text IS NULL OR id::text<>$3::text)`, [po_number, `%${part}%`, excludeId])
-      : await client.query(`SELECT COALESCE(SUM(qty_claimed),0) AS qty FROM cmt_payments WHERE po_number=$1 AND department=$2 AND operation=$3 AND ($4::text IS NULL OR id::text<>$4::text)`, [po_number, department, operation, excludeId]);
+      : await client.query(`SELECT COALESCE(SUM(qty_claimed),0) AS qty FROM cmt_payments WHERE po_number=$1 AND LOWER(BTRIM(department))=LOWER(BTRIM($2)) AND LOWER(BTRIM(operation))=LOWER(BTRIM($3)) AND ($4::text IS NULL OR id::text<>$4::text)`, [po_number, department, operation, excludeId]);
     if (Number(qty_claimed) + Number(total.rows[0].qty) > ordered) throw new ClaimError(`${part}: claims for this operation would exceed the PO quantity of ${ordered}.`);
   }
 }

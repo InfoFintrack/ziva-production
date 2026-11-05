@@ -589,7 +589,7 @@ function FinishingView({ user, onLogout }) {
     setPlSubmitting(true);
     setPlFormMsg(null);
     let submitted = 0;
-    let failed = 0;
+    const failures = [];
     for (const op of plSelectedOps) {
       try {
         const color = deriveFinishingColor(plPos, plForm.po_number, plForm.department);
@@ -606,19 +606,21 @@ function FinishingView({ user, onLogout }) {
           flexible_payment: selectedStitcher?.worker_type === 'Finishing_OutOfFactory',
         });
         if (res.success) submitted++;
-        else failed++;
-      } catch {
-        failed++;
+        else failures.push(`${op}: ${res.message || res.error || 'Payment was not accepted.'}`);
+      } catch (error) {
+        failures.push(`${op}: ${error.message || 'Request failed.'}`);
       }
     }
     setPlSubmitting(false);
-    if (failed === 0) {
+    if (failures.length === 0) {
       setPlFormMsg({ type: 'success', text: `✓ ${submitted} entr${submitted === 1 ? 'y' : 'ies'} logged successfully.` });
       setPlForm(prev => ({ ...EMPTY_PL_FORM, po_number: prev.po_number }));
       setPlSelectedOps([]);
       plLoadMyEntries();
     } else {
-      setPlFormMsg({ type: 'error', text: `${submitted} submitted, ${failed} failed. Please retry.` });
+      setPlSelectedOps(plSelectedOps.filter(op => failures.some(failure => failure.startsWith(`${op}:`))));
+      if (submitted > 0) plLoadMyEntries();
+      setPlFormMsg({ type: 'error', text: `${submitted} submitted, ${failures.length} failed. ${failures.join(' ')}` });
     }
   };
 
@@ -1402,6 +1404,7 @@ function FinishingView({ user, onLogout }) {
                               required
                               placeholder="Pieces"
                             />
+                            <small style={{ color: '#8b949e' }}>Each selected operation needs its own accepted return for this worker. Claim accepted pieces minus earlier claims; receiving or allocating pieces alone is not payable.</small>
                           </div>
 
                           {/* Per-op breakdown + combined total */}

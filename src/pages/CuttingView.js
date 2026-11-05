@@ -795,7 +795,7 @@ function CuttingView({ user, onLogout }) {
     setPlSubmitting(true);
     setPlFormMsg(null);
     let submitted = 0;
-    let failed = 0;
+    const failures = [];
 
     // For Cutting dept, all ops share the same rate — submit ONE entry with combined component
     if (plForm.department === 'Cutting') {
@@ -812,9 +812,9 @@ function CuttingView({ user, onLogout }) {
           ...(plForm.remarks   ? { remarks: plForm.remarks } : {}),
         });
         if (res.success) submitted++;
-        else failed++;
-      } catch {
-        failed++;
+        else failures.push(`${plSelectedOps.join(', ')}: ${res.message || res.error || 'Payment was not accepted.'}`);
+      } catch (error) {
+        failures.push(`${plSelectedOps.join(', ')}: ${error.message || 'Request failed.'}`);
       }
     } else {
       // For other depts (Stitching, Finishing), each op has a different rate — submit separately
@@ -832,20 +832,22 @@ function CuttingView({ user, onLogout }) {
             ...(plForm.remarks   ? { remarks: plForm.remarks } : {}),
           });
           if (res.success) submitted++;
-          else failed++;
-        } catch {
-          failed++;
+          else failures.push(`${op}: ${res.message || res.error || 'Payment was not accepted.'}`);
+        } catch (error) {
+          failures.push(`${op}: ${error.message || 'Request failed.'}`);
         }
       }
     }
     setPlSubmitting(false);
-    if (failed === 0) {
+    if (failures.length === 0) {
       setPlFormMsg({ type: 'success', text: `✓ ${submitted} entr${submitted === 1 ? 'y' : 'ies'} logged successfully.` });
       setPlForm(prev => ({ ...PL_EMPTY_FORM, po_number: prev.po_number }));
       setPlSelectedOps([]);
       plLoadMyEntries();
     } else {
-      setPlFormMsg({ type: 'error', text: `${submitted} submitted, ${failed} failed. Please retry.` });
+      if (plForm.department !== 'Cutting') setPlSelectedOps(plSelectedOps.filter(op => failures.some(failure => failure.startsWith(`${op}:`))));
+      if (submitted > 0) plLoadMyEntries();
+      setPlFormMsg({ type: 'error', text: `${submitted} submitted, ${failures.length} failed. ${failures.join(' ')}` });
     }
   };
 
@@ -2044,6 +2046,7 @@ function CuttingView({ user, onLogout }) {
                           required
                           placeholder="Pieces"
                         />
+                        <small style={{ color: '#8b949e' }}>Stitching needs accepted returns for this worker and operation; Cutting needs recorded cut output. Claim only the balance after earlier claims.</small>
                       </div>
 
                       {/* Per-op breakdown + combined total */}
