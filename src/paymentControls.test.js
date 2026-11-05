@@ -63,3 +63,19 @@ test.each([
   expect(allocationQuery[1][1]).toBe(allocationComponent);
   expect(client.query.mock.calls.some(([sql]) => sql === 'COMMIT')).toBe(true);
 });
+
+test('claimable endpoint previews accepted pieces and earlier claims without writing a payment', async () => {
+  authenticateToken.mockReturnValue({ role: 'Finishing', name: 'Waqas' });
+  const pool = { query: jest.fn(async sql => {
+    if (sql.includes('FROM po_master')) return { rows: [{ shirt_qty: 100, trouser_qty: 0, dupatta_qty: 0 }] };
+    if (sql.includes('FROM stitcher_allocations')) return { rows: [{ qty: 28 }] };
+    if (sql.includes('FROM cmt_payments') && sql.includes('stitcher_code')) return { rows: [{ qty: 5 }] };
+    if (sql.includes('FROM cmt_payments')) return { rows: [{ qty: 5 }] };
+    throw new Error(`Unexpected query: ${sql}`);
+  }) };
+  getPool.mockReturnValue(pool);
+  const res = response();
+  await handler({ method: 'GET', query: { type: 'claimable', po_number: 'PO-1', stitcher_code: '0001', department: 'Finishing Shirt', operation: 'Clipping' } }, res);
+  expect(res.body).toMatchObject({ success: true, operations: [{ accepted: 28, claimed: 5, claimable: 23 }] });
+  expect(pool.query.mock.calls.some(([sql]) => sql.includes('INSERT') || sql.includes('UPDATE'))).toBe(false);
+});

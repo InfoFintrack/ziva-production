@@ -1,6 +1,6 @@
 const { getPool } = require('./_lib/db');
 const { withAuditedTransaction } = require('./_lib/auditedQuery');
-const { ClaimError, validateClaim } = require('./_lib/claimPolicy');
+const { ClaimError, claimAvailability, validateClaim } = require('./_lib/claimPolicy');
 const { ensureProductionFlow } = require('./_lib/productionFlow');
 const { authenticateToken } = require('./_lib/auth');
 
@@ -231,6 +231,23 @@ export default async function handler(req, res) {
       }
     }
     return res.status(405).json({ success: false, message: 'Method not allowed.' });
+  }
+
+  if (type === 'claimable') {
+    if (req.method !== 'GET') return res.status(405).json({ success: false, message: 'Method not allowed.' });
+    if (!['Stitching', 'Cutting', 'Finishing', 'Admin'].includes(user.role)) return res.status(403).json({ success: false, message: 'Access denied.' });
+    const { po_number, stitcher_code, department, operation } = req.query;
+    if (!po_number || !stitcher_code || !DEPT_OP_TO_RATE_FIELD[`${department}|${operation}`])
+      return res.status(400).json({ success: false, message: 'Choose a PO, worker and valid operation.' });
+    try {
+      if (department === 'Cutting') await ensureProductionFlow(pool);
+      const operations = await claimAvailability(pool, { po_number, stitcher_code, department, operation,
+        component: deriveComponent(department, operation) });
+      return res.json({ success: true, operations });
+    } catch (err) {
+      if (!(err instanceof ClaimError)) console.error('CMT claimable GET error:', err.message);
+      return res.status(err instanceof ClaimError ? 400 : 500).json({ success: false, message: err instanceof ClaimError ? err.message : 'Claimable quantity unavailable.' });
+    }
   }
 
   // ── Default: cmt_payments GET / POST / PUT ────────────────────────────────

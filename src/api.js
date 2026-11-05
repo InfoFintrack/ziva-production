@@ -122,6 +122,8 @@ export const submitPayment = (data) => post('/api/cmt-payments', data);
 export const updatePayment = (data) => authFetch('/api/cmt-payments', { method: 'PUT', body: JSON.stringify(data) });
 export const logPaymentEntry = (data) => post('/api/cmt-payments', data);
 export const getPaymentEntries = (params = '') => authFetch(`/api/cmt-payments${params}`);
+export const getClaimAvailability = ({ po_number, stitcher_code, department, operation }) =>
+  authFetch(`/api/cmt-payments?${new URLSearchParams({ type: 'claimable', po_number, stitcher_code, department, operation })}`);
 
 // Advances (routed via cmt-payments?type=advance)
 export const addAdvance = (data) =>

@@ -10,6 +10,8 @@ import {
 } from '../api';
 import ProdFlowLogo from '../components/ProdFlowLogo';
 import PoweredByFintrack from '../components/PoweredByFintrack';
+import ClaimAvailabilityNotice from '../components/ClaimAvailabilityNotice';
+import useClaimAvailability from '../useClaimAvailability';
 
 const TODAY = new Date().toISOString().split('T')[0];
 const COMPONENTS = ['Shirt', 'Trouser', 'Dupatta'];
@@ -199,6 +201,11 @@ function FinishingView({ user, onLogout }) {
   const [plEntries, setPlEntries] = useState([]);
   const [plEntriesLoading, setPlEntriesLoading] = useState(false);
   const [plSelectedOps, setPlSelectedOps] = useState([]);
+  const [claimRefresh, setClaimRefresh] = useState(0);
+  const claimStatus = useClaimAvailability(plForm.po_number, plForm.stitcher_code, plForm.department, plSelectedOps, claimRefresh);
+  const claimReady = claimStatus.rows.length === plSelectedOps.length && plSelectedOps.length > 0
+    && !claimStatus.loading && !claimStatus.error && Number(plForm.qty_claimed) > 0
+    && Number(plForm.qty_claimed) <= claimStatus.limit;
   const [bulkStitcher, setBulkStitcher] = useState('');
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkRows, setBulkRows] = useState([]);
@@ -577,6 +584,10 @@ function FinishingView({ user, onLogout }) {
       setPlFormMsg({ type: 'error', text: 'Cannot submit — no approved rate found for this PO.' });
       return;
     }
+    if (!claimReady) {
+      setPlFormMsg({ type: 'error', text: claimStatus.error || `Only ${claimStatus.limit} pieces are claimable across the selected operations. Check the accepted balance above.` });
+      return;
+    }
     for (const op of plSelectedOps) {
       const rf = FL_DEPT_OP_TO_RATE_FIELD[`${plForm.department}|${op}`];
       const rate = rf ? Number(plPoRateData[rf] || 0) : 0;
@@ -612,6 +623,7 @@ function FinishingView({ user, onLogout }) {
       }
     }
     setPlSubmitting(false);
+    setClaimRefresh(value => value + 1);
     if (failures.length === 0) {
       setPlFormMsg({ type: 'success', text: `✓ ${submitted} entr${submitted === 1 ? 'y' : 'ies'} logged successfully.` });
       setPlForm(prev => ({ ...EMPTY_PL_FORM, po_number: prev.po_number }));
@@ -1401,10 +1413,15 @@ function FinishingView({ user, onLogout }) {
                               value={plForm.qty_claimed}
                               onChange={plHandleFormChange}
                               min="1"
+                              max={claimStatus.rows.length ? claimStatus.limit : undefined}
                               required
                               placeholder="Pieces"
                             />
                             <small style={{ color: '#8b949e' }}>Each selected operation needs its own accepted return for this worker. Claim accepted pieces minus earlier claims; receiving or allocating pieces alone is not payable.</small>
+                          </div>
+
+                          <div style={{ gridColumn: '1 / -1' }}>
+                            <ClaimAvailabilityNotice status={claimStatus} department={plForm.department} quantity={plForm.qty_claimed} onRetry={() => setClaimRefresh(value => value + 1)} />
                           </div>
 
                           {/* Per-op breakdown + combined total */}
@@ -1453,7 +1470,7 @@ function FinishingView({ user, onLogout }) {
                           <button
                             type="submit"
                             className="btn btn-primary"
-                            disabled={plSubmitting || !!plRateError || plSelectedOps.length === 0}
+                            disabled={plSubmitting || !!plRateError || !claimReady}
                             style={{ maxWidth: '220px' }}
                           >
                             {plSubmitting

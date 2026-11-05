@@ -5,6 +5,8 @@ import { submitAcceptance, getRecords, getDropdowns, getPOs, submitCMTRate, getC
 import { ColourInput } from './PPView';
 import ProdFlowLogo from '../components/ProdFlowLogo';
 import PoweredByFintrack from '../components/PoweredByFintrack';
+import ClaimAvailabilityNotice from '../components/ClaimAvailabilityNotice';
+import useClaimAvailability from '../useClaimAvailability';
 
 // ── CMT Rate form constants ──────────────────────────────────────────────────
 
@@ -123,15 +125,6 @@ function deriveColor(pos, po_number, department, operation) {
   if (department.includes('Shirt'))   return po.shirt_colour  || '';
   if (department.includes('Trouser')) return po.trouser_colour || '';
   if (department.includes('Dupatta')) return po.dupatta_colour || '';
-  return '';
-}
-
-function deriveComponent(department, operation) {
-  if (!department || !operation) return '';
-  if (department === 'Stitching') return operation.toLowerCase();
-  if (department.includes('Shirt'))   return 'shirt';
-  if (department.includes('Trouser')) return 'trouser';
-  if (department.includes('Dupatta')) return 'dupatta';
   return '';
 }
 
@@ -278,6 +271,11 @@ function CuttingView({ user, onLogout }) {
   const [plEntriesLoading, setPlEntriesLoading] = useState(false);
   const [plSubTab,         setPlSubTab]         = useState('log');
   const [plSelectedOps,    setPlSelectedOps]    = useState([]);
+  const [claimRefresh, setClaimRefresh] = useState(0);
+  const claimStatus = useClaimAvailability(plForm.po_number, plForm.stitcher_code, plForm.department, plSelectedOps, claimRefresh);
+  const claimReady = claimStatus.rows.length === plSelectedOps.length && plSelectedOps.length > 0
+    && !claimStatus.loading && !claimStatus.error && Number(plForm.qty_claimed) > 0
+    && Number(plForm.qty_claimed) <= claimStatus.limit;
 
   // ── Stitcher Dashboard state ───────────────────────────────────────────
   const [sdStitcher,  setSdStitcher]  = useState('');
@@ -286,9 +284,6 @@ function CuttingView({ user, onLogout }) {
   const [sdLoading,   setSdLoading]   = useState(false);
   const [sdEntries,   setSdEntries]   = useState([]);
   const [sdLoaded,    setSdLoaded]    = useState(false);
-
-  // ── Allocation cap state (single entry) ───────────────────────────────
-  const [plAllocations,  setPlAllocations]  = useState([]);
 
   // ── Bulk Entry state ───────────────────────────────────────────────────
   const [plEntryMode,    setPlEntryMode]    = useState('single');
@@ -685,25 +680,6 @@ function CuttingView({ user, onLogout }) {
     return () => { isCurrentRequest = false; };
   }, [plForm.po_number]);
 
-  useEffect(() => {
-    if (!plForm.stitcher_code || !plForm.po_number) {
-      setPlAllocations([]);
-      return;
-    }
-    getAllocations(`?stitcher_code=${encodeURIComponent(plForm.stitcher_code)}&po_number=${encodeURIComponent(plForm.po_number)}`)
-      .then(res => setPlAllocations(res.success ? res.allocations : []))
-      .catch(() => setPlAllocations([]));
-  }, [plForm.stitcher_code, plForm.po_number]);
-
-  useEffect(() => {
-    if (!plForm.department || !plForm.operation || plAllocations.length === 0) return;
-    const comp = deriveComponent(plForm.department, plForm.operation);
-    const matched = comp ? plAllocations.find(a => a.component?.toLowerCase() === comp) : null;
-    if (matched && Number(matched.qty_accepted) > 0) {
-      setPlForm(prev => ({ ...prev, qty_claimed: String(Number(matched.qty_accepted)) }));
-    }
-  }, [plAllocations, plForm.department, plForm.operation]);
-
   // Payment Log derived values
   const plEligiblePOs = plPos.filter(p => p.status === 'Active' && plApprovedSet.has(p.po_number));
   const selectedPaymentPO = plPos.find(p => p.po_number === plForm.po_number);
@@ -783,6 +759,10 @@ function CuttingView({ user, onLogout }) {
       setPlFormMsg({ type: 'error', text: 'Cannot submit — no approved rate found for this PO.' });
       return;
     }
+    if (!claimReady) {
+      setPlFormMsg({ type: 'error', text: claimStatus.error || `Only ${claimStatus.limit} pieces are claimable across the selected operations. Check the accepted balance above.` });
+      return;
+    }
     // Validate each selected op has a valid rate
     for (const op of plSelectedOps) {
       const rf = PL_DEPT_OP_TO_RATE_FIELD[`${plForm.department}|${op}`];
@@ -839,6 +819,7 @@ function CuttingView({ user, onLogout }) {
       }
     }
     setPlSubmitting(false);
+    setClaimRefresh(value => value + 1);
     if (failures.length === 0) {
       setPlFormMsg({ type: 'success', text: `✓ ${submitted} entr${submitted === 1 ? 'y' : 'ies'} logged successfully.` });
       setPlForm(prev => ({ ...PL_EMPTY_FORM, po_number: prev.po_number }));
@@ -2043,10 +2024,15 @@ function CuttingView({ user, onLogout }) {
                           value={plForm.qty_claimed}
                           onChange={plHandleFormChange}
                           min="1"
+                          max={claimStatus.rows.length ? claimStatus.limit : undefined}
                           required
                           placeholder="Pieces"
                         />
                         <small style={{ color: '#8b949e' }}>Stitching needs accepted returns for this worker and operation; Cutting needs recorded cut output. Claim only the balance after earlier claims.</small>
+                      </div>
+
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <ClaimAvailabilityNotice status={claimStatus} department={plForm.department} quantity={plForm.qty_claimed} onRetry={() => setClaimRefresh(value => value + 1)} />
                       </div>
 
                       {/* Per-op breakdown + combined total */}
@@ -2096,7 +2082,7 @@ function CuttingView({ user, onLogout }) {
                       <button
                         type="submit"
                         className="btn btn-primary"
-                        disabled={plSubmitting || !!plRateError || plSelectedOps.length === 0}
+                        disabled={plSubmitting || !!plRateError || !claimReady}
                         style={{ maxWidth: '220px' }}
                       >
                         {plSubmitting

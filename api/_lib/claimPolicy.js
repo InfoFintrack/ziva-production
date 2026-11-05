@@ -4,12 +4,11 @@ const parts = (department, operation, component) => department === 'Cutting'
   ? String(operation).split(',').map(value => value.trim().toLowerCase())
   : [String(component).trim().toLowerCase()];
 
-async function validateClaim(client, claim, excludeId = null) {
-  const { po_number, stitcher_code, department, operation, component, qty_claimed } = claim;
-  if (!positivePieces(qty_claimed)) throw new ClaimError('Claimed pieces must be a positive whole number.');
-  await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`claims:${po_number}`]);
+async function claimAvailability(client, claim, excludeId = null) {
+  const { po_number, stitcher_code, department, operation, component } = claim;
   const { rows: pos } = await client.query('SELECT shirt_qty, trouser_qty, dupatta_qty FROM po_master WHERE po_number=$1', [po_number]);
   if (!pos.length) throw new ClaimError('PO was not found.');
+  const availability = [];
   for (const part of parts(department, operation, component)) {
     if (!['shirt', 'trouser', 'dupatta', 'patching'].includes(part)) throw new ClaimError('This operation needs a matching accepted allocation before it can be claimed.');
     // Patching is an operation across garments; the PO has no patching_qty.
@@ -35,12 +34,24 @@ async function validateClaim(client, claim, excludeId = null) {
       ? await client.query(`SELECT COALESCE(SUM(qty_claimed),0) AS qty FROM cmt_payments WHERE po_number=$1 AND stitcher_code=$2 AND department='Cutting' AND LOWER(operation) LIKE $3 AND ($4::text IS NULL OR id::text<>$4::text)`, [po_number, stitcher_code, `%${part}%`, excludeId])
       : await client.query(`SELECT COALESCE(SUM(qty_claimed),0) AS qty FROM cmt_payments WHERE po_number=$1 AND stitcher_code=$2 AND LOWER(BTRIM(department))=LOWER(BTRIM($3)) AND LOWER(BTRIM(operation))=LOWER(BTRIM($4)) AND ($5::text IS NULL OR id::text<>$5::text)`, [po_number, stitcher_code, department, operation, excludeId]);
     const claimed = Number(earlier.rows[0].qty);
-    if (Number(qty_claimed) > accepted - claimed) throw new ClaimError(`${part}: claimable is ${Math.max(0, accepted - claimed)} accepted pieces after earlier claims. Check the matching allocation's accepted return.`);
     const total = department === 'Cutting'
       ? await client.query(`SELECT COALESCE(SUM(qty_claimed),0) AS qty FROM cmt_payments WHERE po_number=$1 AND department='Cutting' AND LOWER(operation) LIKE $2 AND ($3::text IS NULL OR id::text<>$3::text)`, [po_number, `%${part}%`, excludeId])
       : await client.query(`SELECT COALESCE(SUM(qty_claimed),0) AS qty FROM cmt_payments WHERE po_number=$1 AND LOWER(BTRIM(department))=LOWER(BTRIM($2)) AND LOWER(BTRIM(operation))=LOWER(BTRIM($3)) AND ($4::text IS NULL OR id::text<>$4::text)`, [po_number, department, operation, excludeId]);
-    if (Number(qty_claimed) + Number(total.rows[0].qty) > ordered) throw new ClaimError(`${part}: claims for this operation would exceed the PO quantity of ${ordered}.`);
+    const poClaimed = Number(total.rows[0].qty);
+    availability.push({ part, accepted, claimed, ordered, poClaimed,
+      claimable: Math.max(0, Math.min(accepted - claimed, ordered - poClaimed)) });
+  }
+  return availability;
+}
+
+async function validateClaim(client, claim, excludeId = null) {
+  if (!positivePieces(claim.qty_claimed)) throw new ClaimError('Claimed pieces must be a positive whole number.');
+  await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`claims:${claim.po_number}`]);
+  const availability = await claimAvailability(client, claim, excludeId);
+  for (const row of availability) {
+    if (Number(claim.qty_claimed) > row.accepted - row.claimed) throw new ClaimError(`${row.part}: claimable is ${Math.max(0, row.accepted - row.claimed)} accepted pieces after earlier claims. Check the matching allocation's accepted return.`);
+    if (Number(claim.qty_claimed) > row.ordered - row.poClaimed) throw new ClaimError(`${row.part}: claims for this operation would exceed the PO quantity of ${row.ordered}.`);
   }
 }
 
-module.exports = { ClaimError, validateClaim };
+module.exports = { ClaimError, claimAvailability, validateClaim };

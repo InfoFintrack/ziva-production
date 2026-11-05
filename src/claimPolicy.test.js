@@ -1,4 +1,4 @@
-const { validateClaim } = require('../api/_lib/claimPolicy');
+const { claimAvailability, validateClaim } = require('../api/_lib/claimPolicy');
 
 const claim = { po_number: 'PO-1', stitcher_code: '0001', department: 'Stitching', operation: 'Shirt', component: 'shirt' };
 
@@ -29,4 +29,11 @@ test('rework or rejected pieces never increase claimable quantity', async () => 
 test('patching claims use accepted patching output and a garment-order cap', async () => {
   await expect(validateClaim(client(8, 3, 3), { ...claim, operation: 'Patching', component: 'patching', qty_claimed: 5 })).resolves.toBeUndefined();
   await expect(validateClaim(client(8, 3, 3), { ...claim, operation: 'Patching', component: 'patching', qty_claimed: 6 })).rejects.toThrow('claimable is 5');
+});
+
+test('availability preview uses the same accepted, earlier-claim and PO limits as submission', async () => {
+  const db = client(28, 5, 80, 100);
+  await expect(claimAvailability(db, { ...claim, department: 'Finishing Shirt', operation: 'Clipping', component: 'shirt' }))
+    .resolves.toMatchObject([{ part: 'shirt', accepted: 28, claimed: 5, claimable: 20 }]);
+  expect(db.query.mock.calls.some(([sql]) => sql.includes('pg_advisory_xact_lock'))).toBe(false);
 });
