@@ -1,6 +1,7 @@
 const { getPool } = require('./_lib/db');
 const { authenticateToken } = require('./_lib/auth');
 
+const { requireControls, controlTransaction } = require('./_lib/controls');
 const ALLOWED_ROLES = ['Supervisor', 'Admin', 'Finishing'];
 const LIVE_STATUS = `CASE WHEN qty_allocated <= qty_returned THEN 'Complete'
   WHEN allocation_date::date < CURRENT_DATE - 14 THEN 'Overdue'
@@ -16,6 +17,18 @@ export default async function handler(req, res) {
   if (!user) return;
 
   const pool = getPool();
+
+  if (req.method === 'GET' && req.query.type === 'capacity') {
+    try {
+      await requireControls(pool);
+      const component=String(req.query.component || '').trim().toLowerCase();
+      const garment=component.split(' ')[0];
+      if (!['shirt','trouser','dupatta'].includes(garment)) return res.status(400).json({success:false,message:'Choose a garment.'});
+      const cut=await pool.query("SELECT COALESCE(SUM(quantity),0) qty FROM production_stage_events WHERE po_number=$1 AND component=$2 AND event_type='Cut'",[req.query.po_number,garment]);
+      const assigned=await pool.query("SELECT COALESCE(SUM(qty_allocated),0) qty FROM stitcher_allocations WHERE po_number=$1 AND lower(trim(component))=$2 AND COALESCE(module_type,'Stitching')=$3",[req.query.po_number,component,req.query.module_type || 'Stitching']);
+      return res.json({success:true,cut:Number(cut.rows[0].qty),allocated:Number(assigned.rows[0].qty),available:Math.max(0,Number(cut.rows[0].qty)-Number(assigned.rows[0].qty))});
+    } catch(error) { return res.status(503).json({success:false,message:error.message}); }
+  }
 
   if (req.method === 'GET') {
     await pool.query(`ALTER TABLE stitcher_allocations ADD COLUMN IF NOT EXISTS module_type VARCHAR(50) DEFAULT 'Stitching'`).catch(() => {});
@@ -47,13 +60,13 @@ export default async function handler(req, res) {
 
       const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
       const { rows } = await pool.query(
-        `SELECT *, ${LIVE_STATUS} AS status FROM stitcher_allocations ${where} ORDER BY created_at DESC`,
+        `SELECT *, ${LIVE_STATUS} AS status, qty_rework + COALESCE((SELECT SUM(quantity) FROM allocation_rework_events r WHERE r.allocation_id=stitcher_allocations.id::text),0) AS qty_rework_total FROM stitcher_allocations ${where} ORDER BY created_at DESC`,
         values
       );
       return res.json({ success: true, allocations: rows });
     } catch (err) {
       console.error('Allocations GET error:', err.message);
-      return res.status(500).json({ success: false, message: 'Server error.' });
+      return res.status(500).json({ success: false, message: err.code === 'P0001' || err.status === 400 ? err.message : 'Server error.' });
     }
 
   } else if (req.method === 'POST') {
@@ -62,15 +75,17 @@ export default async function handler(req, res) {
     }
 
     const { po_number, component, stitcher_code, qty_allocated, allocation_date, remarks, module_type } = req.body;
+    if ((user.role==='Finishing' && module_type!=='Finishing') || (user.role==='Supervisor' && module_type && module_type!=='Stitching')) return res.status(403).json({success:false,message:'Allocate only within your own production module.'});
 
     if (!po_number || !component || !stitcher_code || !qty_allocated) {
       return res.json({ success: false, message: 'po_number, component, stitcher_code, and qty_allocated are required.' });
     }
 
     try {
+      await requireControls(pool);
       // Verify po_number exists in cmt_rates with status='Approved'
       const { rows: rateCheck } = await pool.query(
-        `SELECT id FROM cmt_rates WHERE po_number = $1 AND status = 'Approved'`,
+        `SELECT id FROM cmt_rates WHERE po_number = $1 AND status = 'Approved' AND in_app_approved=TRUE`,
         [po_number]
       );
       if (!rateCheck.length) {
@@ -111,7 +126,7 @@ export default async function handler(req, res) {
       return res.json({ success: true, allocation: rows[0] });
     } catch (err) {
       console.error('Allocations POST error:', err.message);
-      return res.status(500).json({ success: false, message: 'Server error.' });
+      return res.status(500).json({ success: false, message: err.code === 'P0001' || err.status === 400 ? err.message : 'Server error.' });
     }
 
   } else if (req.method === 'PUT') {
@@ -124,10 +139,30 @@ export default async function handler(req, res) {
       return res.json({ success: false, message: 'id is required.' });
     }
 
+    if (req.body.action === 'accept_rework') {
+      try {
+        await requireControls(pool);
+        const quantity=Number(req.body.quantity);
+        if(!Number.isInteger(quantity) || quantity<=0 || !String(req.body.reason || '').trim()) return res.status(400).json({success:false,message:'Enter whole accepted rework pieces and a verification note.'});
+        await controlTransaction(pool,user,async client=>{
+          const source=await client.query('SELECT * FROM stitcher_allocations WHERE id=$1',[id]);
+          if(!source.rows.length) throw Object.assign(new Error('Allocation not found.'),{status:400});
+          if(user.role!=='Admin' && (source.rows[0].module_type || 'Stitching')!==(user.role==='Finishing'?'Finishing':'Stitching')) throw Object.assign(new Error('Only the responsible production module can accept this rework.'),{status:400});
+          await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`production:${source.rows[0].po_number}`]);
+          await client.query("SELECT set_config('app.accept_rework',$1,true)",[String(id)]);
+          const result=await client.query('UPDATE stitcher_allocations SET qty_accepted=qty_accepted+$1,qty_rework=qty_rework-$1,last_updated_by=$2,last_updated_at=NOW() WHERE id=$3 AND qty_rework>=$1',[quantity,user.name,id]);
+          if(!result.rowCount) throw Object.assign(new Error('Rework balance changed. Refresh and try again.'),{status:400});
+          await client.query('INSERT INTO allocation_rework_events(allocation_id,quantity,reason,accepted_by) VALUES($1,$2,$3,$4)',[String(id),quantity,req.body.reason.trim(),user.name]);
+        });
+        return res.json({success:true});
+      } catch(error) {return res.status(error.status===400 || error.code==='P0001'?400:500).json({success:false,message:error.status===400 || error.code==='P0001'?error.message:'Rework acceptance failed.'});}
+    }
+
     try {
+      await requireControls(pool);
       // Fetch current row
       const { rows: current } = await pool.query(
-        `SELECT qty_allocated, qty_returned, qty_accepted, qty_rework, qty_rejected, allocation_date
+        `SELECT qty_allocated, qty_returned, qty_accepted, qty_rework, qty_rejected, allocation_date, module_type
          FROM stitcher_allocations WHERE id = $1`,
         [id]
       );
@@ -136,11 +171,13 @@ export default async function handler(req, res) {
       }
 
       const row = current[0];
+      if(user.role!=='Admin' && (row.module_type || 'Stitching')!==(user.role==='Finishing'?'Finishing':'Stitching')) return res.status(403).json({success:false,message:'Update returns only within your production module.'});
       const deltaReturned = Number(qty_returned_delta  || 0);
       const deltaAccepted = Number(qty_accepted_delta  || 0);
       const deltaRework   = Number(qty_rework_delta    || 0);
       const deltaRejected = Number(qty_rejected_delta  || 0);
 
+      if (![deltaReturned,deltaAccepted,deltaRework,deltaRejected].every(n => Number.isInteger(n) && n >= 0)) return res.status(400).json({success:false,message:'Return quantities must be nonnegative whole pieces.'});
       const newQtyReturned = Number(row.qty_returned || 0) + deltaReturned;
 
       if (newQtyReturned > Number(row.qty_allocated)) {
@@ -169,11 +206,12 @@ export default async function handler(req, res) {
       values.push(id);
       const whereParam = `$${values.length}`;
 
-      await pool.query(
-        `UPDATE stitcher_allocations SET ${setClauses.join(', ')} WHERE id = ${whereParam}`,
+      const updated = await pool.query(
+        `UPDATE stitcher_allocations SET ${setClauses.join(', ')} WHERE id = ${whereParam} AND qty_returned + $1 <= qty_allocated`,
         values
       );
 
+      if (updated.rowCount === 0) return res.status(400).json({success:false,message:'Allocation changed or returned quantity exceeds the balance. Refresh and retry.'});
       // Auto-update status based on new remaining quantity
       const newRemaining = Number(row.qty_allocated) - newQtyReturned;
       let newStatus;
@@ -193,7 +231,7 @@ export default async function handler(req, res) {
       return res.json({ success: true });
     } catch (err) {
       console.error('Allocations PUT error:', err.message);
-      return res.status(500).json({ success: false, message: 'Server error.' });
+      return res.status(500).json({ success: false, message: err.code === 'P0001' || err.status === 400 ? err.message : 'Server error.' });
     }
 
   } else {

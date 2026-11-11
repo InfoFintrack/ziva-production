@@ -9,7 +9,10 @@ import {
   createStitcher, updateStitcher,
 } from '../api';
 import ProdFlowLogo from '../components/ProdFlowLogo';
+import ReworkAcceptance from '../components/ReworkAcceptance';
+import AllocationCapacity from '../components/AllocationCapacity';
 import PoweredByFintrack from '../components/PoweredByFintrack';
+import {groupAllocations,prepareBulkClaims} from '../bulkClaims';
 import ClaimAvailabilityNotice from '../components/ClaimAvailabilityNotice';
 import useClaimAvailability from '../useClaimAvailability';
 
@@ -91,6 +94,7 @@ const EMPTY_DELTA = {
 };
 
 const EMPTY_PL_FORM = {
+  payroll_week: '',
   entry_date:    TODAY,
   po_number:     '',
   stitcher_code: '',
@@ -356,7 +360,7 @@ function FinishingView({ user, onLogout }) {
     setAllocLoading(true);
     try {
       const res = await getAllocations('?module_type=Finishing');
-      if (res.success) setAllocations(res.allocations);
+      if (res.success) { setAllocations(res.allocations); setClaimRefresh(value=>value+1); }
     } catch { /* silently fail */ }
     setAllocLoading(false);
   };
@@ -611,6 +615,7 @@ function FinishingView({ user, onLogout }) {
           department:       plForm.department,
           operation:        op,
           qty_claimed:      Number(plForm.qty_claimed),
+          payroll_week: plForm.payroll_week || undefined,
           ...(color            ? { color }            : {}),
           ...(plForm.remarks   ? { remarks: plForm.remarks } : {}),
           worker_type:      selectedStitcher?.worker_type || null,
@@ -642,10 +647,10 @@ function FinishingView({ user, onLogout }) {
     setBulkMsg(null);
     try {
       const allocRes = await getAllocations(
-        `?stitcher_code=${encodeURIComponent(stitcherCode)}&module_type=Finishing&status=In Progress`
+        `?stitcher_code=${encodeURIComponent(stitcherCode)}&module_type=Finishing`
       );
       if (!allocRes.success || !allocRes.allocations.length) {
-        setBulkMsg({ type: 'warning', text: 'No in-progress finishing allocations found for this stitcher.' });
+        setBulkMsg({ type: 'warning', text: 'No finishing allocations found. Record verified cuts, allocate work, then accept returned pieces.' });
         setBulkLoading(false);
         return;
       }
@@ -664,7 +669,7 @@ function FinishingView({ user, onLogout }) {
           .map(e => `${e.po_number}|${(e.component || '').toLowerCase()}`)
       );
       const selectedStitcher = allStitchers.find(s => s.stitcher_code === stitcherCode);
-      const rows = allocRes.allocations.map(a => {
+      const rows = groupAllocations(allocRes.allocations).map(a => {
         const { dept, op } = finishingComponentToDeptOp(a.component);
         const rateKey   = dept && op ? `${dept}|${op}` : null;
         const rateField = rateKey ? FL_DEPT_OP_TO_RATE_FIELD[rateKey] : null;
@@ -689,9 +694,9 @@ function FinishingView({ user, onLogout }) {
           flexible_payment: selectedStitcher?.worker_type === 'Finishing_OutOfFactory',
         };
       });
-      setBulkRows(rows);
-    } catch {
-      setBulkMsg({ type: 'error', text: 'Failed to load allocations.' });
+      setBulkRows(await prepareBulkClaims(rows));
+    } catch (error) {
+      setBulkMsg({ type: 'error', text: error.message || 'Failed to load allocations.' });
     }
     setBulkLoading(false);
   };
@@ -1023,6 +1028,7 @@ function FinishingView({ user, onLogout }) {
             </div>
 
             {/* New Allocation */}
+            {allocTab === 'new' && <AllocationCapacity po={allocForm.po_number} component={allocForm.component && allocForm.operation ? `${allocForm.component} ${allocForm.operation}` : ''} module="Finishing" />}
             {allocTab === 'new' && (
               <div className="card" style={{ borderRadius: '0 0 12px 12px', marginTop: 0 }}>
                 <h3>New Finishing Allocation</h3>
@@ -1189,7 +1195,7 @@ function FinishingView({ user, onLogout }) {
                             <th>Worker</th>
                             <th>Allocated</th>
                             <th>Returned</th>
-                            <th>Accepted</th>
+                            <th>Accepted / claimable</th>
                             <th>Rework</th>
                             <th>Rejected</th>
                             <th>Remaining</th>
@@ -1223,7 +1229,8 @@ function FinishingView({ user, onLogout }) {
                                 <td><strong>{remaining}</strong></td>
                                 <td><StatusBadge status={a.status} /></td>
                                 <td>
-                                  {displayStatus !== 'Complete' && (
+                                  {Number(a.qty_rework)>0 && <ReworkAcceptance allocation={a} onSaved={loadAllocations}/>}
+                              {displayStatus !== 'Complete' && (
                                     <button
                                       className="btn btn-small"
                                       style={{ background: '#4a7cc9', color: 'white', whiteSpace: 'nowrap' }}
@@ -1405,6 +1412,7 @@ function FinishingView({ user, onLogout }) {
                             )}
                           </div>
 
+                          <label>Payroll week ending Saturday (optional)<input type="date" value={plForm.payroll_week} onChange={e=>setPlForm({...plForm,payroll_week:e.target.value})}/><small>For late claims, use a later open payroll week and keep the actual work date.</small></label>
                           <div className="form-group">
                             <label>Qty Claimed *</label>
                             <input
@@ -1534,7 +1542,7 @@ function FinishingView({ user, onLogout }) {
                                 <th>Component</th>
                                 <th>Department</th>
                                 <th>Operation</th>
-                                <th>Accepted</th>
+                                <th>Accepted / claimable</th>
                                 <th>Qty to Pay</th>
                                 <th>Rate (PKR)</th>
                                 <th>Amount (PKR)</th>
@@ -1549,6 +1557,7 @@ function FinishingView({ user, onLogout }) {
                                   <td>
                                     <select
                                       value={row.department}
+                                      disabled
                                       onChange={e => bulkHandleRowChange(i, 'department', e.target.value)}
                                       style={{ padding: '4px 8px', fontSize: '13px', border: '1px solid #30363d', borderRadius: '6px', minWidth: '160px' }}
                                     >
@@ -1560,7 +1569,7 @@ function FinishingView({ user, onLogout }) {
                                     <select
                                       value={row.operation}
                                       onChange={e => bulkHandleRowChange(i, 'operation', e.target.value)}
-                                      disabled={!row.department}
+                                      disabled
                                       style={{ padding: '4px 8px', fontSize: '13px', border: '1px solid #30363d', borderRadius: '6px', minWidth: '120px' }}
                                     >
                                       <option value="">Select...</option>
@@ -1569,14 +1578,14 @@ function FinishingView({ user, onLogout }) {
                                       ))}
                                     </select>
                                   </td>
-                                  <td style={{ textAlign: 'right' }}>{row.qty_accepted}</td>
+                                  <td style={{ textAlign: 'right' }}>{row.qty_accepted} / {row.claimable}</td>
                                   <td>
                                     <input
                                       type="number"
                                       value={row.qty_claimed}
                                       onChange={e => bulkHandleRowChange(i, 'qty_claimed', e.target.value)}
                                       min="0"
-                                      max={row.qty_accepted}
+                                      max={row.claimable}
                                       style={{ width: '80px', padding: '4px 8px', border: '1px solid #30363d', borderRadius: '6px', fontSize: '13px' }}
                                     />
                                   </td>

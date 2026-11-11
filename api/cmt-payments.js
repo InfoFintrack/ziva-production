@@ -1,6 +1,7 @@
 const { getPool } = require('./_lib/db');
 const { withAuditedTransaction } = require('./_lib/auditedQuery');
 const { ClaimError, claimAvailability, validateClaim } = require('./_lib/claimPolicy');
+const { requireControls } = require('./_lib/controls');
 const { ensureProductionFlow } = require('./_lib/productionFlow');
 const { authenticateToken } = require('./_lib/auth');
 
@@ -9,11 +10,12 @@ const DEPT_OP_TO_RATE_FIELD = {
   'Stitching|Shirt':              'shirt',
   'Stitching|Trouser':            'trouser',
   'Stitching|Dupatta':            'dupatta',
-  'Stitching|Patching':           'patching',
+  'Stitching|Shirt Patching': 'patching',
+  'Stitching|Trouser Patching': 'patching',
+  'Stitching|Dupatta Patching': 'patching',
   'Cutting|Shirt':                'cutting',
   'Cutting|Trouser':              'cutting',
   'Cutting|Dupatta':              'cutting',
-  'Cutting|Patching':             'patching',
   'Finishing Shirt|Clipping':     'fs_clipping',
   'Finishing Shirt|Heming':       'fs_heming',
   'Finishing Shirt|Tussling':     'fs_tussling',
@@ -30,7 +32,7 @@ const DEPT_OP_TO_RATE_FIELD = {
 
 // Auto-derive component from department + operation
 function deriveComponent(department, operation) {
-  if (department === 'Stitching') return operation.toLowerCase();
+  if (department === 'Stitching' || department === 'Cutting') return operation.toLowerCase();
   if (department.includes('Shirt'))   return 'shirt';
   if (department.includes('Trouser')) return 'trouser';
   if (department.includes('Dupatta')) return 'dupatta';
@@ -144,7 +146,7 @@ export default async function handler(req, res) {
         return res.json({ success: true });
       }
       return res.status(405).json({ success: false, message: 'Method not allowed.' });
-    } catch (err) { if (!(err instanceof ClaimError)) console.error('Advance ledger error:', err.message); return res.status(err instanceof ClaimError ? 400 : 500).json({ success: false, message: err instanceof ClaimError ? err.message : 'Advance ledger unavailable.' }); }
+    } catch (err) { if (!(err instanceof ClaimError)) console.error('Advance ledger error:', err.message); return res.status(err instanceof ClaimError || err.code === 'P0001' ? 400 : 500).json({ success: false, message: err instanceof ClaimError ? err.message : 'Advance ledger unavailable.' }); }
   }
 
   // ── ?type=advance ─────────────────────────────────────────────────────────
@@ -240,13 +242,14 @@ export default async function handler(req, res) {
     if (!po_number || !stitcher_code || !DEPT_OP_TO_RATE_FIELD[`${department}|${operation}`])
       return res.status(400).json({ success: false, message: 'Choose a PO, worker and valid operation.' });
     try {
+      await requireControls(pool);
       if (department === 'Cutting') await ensureProductionFlow(pool);
       const operations = await claimAvailability(pool, { po_number, stitcher_code, department, operation,
         component: deriveComponent(department, operation) });
       return res.json({ success: true, operations });
     } catch (err) {
       if (!(err instanceof ClaimError)) console.error('CMT claimable GET error:', err.message);
-      return res.status(err instanceof ClaimError ? 400 : 500).json({ success: false, message: err instanceof ClaimError ? err.message : 'Claimable quantity unavailable.' });
+      return res.status(err instanceof ClaimError || err.code === 'P0001' ? 400 : 500).json({ success: false, message: err instanceof ClaimError ? err.message : 'Claimable quantity unavailable.' });
     }
   }
 
@@ -336,6 +339,7 @@ export default async function handler(req, res) {
     }
 
     try {
+      await requireControls(pool);
       // Look up stitcher
       const { rows: stitcherRows } = await pool.query(
         `SELECT id, name FROM stitchers WHERE stitcher_code = $1`,
@@ -348,7 +352,7 @@ export default async function handler(req, res) {
 
       // Look up approved rate — rateField is from a fixed whitelist, safe to interpolate
       const { rows: rateRows } = await pool.query(
-        `SELECT ${rateField} AS rate FROM cmt_rates WHERE po_number = $1 AND status = 'Approved'`,
+        `SELECT id, ${rateField} AS rate FROM cmt_rates WHERE po_number = $1 AND status = 'Approved' AND in_app_approved=TRUE ORDER BY version DESC LIMIT 1`,
         [po_number]
       );
       if (!rateRows.length) {
@@ -359,21 +363,24 @@ export default async function handler(req, res) {
       }
 
       const rate   = Number(rateRows[0].rate) || 0;
-      const amount = Number(qty_claimed) * rate;
+      if (rate <= 0) throw new ClaimError('No positive approved rate exists for this operation.');
+      const amount = Number((Number(qty_claimed) * rate).toFixed(2));
 
       const resolvedEntryDate = entry_date || new Date().toISOString().split('T')[0];
-      const week_ending = getWeekEnding(resolvedEntryDate);
+      const week_ending = req.body.payroll_week || getWeekEnding(resolvedEntryDate);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(week_ending) || new Date(`${week_ending}T00:00:00Z`).getUTCDay() !== 6 || week_ending < getWeekEnding(resolvedEntryDate)) throw new ClaimError('Payroll week must be a Saturday on or after the work week. Choose a later open week for late claims.');
 
       await ensureProductionFlow(pool);
       const { rows } = await withAuditedTransaction(pool, user.name, async client => {
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`payroll:${week_ending}`]);
         await validateClaim(client, { po_number, stitcher_code, department, operation, component, qty_claimed });
         return client.query(
         `INSERT INTO cmt_payments
            (entry_date, po_number, stitcher_id, stitcher_code, stitcher_name,
             component, department, operation, qty_claimed, rate, amount,
             week_ending, payment_status, color, remarks, submitted_by, submitted_at,
-            worker_type, flexible_payment)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'Pending',$13,$14,$15,NOW(),$16,$17)
+            worker_type, flexible_payment, rate_version_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'Pending',$13,$14,$15,NOW(),$16,$17,$18)
          RETURNING *`,
         [
           resolvedEntryDate, po_number,
@@ -384,6 +391,7 @@ export default async function handler(req, res) {
           color || null, remarks || null, user.name,
           worker_type || null,
           flexible_payment === true || flexible_payment === 'true' ? true : false,
+          String(rateRows[0].id),
         ]
         );
       });
@@ -391,7 +399,7 @@ export default async function handler(req, res) {
       return res.json({ success: true, payment: rows[0] });
     } catch (err) {
       if (!(err instanceof ClaimError)) console.error('CMT Payments POST error:', err.message);
-      return res.status(err instanceof ClaimError ? 400 : 500).json({ success: false, message: err instanceof ClaimError ? err.message : 'Server error.' });
+      return res.status(err instanceof ClaimError || err.code === 'P0001' ? 400 : 500).json({ success: false, message: err instanceof ClaimError || err.code === 'P0001' ? err.message : 'Server error.' });
     }
 
   } else if (req.method === 'PUT') {
@@ -399,6 +407,7 @@ export default async function handler(req, res) {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
 
+    try { await requireControls(pool); } catch(error) { return res.status(503).json({success:false,message:error.message}); }
     const { id, stitcher_code, week_ending, action, payment_date, qty_claimed, po_number } = req.body;
 
     if (!action) {
@@ -413,6 +422,8 @@ export default async function handler(req, res) {
       try {
         await ensureProductionFlow(pool);
         const updated = await withAuditedTransaction(pool, user.name, async client => {
+          const week = await client.query('SELECT week_ending::text FROM cmt_payments WHERE id=$1',[id]);
+          if (week.rows.length) await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`payroll:${week.rows[0].week_ending}`]);
           const { rows } = await client.query('SELECT * FROM cmt_payments WHERE id=$1 FOR UPDATE', [id]);
           if (!rows.length) throw new ClaimError('Payment record not found.');
           const original = rows[0];
@@ -428,7 +439,7 @@ export default async function handler(req, res) {
         return res.json({ success: true, payment: updated });
       } catch (err) {
         if (!(err instanceof ClaimError)) console.error('CMT Payments EDIT error:', err.message);
-        return res.status(err instanceof ClaimError ? 400 : 500).json({ success: false, message: err instanceof ClaimError ? err.message : 'Server error.' });
+        return res.status(err instanceof ClaimError || err.code === 'P0001' ? 400 : 500).json({ success: false, message: err instanceof ClaimError || err.code === 'P0001' ? err.message : 'Server error.' });
       }
     }
 
@@ -440,9 +451,11 @@ export default async function handler(req, res) {
     try {
       if (!verifying) await ensureAdvanceLedger(pool);
       const changed = await withAuditedTransaction(pool, user.name, async client => {
+        const selectedWeek = id ? await client.query('SELECT week_ending::text FROM cmt_payments WHERE id=$1',[id]) : {rows:[{week_ending}]};
+        if (selectedWeek.rows.length) await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`payroll:${selectedWeek.rows[0].week_ending}`]);
         const result = id
           ? await client.query('SELECT * FROM cmt_payments WHERE id=$1 FOR UPDATE', [id])
-          : await client.query('SELECT * FROM cmt_payments WHERE stitcher_code=$1 AND week_ending=$2 ORDER BY id FOR UPDATE', [stitcher_code, week_ending]);
+          : await client.query("SELECT * FROM cmt_payments WHERE stitcher_code=$1 AND week_ending=$2 AND payment_status='Pending' ORDER BY id FOR UPDATE", [stitcher_code, week_ending]);
         if (!result.rows.length) throw new ClaimError('No matching payment entries.');
         if (result.rows.some(row => row.payment_status !== expected)) throw new ClaimError(`Every selected entry must be ${expected} before ${verifying ? 'verification' : 'payment'}.`);
         if (action === 'mark_paid_flexible' && result.rows.some(row => !row.flexible_payment)) throw new ClaimError('Flexible payment action requires a flexible entry.');
@@ -459,7 +472,7 @@ export default async function handler(req, res) {
       return res.json({ success: true, changed });
     } catch (err) {
       if (!(err instanceof ClaimError)) console.error('CMT Payments status change error:', err.message);
-      return res.status(err instanceof ClaimError ? 400 : 500).json({ success: false, message: err instanceof ClaimError ? err.message : 'Server error.' });
+      return res.status(err instanceof ClaimError || err.code === 'P0001' ? 400 : 500).json({ success: false, message: err instanceof ClaimError || err.code === 'P0001' ? err.message : 'Server error.' });
     }
 
   } else {

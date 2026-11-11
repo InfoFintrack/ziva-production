@@ -44,7 +44,9 @@ test.each([
 ])('%s can log accepted pieces without weakening claim controls', async (_label, role, department, operation, quantity, rate, allocationComponent) => {
   authenticateToken.mockReturnValue({ role, name: _label });
   const client = { release: jest.fn(), query: jest.fn(async sql => {
+    if (sql.includes('production_control_version')) return {rows:[{id:1}]};
     if (sql.includes('FROM po_master')) return { rows: [{ shirt_qty: 100, trouser_qty: 0, dupatta_qty: 0 }] };
+    if (sql.includes('FROM production_stage_events')) return {rows:[{qty:100}]};
     if (sql.includes('FROM stitcher_allocations')) return { rows: [{ qty: quantity }] };
     if (sql.includes('FROM cmt_payments')) return { rows: [{ qty: 0 }] };
     if (sql.includes('INSERT INTO cmt_payments')) return { rows: [{ id: 'new-payment', qty_claimed: quantity }] };
@@ -67,7 +69,9 @@ test.each([
 test('claimable endpoint previews accepted pieces and earlier claims without writing a payment', async () => {
   authenticateToken.mockReturnValue({ role: 'Finishing', name: 'Waqas' });
   const pool = { query: jest.fn(async sql => {
+    if (sql.includes('production_control_version')) return {rows:[{id:1}]};
     if (sql.includes('FROM po_master')) return { rows: [{ shirt_qty: 100, trouser_qty: 0, dupatta_qty: 0 }] };
+    if (sql.includes('FROM production_stage_events')) return {rows:[{qty:100}]};
     if (sql.includes('FROM stitcher_allocations')) return { rows: [{ qty: 28 }] };
     if (sql.includes('FROM cmt_payments') && sql.includes('stitcher_code')) return { rows: [{ qty: 5 }] };
     if (sql.includes('FROM cmt_payments')) return { rows: [{ qty: 5 }] };

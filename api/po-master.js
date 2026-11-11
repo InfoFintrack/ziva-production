@@ -1,6 +1,8 @@
+const { auditedQuery } = require('./_lib/auditedQuery');
 const { getPool } = require('./_lib/db');
 const { authenticateToken } = require('./_lib/auth');
 
+const { requireControls } = require('./_lib/controls');
 const VALID_COMPONENTS = ['shirt', 'trouser', 'dupatta'];
 
 export default async function handler(req, res) {
@@ -14,6 +16,7 @@ export default async function handler(req, res) {
 
   const pool = getPool();
   const { type } = req.query;
+  if (['POST','PUT','DELETE'].includes(req.method)) { try { await requireControls(pool); } catch(error) { return res.status(503).json({success:false,message:error.message}); } }
 
   // ── ?type=accessories ────────────────────────────────────────────────────
   if (type === 'accessories') {
@@ -30,7 +33,7 @@ export default async function handler(req, res) {
         return res.json({ success: true, accessories: rows });
       } catch (err) {
         console.error('PO Accessories GET error:', err.message);
-        return res.status(500).json({ success: false, message: 'Server error.' });
+        return res.status(500).json({ success: false, message: err.code === 'P0001' ? err.message : 'Server error.' });
       }
     }
 
@@ -43,15 +46,15 @@ export default async function handler(req, res) {
         return res.json({ success: false, message: 'po_number, accessory_type, and quantity are required.' });
       }
       try {
-        const { rows } = await pool.query(
-          `INSERT INTO po_accessories (po_number, accessory_type, quantity, unit, created_at)
+        const { rows } = await auditedQuery(pool, user.name,
+        `INSERT INTO po_accessories (po_number, accessory_type, quantity, unit, created_at)
            VALUES ($1, $2, $3, $4, NOW()) RETURNING *`,
           [po_number, accessory_type, Number(quantity), unit || null]
         );
         return res.json({ success: true, accessory: rows[0] });
       } catch (err) {
         console.error('PO Accessories POST error:', err.message);
-        return res.status(500).json({ success: false, message: 'Server error.' });
+        return res.status(500).json({ success: false, message: err.code === 'P0001' ? err.message : 'Server error.' });
       }
     }
 
@@ -68,7 +71,7 @@ export default async function handler(req, res) {
         return res.json({ success: true });
       } catch (err) {
         console.error('PO Accessories DELETE error:', err.message);
-        return res.status(500).json({ success: false, message: 'Server error.' });
+        return res.status(500).json({ success: false, message: err.code === 'P0001' ? err.message : 'Server error.' });
       }
     }
 
@@ -95,7 +98,7 @@ export default async function handler(req, res) {
         return res.json({ success: true, logs: rows });
       } catch (err) {
         console.error('Fabric Issuance Log GET error:', err.message);
-        return res.status(500).json({ success: false, message: 'Server error.' });
+        return res.status(500).json({ success: false, message: err.code === 'P0001' ? err.message : 'Server error.' });
       }
     }
 
@@ -108,15 +111,15 @@ export default async function handler(req, res) {
         return res.json({ success: false, message: 'po_number, component, meters_issued, and issued_by are required.' });
       }
       try {
-        const { rows } = await pool.query(
-          `INSERT INTO fabric_issuance_log (po_number, component, meters_issued, issued_by, remarks, issued_at)
+        const { rows } = await auditedQuery(pool, user.name,
+        `INSERT INTO fabric_issuance_log (po_number, component, meters_issued, issued_by, remarks, issued_at)
            VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING *`,
           [po_number, component, Number(meters_issued), issued_by, remarks || null]
         );
         return res.json({ success: true, log: rows[0] });
       } catch (err) {
         console.error('Fabric Issuance Log POST error:', err.message);
-        return res.status(500).json({ success: false, message: 'Server error.' });
+        return res.status(500).json({ success: false, message: err.code === 'P0001' ? err.message : 'Server error.' });
       }
     }
 
@@ -128,12 +131,12 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     try {
       const { rows } = await pool.query(
-        `SELECT * FROM po_master ORDER BY created_at DESC`
+        `SELECT p.*,EXISTS(SELECT 1 FROM production_stage_events e WHERE e.po_number=p.po_number AND e.event_type='Cut') AS cutting_started FROM po_master p ORDER BY created_at DESC`
       );
       return res.json({ success: true, pos: rows });
     } catch (err) {
       console.error('PO Master GET error:', err.message);
-      return res.status(500).json({ success: false, message: 'Server error.' });
+      return res.status(500).json({ success: false, message: err.code === 'P0001' ? err.message : 'Server error.' });
     }
 
   } else if (req.method === 'POST') {
@@ -165,7 +168,7 @@ export default async function handler(req, res) {
         return res.json({ success: false, message: 'PO number already exists.' });
       }
 
-      const { rows } = await pool.query(
+      const { rows } = await auditedQuery(pool, user.name,
         `INSERT INTO po_master
            (po_number, collection_name, article_name, garment_type,
             po_date, delivery_date, status, remarks, created_by, created_at,
@@ -205,7 +208,7 @@ export default async function handler(req, res) {
       return res.json({ success: true, po: rows[0] });
     } catch (err) {
       console.error('PO Master POST error:', err.message);
-      return res.status(500).json({ success: false, message: 'Server error.' });
+      return res.status(500).json({ success: false, message: err.code === 'P0001' ? err.message : 'Server error.' });
     }
 
   } else if (req.method === 'PUT') {
@@ -224,8 +227,8 @@ export default async function handler(req, res) {
       }
       const col = `${component}_meters_issued`;
       try {
-        const result = await pool.query(
-          `UPDATE po_master SET ${col} = ${col} + $1 WHERE po_number = $2`,
+        const result = await auditedQuery(pool, user.name,
+        `UPDATE po_master SET ${col} = ${col} + $1 WHERE po_number = $2`,
           [Number(meters_delta), po_number]
         );
         if (result.rowCount === 0) {
@@ -234,7 +237,7 @@ export default async function handler(req, res) {
         return res.json({ success: true });
       } catch (err) {
         console.error('PO Master PUT update_meters error:', err.message);
-        return res.status(500).json({ success: false, message: 'Server error.' });
+        return res.status(500).json({ success: false, message: err.code === 'P0001' ? err.message : 'Server error.' });
       }
 
     } else if (action === 'update_names') {
@@ -249,8 +252,8 @@ export default async function handler(req, res) {
         return res.json({ success: false, message: 'Collection Name and Article Name are required. Use TBD if not decided yet.' });
       }
       try {
-        const result = await pool.query(
-          `UPDATE po_master
+        const result = await auditedQuery(pool, user.name,
+        `UPDATE po_master
              SET collection_name = $1, article_name = $2
            WHERE po_number = $3`,
           [collection_name.trim(), article_name.trim(), po_number]
@@ -261,7 +264,7 @@ export default async function handler(req, res) {
         return res.json({ success: true });
       } catch (err) {
         console.error('PO Master PUT update_names error:', err.message);
-        return res.status(500).json({ success: false, message: 'Server error.' });
+        return res.status(500).json({ success: false, message: err.code === 'P0001' ? err.message : 'Server error.' });
       }
 
     } else if (action === 'update_details') {
@@ -282,8 +285,8 @@ export default async function handler(req, res) {
         return res.json({ success: false, message: 'Collection Name and Article Name are required. Use TBD if not decided yet.' });
       }
       try {
-        const result = await pool.query(
-          `UPDATE po_master SET
+        const result = await auditedQuery(pool, user.name,
+        `UPDATE po_master SET
              collection_name = $1, article_name = $2, garment_type = $3,
              po_date = $4, delivery_date = $5, remarks = $6, batch_number = $7,
              shirt_colour = $8, shirt_fabric = $9, shirt_qty = $10,
@@ -305,7 +308,7 @@ export default async function handler(req, res) {
         return res.json({ success: true });
       } catch (err) {
         console.error('PO Master PUT update_details error:', err.message);
-        return res.status(500).json({ success: false, message: 'Server error.' });
+        return res.status(500).json({ success: false, message: err.code === 'P0001' ? err.message : 'Server error.' });
       }
 
     } else {
@@ -318,8 +321,8 @@ export default async function handler(req, res) {
         return res.json({ success: false, message: 'id and status are required.' });
       }
       try {
-        const result = await pool.query(
-          `UPDATE po_master SET status = $1 WHERE id = $2`,
+        const result = await auditedQuery(pool, user.name,
+        `UPDATE po_master SET status = $1 WHERE id = $2`,
           [newStatus, id]
         );
         if (result.rowCount === 0) {
@@ -328,7 +331,7 @@ export default async function handler(req, res) {
         return res.json({ success: true });
       } catch (err) {
         console.error('PO Master PUT status error:', err.message);
-        return res.status(500).json({ success: false, message: 'Server error.' });
+        return res.status(500).json({ success: false, message: err.code === 'P0001' ? err.message : 'Server error.' });
       }
     }
 

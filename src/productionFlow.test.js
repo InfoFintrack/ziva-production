@@ -2,6 +2,7 @@ const { recordProductionFlow } = require('../api/_lib/productionFlow');
 
 function db() {
   const client = { release: jest.fn(), query: jest.fn(async sql => {
+    if (sql.includes('set_config') || sql.includes('pg_advisory_xact_lock')) return {rows:[]};
     if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return {};
     if (sql.includes('FROM po_master')) return { rows: [{ shirt_qty: 20, shirt_meters_issued: 40 }] };
     if (sql.includes('FROM stitchers')) return { rows: [{ '?column?': 1 }] };

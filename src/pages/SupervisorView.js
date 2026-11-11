@@ -3,14 +3,16 @@ import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { getPOs, getCMTRates, getStitchers, getAllocations, createAllocation, updateAllocation, getPaymentEntries } from '../api';
 import ProdFlowLogo from '../components/ProdFlowLogo';
+import ReworkAcceptance from '../components/ReworkAcceptance';
+import AllocationCapacity from '../components/AllocationCapacity';
 import PoweredByFintrack from '../components/PoweredByFintrack';
 
 const TODAY = new Date().toISOString().split('T')[0];
 const isStitchingWorker = (worker) =>
   !worker.worker_type || worker.worker_type === 'Stitching';
-const COMPONENTS = ['Shirt', 'Trouser', 'Dupatta'];
+const COMPONENTS = ['Shirt','Trouser','Dupatta','Shirt Patching','Trouser Patching','Dupatta Patching'];
 const availableComponentsForPO = (po) =>
-  COMPONENTS.filter(component => Number(po?.[`${component.toLowerCase()}_qty`] || 0) > 0);
+  COMPONENTS.filter(component => Number(po?.[`${component.toLowerCase().split(' ')[0]}_qty`] || 0) > 0);
 
 const EMPTY_FORM = {
   allocation_date: TODAY,
@@ -358,7 +360,7 @@ function SupervisorView({ user, onLogout }) {
         {/* ── Tab 1: New Allocation ─────────────────────────────────────────── */}
         {activeTab === 'new' && (
           <div className="card" style={{ borderRadius: '0 0 12px 12px', marginTop: 0 }}>
-            <h3>New Allocation</h3>
+            <h3>New Allocation</h3><AllocationCapacity po={form.po_number} component={form.component} module="Stitching" />
 
             {dataLoading ? (
               <div className="loading"><div className="spinner" />Loading dropdowns...</div>
@@ -547,6 +549,7 @@ function SupervisorView({ user, onLogout }) {
                             <td><strong>{remaining}</strong></td>
                             <td><StatusBadge status={a.status} /></td>
                             <td>
+                              {Number(a.qty_rework)>0 && <ReworkAcceptance allocation={a} onSaved={loadAllocations}/>}
                               {displayStatus !== 'Complete' && (
                                 <button
                                   className="btn btn-small"

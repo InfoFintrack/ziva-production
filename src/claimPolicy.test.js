@@ -4,8 +4,10 @@ const claim = { po_number: 'PO-1', stitcher_code: '0001', department: 'Stitching
 
 function client(accepted, earlier, allClaimed, ordered = 200) {
   return { query: jest.fn(async sql => {
+    if (sql.includes('SELECT p.id,l.garment')) return {rows:[]};
     if (sql.includes('pg_advisory_xact_lock')) return { rows: [] };
     if (sql.includes('FROM po_master')) return { rows: [{ shirt_qty: ordered, trouser_qty: 0, dupatta_qty: 0 }] };
+    if (sql.includes('FROM production_stage_events')) return {rows:[{qty:ordered}]};
     if (sql.includes('FROM stitcher_allocations')) return { rows: [{ qty: accepted }] };
     if (sql.includes('FROM cmt_payments') && sql.includes('stitcher_code')) return { rows: [{ qty: earlier }] };
     if (sql.includes('FROM cmt_payments')) return { rows: [{ qty: allClaimed }] };
@@ -19,7 +21,7 @@ test('claimable output subtracts earlier claims', async () => {
 });
 
 test('PO cap applies across workers even when an allocation is oversized', async () => {
-  await expect(validateClaim(client(200, 0, 180, 200), { ...claim, qty_claimed: 30 })).rejects.toThrow('exceed the PO quantity');
+  await expect(validateClaim(client(200, 0, 180, 200), { ...claim, qty_claimed: 30 })).rejects.toThrow('exceed the actual cut quantity');
 });
 
 test('rework or rejected pieces never increase claimable quantity', async () => {
@@ -27,8 +29,8 @@ test('rework or rejected pieces never increase claimable quantity', async () => 
 });
 
 test('patching claims use accepted patching output and a garment-order cap', async () => {
-  await expect(validateClaim(client(8, 3, 3), { ...claim, operation: 'Patching', component: 'patching', qty_claimed: 5 })).resolves.toBeUndefined();
-  await expect(validateClaim(client(8, 3, 3), { ...claim, operation: 'Patching', component: 'patching', qty_claimed: 6 })).rejects.toThrow('claimable is 5');
+  await expect(validateClaim(client(8, 3, 3), { ...claim, operation: 'Shirt Patching', component: 'shirt patching', qty_claimed: 5 })).resolves.toBeUndefined();
+  await expect(validateClaim(client(8, 3, 3), { ...claim, operation: 'Shirt Patching', component: 'shirt patching', qty_claimed: 6 })).rejects.toThrow('claimable is 5');
 });
 
 test('availability preview uses the same accepted, earlier-claim and PO limits as submission', async () => {

@@ -44,7 +44,7 @@ export const adminOverride = (recordId, field, newValue, adminName) =>
 export const getRecords = () =>
   authFetch(`${BASE_URL}/api/records`);
 
-export const getFinancialAudit = () => authFetch('/api/records?type=financial_audit');
+export const getFinancialAudit = before => authFetch(`/api/records?type=financial_audit${before ? '&before='+encodeURIComponent(before) : ''}`);
 export const getProductionFlow = () => authFetch('/api/records?type=production_flow');
 export const recordProductionFlow = data => post('/api/records?type=production_flow', data);
 
@@ -134,3 +134,8 @@ export const getAdvances = (params = '') => {
 };
 export const getAdvanceLedger = () => authFetch('/api/cmt-payments?type=advance_ledger');
 export const setAdvanceOpening = data => post('/api/cmt-payments?type=advance_ledger', data);
+
+export const getControls = () => authFetch('/api/records?type=controls');
+export const controlAction = data => post('/api/records?type=controls',data);
+
+export const getAllocationCapacity = data => authFetch(`/api/allocations?${new URLSearchParams({type:'capacity',...data})}`);

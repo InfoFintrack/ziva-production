@@ -1,260 +1,76 @@
 const { getPool } = require('./_lib/db');
-const { auditedQuery } = require('./_lib/auditedQuery');
 const { authenticateToken } = require('./_lib/auth');
-
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (req.method === 'OPTIONS') return res.status(200).end();
-
-  const user = authenticateToken(req, res);
-  if (!user) return;
-
-  const pool = getPool();
-
-  if (req.method === 'GET') {
-    try {
-      const conditions = [];
-      const values = [];
-      let paramIdx = 1;
-
-      if (req.query.status) {
-        conditions.push(`status = $${paramIdx++}`);
-        values.push(req.query.status);
+const { requireControls, controlTransaction } = require('./_lib/controls');
+const { ClaimError } = require('./_lib/claimPolicy');
+const FIELDS = ['cutting','shirt','trouser','dupatta','patching','fs_clipping','fs_heming','fs_tussling','fs_pressing','ft_clipping','ft_heming','ft_pressing','ft_patching','fd_heming','fd_tussling','fd_pressing','fd_patching','quality_packing'];
+const values = body => FIELDS.map(f => {
+  const n=Number(body[f] || 0);
+  if (!Number.isFinite(n) || n<0) throw new ClaimError('Rates must be nonnegative numbers.');
+  return n;
+});
+export default async function handler(req,res) {
+  res.setHeader('Access-Control-Allow-Origin','*');
+  res.setHeader('Access-Control-Allow-Methods','GET,POST,PUT,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers','Content-Type,Authorization');
+  if(req.method==='OPTIONS') return res.status(200).end();
+  const user=authenticateToken(req,res); if(!user) return;
+  const pool=getPool();
+  try {
+    await requireControls(pool);
+    if(req.method==='GET') {
+      const params=[]; const clauses=[];
+      if(req.query.po_number) {params.push(req.query.po_number);clauses.push(`t.po_number=$${params.length}`);}
+      if(req.query.status) {params.push(req.query.status);clauses.push(`t.status=$${params.length}`);if(req.query.status==='Approved') clauses.push('t.in_app_approved=TRUE');}
+      const distinct=req.query.history==='true' ? '' : 'DISTINCT ON(t.po_number)';
+      const {rows}=await pool.query(`SELECT ${distinct} t.*, (${FIELDS.map(f=>`COALESCE(t.${f},0)`).join('+')}) AS total,
+        (t.in_app_approved AND EXISTS(SELECT 1 FROM users u WHERE u.name=t.approved_by_ceo AND u.role='CEO')) AS ceo_signoff_valid
+        FROM cmt_rates t ${clauses.length ? 'WHERE '+clauses.join(' AND ') : ''} ORDER BY t.po_number,t.version DESC`,params);
+      return res.json({success:true,rates:rows});
+    }
+    if(!['POST','PUT'].includes(req.method)) return res.status(405).json({success:false,message:'Method not allowed.'});
+    const result=await controlTransaction(pool,user,async client=>{
+      const body=req.body; let current;
+      if(req.method==='PUT') {
+        const found=await client.query('SELECT * FROM cmt_rates WHERE id=$1',[body.id]); current=found.rows[0];
+        if(!current) throw new ClaimError('Rate version not found.');
       }
-      if (req.query.po_number) {
-        conditions.push(`po_number = $${paramIdx++}`);
-        values.push(req.query.po_number);
+      const po=current?.po_number || body.po_number;
+      if(!po) throw new ClaimError('Choose a PO.');
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`production:${po}`]);
+      const pos=await client.query('SELECT id FROM po_master WHERE po_number=$1 FOR UPDATE',[po]);
+      if(!pos.rows.length) throw new ClaimError('PO not found.');
+      if(current) current=(await client.query('SELECT * FROM cmt_rates WHERE id=$1 FOR UPDATE',[body.id])).rows[0];
+      if(['approve','reject'].includes(body.action)) {
+        const expected=user.role==='Accounts' ? 'Pending_Accounts' : user.role==='CEO' ? 'Pending_CEO' : null;
+        if(!expected || current.status!==expected) throw new ClaimError('This version is not awaiting your approval. Approved versions are locked.');
+        if(body.action==='approve') {
+          const next=user.role==='Accounts' ? 'Pending_CEO' : 'Approved';
+          const prefix=user.role==='Accounts' ? 'accounts' : 'ceo';
+          await client.query(`UPDATE cmt_rates SET status=$1,approved_by_${prefix}=$2,${prefix}_approved_at=NOW() WHERE id=$3`,[next,user.name,current.id]);
+        } else await client.query(`UPDATE cmt_rates SET status='Rejected',${user.role==='Accounts'?'accounts':'ceo'}_remarks=$1 WHERE id=$2`,[body.remarks || null,current.id]);
+        return {success:true};
       }
-
-      const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-      const { rows } = await pool.query(
-        `SELECT t.*,
-           EXISTS (SELECT 1 FROM users u WHERE LOWER(u.name) = LOWER(t.approved_by_ceo) AND u.role = 'CEO') AS ceo_signoff_valid,
-           (COALESCE(t.cutting,0)+COALESCE(t.shirt,0)+COALESCE(t.trouser,0)+COALESCE(t.dupatta,0)+
-            COALESCE(t.patching,0)+COALESCE(t.fs_clipping,0)+COALESCE(t.fs_heming,0)+
-            COALESCE(t.fs_tussling,0)+COALESCE(t.fs_pressing,0)+COALESCE(t.ft_clipping,0)+
-            COALESCE(t.ft_heming,0)+COALESCE(t.ft_pressing,0)+COALESCE(t.ft_patching,0)+
-            COALESCE(t.fd_heming,0)+COALESCE(t.fd_tussling,0)+COALESCE(t.fd_pressing,0)+
-            COALESCE(t.fd_patching,0)+COALESCE(t.quality_packing,0)) AS total
-         FROM cmt_rates t ${where} ORDER BY t.created_at DESC`,
-        values
-      );
-      return res.json({ success: true, rates: rows });
-    } catch (err) {
-      console.error('CMT Rates GET error:', err.message);
-      return res.status(500).json({ success: false, message: 'Server error.' });
-    }
-
-  } else if (req.method === 'POST') {
-    if (!['Cutting', 'Admin'].includes(user.role)) {
-      return res.status(403).json({ success: false, error: 'Access denied' });
-    }
-
-    const {
-      po_number, color_design, cutting, shirt, trouser, dupatta, patching,
-      fs_clipping, fs_heming, fs_tussling, fs_pressing,
-      ft_clipping, ft_heming, ft_pressing, ft_patching,
-      fd_heming, fd_tussling, fd_pressing, fd_patching,
-      quality_packing, remarks,
-    } = req.body;
-
-    if (!po_number) {
-      return res.json({ success: false, message: 'po_number is required.' });
-    }
-
-    try {
-      // Verify po_number exists in po_master
-      const { rows: poCheck } = await pool.query(
-        `SELECT id FROM po_master WHERE po_number = $1`,
-        [po_number]
-      );
-      if (!poCheck.length) {
-        return res.json({ success: false, message: 'PO number does not exist in po_master.' });
+      if(!['Cutting','Admin','Accounts','CEO'].includes(user.role)) throw new ClaimError('Access denied.');
+      if(req.method==='POST' && !['Cutting','Admin'].includes(user.role)) throw new ClaimError('Cutting or Admin submits new rates.');
+      if(req.method==='PUT' && !['resubmit','admin_edit','revise'].includes(body.action)) throw new ClaimError('Unknown rate action.');
+      const rateValues=values(body);
+      if(!current || current.status==='Approved' || body.action==='revise') {
+        const existing=await client.query('SELECT * FROM cmt_rates WHERE po_number=$1 ORDER BY version DESC',[po]);
+        if(existing.rows.some(r=>r.status.startsWith('Pending'))) throw new ClaimError('A rate version is already awaiting approval for this PO.');
+        if(!current && existing.rows.length) throw new ClaimError('Rates already exist. Open the latest version and choose Create revision.');
+        const version=existing.rows.length ? Number(existing.rows[0].version)+1 : 1;
+        const columns=['po_number',...FIELDS,'color_design','remarks','version','supersedes','status','submitted_by'];
+        const v=[po,...rateValues,body.color_design || null,body.remarks || null,version,current ? String(current.id):null,'Pending_Accounts',user.name];
+        const inserted=await client.query(`INSERT INTO cmt_rates(${columns.join(',')},submitted_at,created_at) VALUES(${v.map((_,i)=>`$${i+1}`).join(',')},NOW(),NOW()) RETURNING *`,v);
+        return {success:true,rate:inserted.rows[0],message:`Version ${version} submitted for fresh Accounts and CEO approval. The approved version remains unchanged.`};
       }
-
-      // Ensure po_number not already in cmt_rates
-      const { rows: existing } = await pool.query(
-        `SELECT id FROM cmt_rates WHERE po_number = $1`,
-        [po_number]
-      );
-      if (existing.length) {
-        return res.json({ success: false, message: 'CMT rates for this PO number already exist.' });
-      }
-
-      const { rows } = await auditedQuery(pool, user.name,
-        `INSERT INTO cmt_rates
-           (po_number, color_design, cutting, shirt, trouser, dupatta, patching,
-            fs_clipping, fs_heming, fs_tussling, fs_pressing,
-            ft_clipping, ft_heming, ft_pressing, ft_patching,
-            fd_heming, fd_tussling, fd_pressing, fd_patching,
-            quality_packing, remarks, status, submitted_by, submitted_at, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,NOW(),NOW())
-         RETURNING *`,
-        [
-          po_number,
-          color_design    || null,
-          cutting         || 0,
-          shirt           || 0,
-          trouser         || 0,
-          dupatta         || 0,
-          patching        || 0,
-          fs_clipping     || 0,
-          fs_heming       || 0,
-          fs_tussling     || 0,
-          fs_pressing     || 0,
-          ft_clipping     || 0,
-          ft_heming       || 0,
-          ft_pressing     || 0,
-          ft_patching     || 0,
-          fd_heming       || 0,
-          fd_tussling     || 0,
-          fd_pressing     || 0,
-          fd_patching     || 0,
-          quality_packing || 0,
-          remarks         || null,
-          'Pending_Accounts',
-          user.name,
-        ]
-      );
-
-      return res.json({ success: true, rate: rows[0] });
-    } catch (err) {
-      console.error('CMT Rates POST error:', err.message);
-      return res.status(500).json({ success: false, message: 'Server error.' });
-    }
-
-  } else if (req.method === 'PUT') {
-    const {
-      id, action, remarks,
-      cutting, shirt, trouser, dupatta, patching,
-      fs_clipping, fs_heming, fs_tussling, fs_pressing,
-      ft_clipping, ft_heming, ft_pressing, ft_patching,
-      fd_heming, fd_tussling, fd_pressing, fd_patching,
-      quality_packing, color_design,
-    } = req.body;
-
-    if (!id || !action) {
-      return res.json({ success: false, message: 'id and action are required.' });
-    }
-
-    const validActions = ['approve', 'reject', 'resubmit', 'admin_edit'];
-    if (!validActions.includes(action)) {
-      return res.json({ success: false, message: `action must be one of: ${validActions.join(', ')}.` });
-    }
-
-    // Role-based access per action
-    if (action === 'resubmit' && user.role !== 'Cutting') {
-      return res.status(403).json({ success: false, error: 'Only Cutting role can resubmit.' });
-    }
-    if (action === 'admin_edit' && !['Accounts', 'CEO', 'Admin'].includes(user.role)) {
-      return res.status(403).json({ success: false, error: 'Access denied.' });
-    }
-    if (['approve', 'reject'].includes(action) && !['Accounts', 'CEO'].includes(user.role)) {
-      return res.status(403).json({ success: false, error: 'Access denied.' });
-    }
-
-    try {
-      const { rows: current } = await pool.query(
-        `SELECT status FROM cmt_rates WHERE id = $1`,
-        [id]
-      );
-      if (!current.length) {
-        return res.json({ success: false, message: 'Rate not found.' });
-      }
-
-      const currentStatus = current[0].status;
-
-      // Locked check only applies to approve/reject, not resubmit/admin_edit
-      if (['approve', 'reject'].includes(action) && currentStatus === 'Approved') {
-        return res.json({ success: false, error: 'Rate is locked and cannot be modified' });
-      }
-
-      const rateValues = [
-        cutting || 0, shirt || 0, trouser || 0, dupatta || 0, patching || 0,
-        fs_clipping || 0, fs_heming || 0, fs_tussling || 0, fs_pressing || 0,
-        ft_clipping || 0, ft_heming || 0, ft_pressing || 0, ft_patching || 0,
-        fd_heming || 0, fd_tussling || 0, fd_pressing || 0, fd_patching || 0,
-        quality_packing || 0, color_design || null,
-      ];
-
-      if (action === 'resubmit') {
-        await auditedQuery(pool, user.name,
-          `UPDATE cmt_rates
-           SET status = 'Pending_Accounts',
-               cutting=$1, shirt=$2, trouser=$3, dupatta=$4, patching=$5,
-               fs_clipping=$6, fs_heming=$7, fs_tussling=$8, fs_pressing=$9,
-               ft_clipping=$10, ft_heming=$11, ft_pressing=$12, ft_patching=$13,
-               fd_heming=$14, fd_tussling=$15, fd_pressing=$16, fd_patching=$17,
-               quality_packing=$18, color_design=$19,
-               accounts_remarks=NULL, ceo_remarks=NULL,
-               approved_by_accounts=NULL, accounts_approved_at=NULL,
-               approved_by_ceo=NULL, ceo_approved_at=NULL
-           WHERE id = $20`,
-          [...rateValues, id]
-        );
-
-      } else if (action === 'admin_edit') {
-        await auditedQuery(pool, user.name,
-          `UPDATE cmt_rates
-           SET status = 'Pending_Accounts',
-               cutting=$1, shirt=$2, trouser=$3, dupatta=$4, patching=$5,
-               fs_clipping=$6, fs_heming=$7, fs_tussling=$8, fs_pressing=$9,
-               ft_clipping=$10, ft_heming=$11, ft_pressing=$12, ft_patching=$13,
-               fd_heming=$14, fd_tussling=$15, fd_pressing=$16, fd_patching=$17,
-               quality_packing=$18, color_design=$19,
-               approved_by_accounts=NULL, accounts_approved_at=NULL,
-               approved_by_ceo=NULL, ceo_approved_at=NULL,
-               accounts_remarks=NULL, ceo_remarks=NULL
-           WHERE id = $20`,
-          [...rateValues, id]
-        );
-
-      } else if (user.role === 'Accounts') {
-        if (currentStatus !== 'Pending_Accounts') {
-          return res.json({ success: false, message: 'Rate is not pending Accounts review.' });
-        }
-        if (action === 'approve') {
-          await auditedQuery(pool, user.name,
-            `UPDATE cmt_rates
-             SET status = 'Pending_CEO', approved_by_accounts = $1, accounts_approved_at = NOW()
-             WHERE id = $2`,
-            [user.name, id]
-          );
-        } else {
-          await auditedQuery(pool, user.name,
-            `UPDATE cmt_rates SET status = 'Rejected', accounts_remarks = $1 WHERE id = $2`,
-            [remarks || null, id]
-          );
-        }
-
-      } else if (user.role === 'CEO') {
-        if (currentStatus !== 'Pending_CEO') {
-          return res.json({ success: false, message: 'Rate is not pending CEO review.' });
-        }
-        if (action === 'approve') {
-          await auditedQuery(pool, user.name,
-            `UPDATE cmt_rates
-             SET status = 'Approved', approved_by_ceo = $1, ceo_approved_at = NOW()
-             WHERE id = $2`,
-            [user.name, id]
-          );
-        } else {
-          await auditedQuery(pool, user.name,
-            `UPDATE cmt_rates SET status = 'Rejected', ceo_remarks = $1 WHERE id = $2`,
-            [remarks || null, id]
-          );
-        }
-      }
-
-      return res.json({ success: true });
-    } catch (err) {
-      console.error('CMT Rates PUT error:', err.message);
-      return res.status(500).json({ success: false, message: 'Server error.' });
-    }
-
-  } else {
-    return res.status(405).json({ success: false, message: 'Method not allowed.' });
+      const v=[...rateValues,body.color_design || null,body.remarks || null,current.id];
+      await client.query(`UPDATE cmt_rates SET ${FIELDS.map((f,i)=>`${f}=$${i+1}`).join(',')},color_design=$19,remarks=$20,status='Pending_Accounts',approved_by_accounts=NULL,accounts_approved_at=NULL,approved_by_ceo=NULL,ceo_approved_at=NULL WHERE id=$21`,v);
+      return {success:true,message:'Draft resubmitted for approval.'};
+    });
+    return res.json(result);
+  } catch(error) {
+    console.error('Rates:',error.message);
+    return res.status(error instanceof ClaimError || error.code==='P0001' || error.code==='23505' ? 400:500).json({success:false,message:error instanceof ClaimError || error.code==='P0001' ? error.message : error.code==='23505' ? 'A rate version already exists; refresh and retry.' : 'Rate service unavailable.'});
   }
 }

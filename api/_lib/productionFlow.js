@@ -1,3 +1,4 @@
+const { auditedQuery } = require('./auditedQuery');
 const COMPONENTS = ['shirt', 'trouser', 'dupatta'];
 const STAGES = ['Cut', 'QC_Packed', 'Dispatched', 'Vendor_Issue', 'Vendor_Return'];
 
@@ -45,13 +46,14 @@ const bad = message => ({ status: 400, body: { success: false, message } });
 
 async function recordProductionFlow(pool, user, body) {
   await ensureProductionFlow(pool);
+  await require('./controls').requireControls(pool);
   if (body.type === 'Yield_Standard') {
     if (user.role !== 'Admin') return { status: 403, body: { success: false, message: 'Admin access required.' } };
     const article = String(body.article_name || '').trim();
     const component = String(body.component || '').toLowerCase();
     const standard = Number(body.meters_per_piece);
     if (!article || !COMPONENTS.includes(component) || !Number.isFinite(standard) || standard <= 0) return bad('Article, component and positive metres per piece are required.');
-    const { rows } = await pool.query(`INSERT INTO article_yield_standards (article_name, component, meters_per_piece, updated_by)
+    const { rows } = await auditedQuery(pool, user.name, `INSERT INTO article_yield_standards (article_name, component, meters_per_piece, updated_by)
       VALUES ($1,$2,$3,$4) ON CONFLICT (article_name, component) DO UPDATE SET meters_per_piece=EXCLUDED.meters_per_piece, updated_by=EXCLUDED.updated_by, updated_at=NOW() RETURNING *`, [article, component, standard, user.name]);
     return { status: 200, body: { success: true, standard: rows[0] } };
   }
@@ -64,7 +66,7 @@ async function recordProductionFlow(pool, user, body) {
   const quantity = Number(body.quantity);
   const vendor = String(body.vendor_name || '').trim();
   const process = String(body.vendor_process || '');
-  if (!po || !(type === 'Cut' ? [...COMPONENTS, 'patching'] : COMPONENTS).includes(component) || !Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(quantity * 100)) return bad('PO, component and a positive quantity with at most two decimals are required.');
+  if (!po || !COMPONENTS.includes(component) || !Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(quantity * 100)) return bad('PO, component and a positive quantity with at most two decimals are required.');
   if (['Cut', 'QC_Packed', 'Dispatched'].includes(type) && !Number.isInteger(quantity)) return bad('Piece quantities must be whole numbers.');
   if (type.startsWith('Vendor_') && (!vendor || !['Dyeing', 'Embroidery'].includes(process))) return bad('Vendor name and Dyeing or Embroidery are required.');
   if (type === 'Vendor_Return' && !body.issue_id) return bad('Choose the original vendor issue for this receipt.');
@@ -74,6 +76,8 @@ async function recordProductionFlow(pool, user, body) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await client.query("SELECT set_config('app.audit_actor',$1,true)",[user.name]);
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`production:${po}`]);
     const { rows: pos } = await client.query('SELECT * FROM po_master WHERE po_number=$1 FOR UPDATE', [po]);
     if (!pos.length) { await client.query('ROLLBACK'); return bad('PO not found.'); }
     if (type === 'Cut') {
@@ -90,9 +94,8 @@ async function recordProductionFlow(pool, user, body) {
     let limit;
     if (type === 'Cut') limit = ordered - total('Cut');
     if (type === 'QC_Packed') {
-      const terminal = { shirt: 'shirt pressing', trouser: 'trouser patching', dupatta: 'dupatta patching' }[component];
-      const accepted = await client.query(`SELECT COALESCE(SUM(qty_accepted),0) AS qty FROM stitcher_allocations WHERE po_number=$1 AND component=$2 AND module_type='Finishing'`, [po, terminal]);
-      limit = Math.min(ordered, Number(accepted.rows[0].qty)) - total('QC_Packed');
+      const accepted = await client.query('SELECT finished_pieces($1,$2) AS qty',[po,component]);
+      limit = Number(accepted.rows[0].qty) - total('QC_Packed');
     }
     if (type === 'Dispatched') limit = total('QC_Packed') - total('Dispatched');
     let issueId = null;
@@ -106,9 +109,9 @@ async function recordProductionFlow(pool, user, body) {
     }
     if (quantity > Math.max(0, limit)) { await client.query('ROLLBACK'); return bad(`Only ${Math.max(0, limit)} ${type.startsWith('Vendor_') ? 'metres' : 'pieces'} remain available for this event.`); }
     const { rows } = await client.query(`INSERT INTO production_stage_events
-      (po_number, component, event_type, quantity, unit, vendor_name, vendor_process, issue_id, worker_code, recorded_by, occurred_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-      [po, component, type, quantity, type.startsWith('Vendor_') ? 'Meters' : 'Pieces', vendor || null, process || null, issueId, workerCode || null, user.name, body.occurred_at || new Date().toISOString()]);
+      (po_number, component, event_type, quantity, unit, vendor_name, vendor_process, issue_id, worker_code, recorded_by, occurred_at, fabric_meters)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [po, component, type, quantity, type.startsWith('Vendor_') ? 'Meters' : 'Pieces', vendor || null, process || null, issueId, workerCode || null, user.name, body.occurred_at || new Date().toISOString(), type === 'Cut' && body.fabric_meters ? Number(body.fabric_meters) : null]);
     await client.query('COMMIT');
     return { status: 200, body: { success: true, event: rows[0] } };
   } catch (error) { await client.query('ROLLBACK'); throw error; }

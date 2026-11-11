@@ -10,6 +10,7 @@ import SupervisorView from './pages/SupervisorView';
 import AccountsView from './pages/AccountsView';
 import CEOView from './pages/CEOView';
 import FinishingView from './pages/FinishingView';
+import ControlCenter from './pages/ControlCenter';
 import ProductionFlowView from './pages/ProductionFlowView';
 
 const ROLE_HOME = {
@@ -105,8 +106,10 @@ function App() {
             ? <AdminSettings user={user} onLogout={handleLogout} />
             : <Navigate to={home} />
         } />
+        <Route path="/controls" element={<ControlCenter user={user} home={home} />} />
         <Route path="/flow" element={<ProductionFlowView user={user} onLogout={handleLogout} home={home} />} />
       </Routes>
+      <Link className="flow-shortcut" style={{bottom:80}} to="/controls">✓ Controls & payroll</Link>
       <Link className="flow-shortcut" to="/flow">◆ Production flow</Link>
     </Router>
   );

@@ -1,0 +1,33 @@
+# Production controls rollout
+
+The application and migration are one release. In the Supabase project used by Vercel, run the complete `db/production_controls.sql` as postgres. The file wraps changes in a transaction and can be rerun. It includes the earlier production-flow, advance-ledger and audit schemas. Do not run the old standalone financial-audit migration afterward; it contains an older audit function.
+
+Until this migration is installed, new rate/PO/allocation/payment writes are blocked with a setup message. Existing history is retained. The migration does not create fictitious cuts or accepted work and does not reclassify historical paid pieces automatically. Before resuming payroll, Admin should use Controls → Reconciliation queue to identify orders with missing cuts, accepted records or over-cut legacy claims.
+
+## Team workflow
+
+1. PP creates the order and enters garment quantities. Cutting records actual cut output in Production flow separately for shirt, trouser and dupatta, with the real work date and cutting master. Optional fabric metres per cut batch enable master-level consumption; incomplete attribution is displayed as unavailable.
+2. Supervisors allocate stitching after cuts exist. Waqas allocates finishing operations within the same garment's cut balance. Live Tracker records returned pieces split into accepted, rework and rejected. Quantities are cumulative; rejected and unresolved rework do not increase payable output. For repaired work, use Accept rework on the original allocation, including completed lots. It moves verified pieces from rework to accepted without a second allocation or returned count, logs a verification note, and retains the original defect count for quality reporting.
+3. Patching names its garment: Shirt Patching, Trouser Patching or Dupatta Patching. Admin or CEO uses the historical-patching section in Controls to classify old bare-patching payment records based on verified job sheets. Those links are permanent and audited, and do not alter the original payment. An unresolved historical patching record holds further patching claims on that PO to prevent double payment.
+4. Zain/Waqas log only the displayed claimable balance. The cap is accepted minus previous claims AND actual garment cuts minus all claims for that operation. Multiple operations never become extra physical garments. Bulk entry includes completed allocations, groups repeated allocations and uses the remaining server-calculated claimable balance.
+5. Accounts verifies all unpaid entries for a Saturday payroll week. Controls → Weekly payroll → Submit freezes the unpaid entries and reserves each worker's advance balance. All outstanding historical advances need a reconciled opening in Admin's Production flow setup before submission.
+6. CEO reviews the snapshot inside ProdFlow and either rejects it for correction or approves and permanently locks it. An approved payout sheet can then be downloaded as a standalone HTML document, printed or saved as PDF. It contains gross, advance recovery, net payable and a signature column. Reconciliation CSVs are not approved payout instructions.
+7. Accounts disburses the exact net amounts on that sheet and enters a cash voucher or bank payout reference in Controls to confirm the entire run paid. The action is atomic and cannot be repeated. Do not confirm payment before cash/bank settlement. The application records a reference; it does not transfer money or verify the banking transaction.
+8. Late claims keep their actual entry/work date and select a later open Saturday payroll week. Never reopen or overwrite an approved week. Worker advances stay reserved while payroll is pending CEO approval or approved/unpaid; complete payout or obtain CEO rejection before other advance changes for those workers.
+
+## Changes and approvals
+
+- After the first recorded Cut, normal PO quantity editing stops. PP/Admin submits proposed garment totals and a reason in Controls. Only CEO may apply the request, and totals cannot go below recorded cuts. Requests based on stale quantities must be rejected and recreated.
+- Approved rate versions are immutable. Create revision copies the submitted values into a fresh version for Accounts and CEO approval. New claims pin the latest approved in-app version; older claims retain their original locked rates. Draft versions can be corrected and resubmitted. Old approved versions stay on record.
+- Historical approvals qualify as in-app only when an existing audit event proves the CEO approved them. Other legacy Approved rows remain on record but need a fresh revision and approval before new claims. The migration logs this documented-signoff reconciliation.
+- Admin and CEO can open Controls → Change history and load older entries. Database triggers record actor, timestamp, field and old/new values for rates, payments, POs, payroll decisions, quantity requests, production events, article standards and historical patching links. Audit history is append-only. Events before audit installation cannot be reconstructed.
+
+## Set balances and fabric yield
+
+Controls shows the three garments side by side at ordered, cut, stitched, finished, packed, dispatched and paid stages. Finished is the bottleneck of accepted quantities across finishing operations with a positive current approved rate, bounded by accepted stitching. Operations with a zero approved rate are not required finishing work. QC/packing uses this same rule in the database. Amber stage labels highlight different proportions of ordered garment quantities. Red flags show output or claims above cuts. Paid is the largest paid operation coverage, with all operations listed separately underneath; summing labour operations would count the same garment repeatedly.
+
+Production flow shows issued metres / actual cut pieces, the Admin-entered article standard and variance. Positive variance means above-standard consumption; during partial cutting, the figure includes fabric issued for future batches. Master-level results require metres on every included cut batch. Unattributed fabric remains shared at PO level.
+
+## Verification performed
+
+See `scripts/test-production-controls.js` for real PostgreSQL enforcement tests, including concurrent allocations. `scripts/control-test-schema.sql` is a disposable test fixture, never a production migration. `scripts/local-controls-server.js` and `scripts/browser-controls-smoke.js` exercise actual API handlers and UI roles against localhost PostgreSQL only; they never read production credentials. The browser runner uses installed Chromium and a temporary Playwright package.

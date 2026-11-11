@@ -9,7 +9,7 @@ test('only the terminal finishing operation counts toward completion', () => {
     { ...base, module_type: 'Finishing', component: 'shirt clipping', qty_accepted: 70 },
     { ...base, module_type: 'Finishing', component: 'shirt pressing', qty_accepted: 50, qty_rejected: 10 },
   ];
-  const board = poBoard([po], allocations, [], [], new Date('2026-01-15T00:00:00Z'))[0];
+  const board = poBoard([po], allocations, [], [{po_number:'PO-1',status:'Approved',fs_clipping:1,fs_pressing:1}], new Date('2026-01-15T00:00:00Z'), [{po_number:'PO-1',component:'shirt',event_type:'Cut',quantity:100}])[0];
   expect(board.finished).toBe(50);
   expect(board.complete).toBe(50);
   expect(board.rejected).toBe(10);
@@ -48,9 +48,9 @@ test('weekly trend separates departments using entry dates', () => {
 
 test('a payment amount changed after Paid appears in exceptions', () => {
   const audit = [{ entity: 'cmt_payments', record_id: 'pay-1', field: 'amount', old_value: 100, new_value: 120, status_at_change: 'Paid', actor: 'Accounts' }];
-  expect(exceptions([], [], [], new Date('2026-01-14T00:00:00Z'), audit)).toEqual([
+  expect(exceptions([], [], [], new Date('2026-01-14T00:00:00Z'), audit)).toEqual(expect.arrayContaining([
     expect.objectContaining({ severity: 'Post-pay edit' }),
-  ]);
+  ]));
 });
 
 test('an approved rate signed by a non-CEO is flagged', () => {

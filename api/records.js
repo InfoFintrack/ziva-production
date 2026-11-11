@@ -1,3 +1,4 @@
+const { handleControls } = require('./_lib/controls');
 const { getPool } = require('./_lib/db');
 const { authenticateToken } = require('./_lib/auth');
 const { readProductionFlow, recordProductionFlow } = require('./_lib/productionFlow');
@@ -9,7 +10,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  if (req.method !== 'GET' && !(req.method === 'POST' && req.query.type === 'production_flow')) {
+  if (req.method !== 'GET' && !(req.method === 'POST' && ['production_flow','controls'].includes(req.query.type))) {
     return res.status(405).json({ success: false, message: 'Method not allowed.' });
   }
 
@@ -18,6 +19,11 @@ export default async function handler(req, res) {
 
   const pool = getPool();
 
+  if (req.query.type === 'controls') {
+    try { return res.json(await handleControls(pool,user,req)); }
+    catch(error) { return res.status(['P0001','23505'].includes(error.code) || error.status===400 ? 400 : 503).json({success:false,message: error.status===400 || error.code==='P0001' ? error.message : error.code==='23505' ? 'Duplicate pending request or payout reference. Refresh, and use a unique cash/bank reference for each payroll.' : 'Controls unavailable. Check the database migration.'}); }
+  }
+
   if (req.query.type === 'production_flow') {
     try {
       if (req.method === 'GET') return res.json({ success: true, ...await readProductionFlow(pool) });
@@ -25,7 +31,7 @@ export default async function handler(req, res) {
       return res.status(result.status).json(result.body);
     } catch (err) {
       console.error('Production flow error:', err.message);
-      return res.status(500).json({ success: false, message: 'Production flow is unavailable.' });
+      return res.status(500).json({ success: false, message: err.code === 'P0001' ? err.message : 'Production flow is unavailable.' });
     }
   }
 
@@ -36,7 +42,7 @@ export default async function handler(req, res) {
     try {
       const { rows } = await pool.query(
         `SELECT id, entity, record_id, field, old_value, new_value, status_at_change, actor, changed_at
-         FROM financial_audit ORDER BY changed_at DESC, id DESC LIMIT 200`
+         FROM financial_audit WHERE ($1::bigint IS NULL OR id<$1) ORDER BY id DESC LIMIT 200`, [req.query.before || null]
       );
       return res.json({ success: true, changes: rows });
     } catch (err) {

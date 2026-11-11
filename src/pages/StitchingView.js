@@ -9,7 +9,7 @@ const TODAY = new Date().toISOString().split('T')[0];
 const DEPARTMENTS = ['Stitching', 'Finishing Shirt', 'Finishing Trouser', 'Finishing Dupatta'];
 
 const OPERATION_OPTIONS = {
-  'Stitching':          ['Shirt', 'Trouser', 'Dupatta', 'Patching'],
+  'Stitching':          ['Shirt', 'Trouser', 'Dupatta', 'Shirt Patching', 'Trouser Patching', 'Dupatta Patching'],
   'Finishing Shirt':    ['Clipping', 'Heming', 'Tussling', 'Pressing'],
   'Finishing Trouser':  ['Clipping', 'Heming', 'Pressing', 'Patching'],
   'Finishing Dupatta':  ['Heming', 'Tussling', 'Pressing', 'Patching'],
@@ -20,7 +20,9 @@ const DEPT_OP_TO_RATE_FIELD = {
   'Stitching|Shirt':              'shirt',
   'Stitching|Trouser':            'trouser',
   'Stitching|Dupatta':            'dupatta',
-  'Stitching|Patching':           'patching',
+  'Stitching|Shirt Patching': 'patching',
+  'Stitching|Trouser Patching': 'patching',
+  'Stitching|Dupatta Patching':           'patching',
   'Finishing Shirt|Clipping':     'fs_clipping',
   'Finishing Shirt|Heming':       'fs_heming',
   'Finishing Shirt|Tussling':     'fs_tussling',
@@ -37,6 +39,7 @@ const DEPT_OP_TO_RATE_FIELD = {
 
 
 const EMPTY_FORM = {
+  payroll_week: '',
   entry_date:    TODAY,
   po_number:     '',
   stitcher_code: '',
@@ -199,6 +202,7 @@ function StitchingView({ user, onLogout }) {
         department:    form.department,
         operation:     form.operation,
         qty_claimed:   Number(form.qty_claimed),
+        payroll_week: form.payroll_week || undefined,
         ...(form.remarks ? { remarks: form.remarks } : {}),
       });
       if (res.success) {
@@ -319,6 +323,7 @@ function StitchingView({ user, onLogout }) {
                     </select>
                   </div>
 
+                  <label>Payroll week ending Saturday (optional)<input type="date" value={form.payroll_week} onChange={e=>setForm({...form,payroll_week:e.target.value})}/><small>For late claims, use a later open week and keep the actual work date.</small></label>
                   <div className="form-group">
                     <label>Qty Claimed *</label>
                     <input

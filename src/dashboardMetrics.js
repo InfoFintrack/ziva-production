@@ -1,3 +1,4 @@
+import {finishedForGarment} from './controlMetrics';
 // Dashboard calculations use recorded units and accepted quantities only.
 export const num = value => Number(value) || 0;
 export const day = value => value instanceof Date
@@ -17,7 +18,7 @@ export const inPeriod = (value, from, to) => {
   return Boolean(date && (!from || date >= from) && (!to || date <= to));
 };
 
-export function poBoard(pos, allocations, payments, rates, today = new Date()) {
+export function poBoard(pos, allocations, payments, rates, today = new Date(), events = []) {
   const todayText = day(today);
   return pos.filter(po => po.status !== 'Cancelled').map(po => {
     const own = allocations.filter(a => a.po_number === po.po_number);
@@ -25,16 +26,9 @@ export function poBoard(pos, allocations, payments, rates, today = new Date()) {
     const components = ['shirt', 'trouser', 'dupatta'].filter(key => num(po[`${key}_qty`]) > 0);
     const ordered = components.reduce((sum, key) => sum + num(po[`${key}_qty`]), 0);
     const stitching = own.filter(a => a.module_type !== 'Finishing');
-    const finishing = own.filter(a => a.module_type === 'Finishing');
-    const cut = Math.min(ordered, stitching.reduce((sum, a) => sum + num(a.qty_allocated), 0));
-    const stitched = Math.min(ordered, stitching.reduce((sum, a) => sum + num(a.qty_accepted), 0));
-    // Finishing allocations are per operation; counting every accepted return
-    // would count the same garment several times. Use only the last listed
-    // operation for each component as a conservative completion proxy.
-    const terminal = { shirt: 'pressing', trouser: 'patching', dupatta: 'patching' };
-    const finished = Math.min(ordered, finishing.filter(a => components.some(key =>
-      String(a.component || '').toLowerCase() === `${key} ${terminal[key]}`
-    )).reduce((sum, a) => sum + num(a.qty_accepted), 0));
+    const cut = events.filter(e=>e.po_number===po.po_number && e.event_type==='Cut' && components.includes(e.component)).reduce((sum,e)=>sum+num(e.quantity),0);
+    const stitched = stitching.filter(a=>components.includes(String(a.component).toLowerCase())).reduce((sum,a)=>sum+num(a.qty_accepted),0);
+    const finished = components.reduce((sum,g)=>sum+finishedForGarment(po.po_number,g,allocations,rates),0);
     const rejected = own.reduce((sum, a) => sum + num(a.qty_rejected), 0);
     const delivery = day(po.delivery_date);
     const daysLeft = delivery ? Math.ceil((new Date(`${delivery}T00:00:00Z`) - new Date(`${todayText}T00:00:00Z`)) / 86400000) : null;
@@ -85,8 +79,8 @@ export function exceptions(allocations, payments, rates, today = new Date(), aud
   const issues = [];
   allocations.forEach(a => {
     const age = a.allocation_date ? Math.floor((today - new Date(a.allocation_date)) / 86400000) : 0;
-    if (num(a.qty_rejected) > 0 && num(a.qty_returned) > 0 && num(a.qty_rejected) / num(a.qty_returned) >= 0.1)
-      issues.push({ severity: 'Quality', text: `${a.po_number} · ${a.stitcher_name || a.stitcher_code}: ${count(a.qty_rejected)} rejected (${Math.round(num(a.qty_rejected) / num(a.qty_returned) * 100)}%)` });
+    if ((num(a.qty_rejected)+num(a.qty_rework_total ?? a.qty_rework)) > 0 && num(a.qty_returned) > 0 && (num(a.qty_rejected)+num(a.qty_rework_total ?? a.qty_rework)) / num(a.qty_returned) >= 0.1)
+      issues.push({ severity: 'Quality', text: `${a.po_number} · ${a.stitcher_name || a.stitcher_code}: ${count(a.qty_rejected)} rejected, ${count(a.qty_rework_total ?? a.qty_rework)} rework (${Math.round((num(a.qty_rejected)+num(a.qty_rework_total ?? a.qty_rework)) / num(a.qty_returned) * 100)}% defects)` });
     if (num(a.qty_allocated) > num(a.qty_returned) && age > 14)
       issues.push({ severity: 'Overdue', text: `${a.po_number} · ${a.stitcher_name || a.stitcher_code}: ${count(num(a.qty_allocated) - num(a.qty_returned))} pieces outstanding for ${age} days` });
   });
@@ -104,6 +98,7 @@ export function exceptions(allocations, payments, rates, today = new Date(), aud
   });
   rates.filter(r => r.status === 'Approved' && (!r.approved_by_ceo || !r.ceo_approved_at || r.ceo_signoff_valid === false)).forEach(r =>
     issues.push({ severity: 'Approval', text: `${r.po_number}: approved rate has no recorded CEO sign-off` }));
+  audit.filter(change => ['cmt_rates','cmt_payments','po_master'].includes(change.entity) && !['created','insert'].includes(change.field)).forEach(change => issues.push({severity:'Change',text:`${change.entity} ${change.record_id}: ${change.field} changed by ${change.actor}`}));
   audit.filter(change => change.entity === 'cmt_payments' && change.status_at_change === 'Paid' && ['qty_claimed', 'po_number', 'amount', 'rate'].includes(change.field)).forEach(change =>
     issues.push({ severity: 'Post-pay edit', text: `Payment ${change.record_id}: ${change.field} changed by ${change.actor} after payment` }));
   return issues;

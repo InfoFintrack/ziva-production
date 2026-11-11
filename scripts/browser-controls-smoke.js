@@ -1,0 +1,33 @@
+// All browser traffic stays on the disposable local test server.
+const {chromium}=require(process.env.PLAYWRIGHT_PATH || '/tmp/prodflow-browser/node_modules/playwright');
+const jwt=require('jsonwebtoken'),assert=require('node:assert/strict'),fs=require('fs');
+const origin='http://127.0.0.1:3005';
+const token=role=>jwt.sign({name:role,role},'local-controls-browser-test');
+async function api(role,path,method='GET',data){const r=await fetch(origin+path,{method,headers:{Authorization:`Bearer ${token(role)}`,'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined});const body=await r.json();return {status:r.status,...body};}
+async function main(){
+ const history=await api('Admin','/api/cmt-rates?history=true');assert.equal(history.success,true,JSON.stringify(history));
+ const first=history.rates.find(r=>r.version===1 && r.po_number==='TEST-PO'),pending=history.rates.find(r=>r.version===2 && r.po_number==='TEST-PO');
+ assert.equal((await api('Accounts','/api/cmt-rates','PUT',{id:pending.id,action:'reject',remarks:'Replace draft in UI test'})).success,true);
+ const revised=await api('Admin','/api/cmt-rates','PUT',{id:first.id,action:'admin_edit',shirt:400,cutting:20,patching:10});assert.equal(revised.success,true,JSON.stringify(revised));assert.equal(revised.rate.version,3);
+ for(const role of ['Accounts','CEO']){const r=await api(role,'/api/cmt-rates','PUT',{id:revised.rate.id,action:'approve'});assert.equal(r.success,true,JSON.stringify(r));}
+ const hist=await api('Admin','/api/cmt-rates?history=true');assert.equal(Number(hist.rates.find(r=>r.version===1 && r.po_number==='TEST-PO').shirt),375);
+ const claim=await api('Cutting','/api/cmt-payments','POST',{po_number:'TEST-PO',stitcher_code:'0001',department:'Stitching',operation:'Shirt',qty_claimed:5,entry_date:'2026-11-17'});assert.equal(claim.success,true,JSON.stringify(claim));assert.equal(Number(claim.payment.amount),2000);assert.equal(claim.payment.rate_version_id,revised.rate.id);
+ const cutting=await api('Cutting','/api/cmt-payments','POST',{po_number:'TEST-PO',stitcher_code:'0001',department:'Cutting',operation:'Shirt',qty_claimed:5,entry_date:'2026-12-08'});assert.equal(cutting.success,true,JSON.stringify(cutting));assert.equal(cutting.payment.component,'shirt');
+ const over=await api('Cutting','/api/cmt-payments','POST',{po_number:'TEST-PO',stitcher_code:'0001',department:'Stitching',operation:'Shirt',qty_claimed:101,entry_date:'2026-11-17'});assert.equal(over.success,false);
+ const verified=await api('Accounts','/api/cmt-payments','PUT',{id:claim.payment.id,action:'verify'});assert.equal(verified.success,true,JSON.stringify(verified));
+ const advance=await api('Accounts','/api/cmt-payments?type=advance','POST',{stitcher_code:'0001',amount:30,week_ending:'2026-11-21'});assert.equal(advance.success,true,JSON.stringify(advance));
+ const allocs=await api('Supervisor','/api/allocations?po_number=TEST-PO');assert.equal(allocs.success,true,JSON.stringify(allocs));const rework=allocs.allocations.find(a=>a.component==='trouser');const recovered=await api('Supervisor','/api/allocations','PUT',{id:rework.id,action:'accept_rework',quantity:1,reason:'Browser verified repaired piece'});assert.equal(recovered.success,true,JSON.stringify(recovered));
+ const browser=await chromium.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
+ const errors=[];
+ async function pageFor(role,width=1280){const context=await browser.newContext({viewport:{width,height:900},acceptDownloads:true});await context.addInitScript(({role,auth})=>{sessionStorage.setItem('zivaUser',JSON.stringify({name:role,role}));sessionStorage.setItem('zivaToken',auth);},{role,auth:token(role)});const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto(origin+'/controls');await page.getByRole('heading',{name:'PO set balance',exact:true}).waitFor();return page;}
+ const accounts=await pageFor('Accounts');await accounts.getByLabel('Week ending Saturday').fill('2026-11-21');await accounts.getByRole('button',{name:'Submit verified payroll to CEO'}).click();await accounts.getByText('Pending_CEO',{exact:true}).waitFor();assert.equal(await accounts.getByRole('button',{name:'Download CEO-approved payout sheet'}).count(),0);
+ const ceo=await pageFor('CEO');await ceo.getByLabel('Week ending Saturday').fill('2026-11-21');const approval=ceo.waitForResponse(r=>r.url().includes('type=controls') && (r.request().postData() || '').includes('approve_payroll'));await ceo.getByRole('button',{name:'Approve & lock payroll'}).click();assert.equal((await (await approval).json()).success,true);
+ await accounts.getByRole('button',{name:'Refresh',exact:true}).click();await accounts.getByRole('button',{name:'Download CEO-approved payout sheet'}).waitFor();const downloadPromise=accounts.waitForEvent('download');await accounts.getByRole('button',{name:'Download CEO-approved payout sheet'}).click();const download=await downloadPromise;fs.mkdirSync('/tmp/prodflow-controls',{recursive:true});const output='/tmp/prodflow-controls/payroll.html';await download.saveAs(output);assert.match(fs.readFileSync(output,'utf8'),/1970\.00/);
+ await accounts.getByLabel('Cash voucher / bank reference').fill('UI-CASH-002');await accounts.getByRole('button',{name:'Confirm entire approved payroll paid'}).click();await accounts.getByText('Paid',{exact:true}).first().waitFor();
+ const request=await api('Admin','/api/records?type=controls','POST',{action:'request_quantities',po_number:'TEST-PO',shirt_qty:220,trouser_qty:100,dupatta_qty:100,reason:'Browser verified request'});assert.equal(request.success,true,JSON.stringify(request));
+ await ceo.getByRole('button',{name:'Refresh',exact:true}).click();const poApproval=ceo.waitForResponse(r=>r.url().includes('type=controls') && (r.request().postData() || '').includes('approve_quantities'));await ceo.getByRole('button',{name:'Approve',exact:true}).click();assert.equal((await (await poApproval).json()).success,true);
+ await ceo.screenshot({path:'/tmp/prodflow-controls/ceo-controls.png',fullPage:true});
+ const admin=await pageFor('Admin',390);await admin.getByRole('heading',{name:'Change history',exact:true}).waitFor();await admin.screenshot({path:'/tmp/prodflow-controls/admin-mobile.png',fullPage:true});
+ assert.deepEqual(errors,[]);await browser.close();console.log('PASS actual API rate revision and approval, rate pinning, overclaim blocking, Accounts verification, browser payroll submission, CEO lock, approved-sheet download, net payout and PO quantity approval; desktop and mobile render without JS errors');
+}
+main().catch(e=>{console.error(e);process.exit(1);});

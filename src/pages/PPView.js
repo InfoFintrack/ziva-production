@@ -1651,7 +1651,7 @@ function PPView({ user, onLogout }) {
 
             {editPOMessage && <div className={`alert alert-${editPOMessage.type}`}>{editPOMessage.text}</div>}
 
-            <form onSubmit={handleEditPOSubmit}>
+            <form onSubmit={handleEditPOSubmit}><p style={{color:'#a6c2f5'}}>After cutting starts, garment quantities require a CEO-approved request in <a href="/controls" style={{color:'#a6c2f5'}}>Controls → PO quantity approvals</a>.</p>
               {/* Section A */}
               <div style={{ marginBottom: '8px', paddingBottom: '8px', borderBottom: '1px solid #30363d' }}>
                 <p style={{ fontSize: '13px', fontWeight: '700', color: '#e6edf3', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 16px' }}>A — Header</p>

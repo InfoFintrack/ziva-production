@@ -298,39 +298,8 @@ function AccountsView({ user, onLogout }) {
     setPayActing(prev => ({ ...prev, [stitcherCode]: false }));
   };
 
-  const handleMarkPaid = async (stitcherCode) => {
-    setPayActing(prev => ({ ...prev, [stitcherCode]: true }));
-    setPayMsg(null);
-    try {
-      const res = await updatePayment({ stitcher_code: stitcherCode, week_ending: payWeek, action: 'mark_paid' });
-      if (res.success) {
-        setPayMsg({ type: 'success', text: `Marked as paid for ${stitcherCode}.` });
-        loadWeekData(payWeek);
-      } else {
-        setPayMsg({ type: 'error', text: res.message || 'Mark paid failed.' });
-      }
-    } catch {
-      setPayMsg({ type: 'error', text: 'Request failed.' });
-    }
-    setPayActing(prev => ({ ...prev, [stitcherCode]: false }));
-  };
-
-  const handleMarkPaidFlexible = async (id) => {
-    setPayActing(prev => ({ ...prev, [id]: true }));
-    setPayMsg(null);
-    try {
-      const res = await updatePayment({ action: 'mark_paid_flexible', id });
-      if (res.success) {
-        setPayMsg({ type: 'success', text: 'Payment marked as paid.' });
-        loadWeekData(payWeek);
-      } else {
-        setPayMsg({ type: 'error', text: res.message || 'Mark paid failed.' });
-      }
-    } catch {
-      setPayMsg({ type: 'error', text: 'Request failed.' });
-    }
-    setPayActing(prev => ({ ...prev, [id]: false }));
-  };
+  const handleMarkPaid = () => window.location.assign('/controls');
+  const handleMarkPaidFlexible = () => window.location.assign('/controls');
 
   // ── Payment entry edit ────────────────────────────────────────────────────
   const [editPayModal, setEditPayModal] = useState(null);
@@ -399,25 +368,7 @@ function AccountsView({ user, onLogout }) {
     setAdvSubmitting(false);
   };
 
-  const handlePaymentExcelExport = () => {
-    const groups = computeGroups();
-    if (!groups.length) return;
-    const rows = groups.map(g => ({
-      'Stitcher Code':    g.code,
-      'Stitcher':         g.name,
-      'Total Pieces':     g.totalPieces,
-      'Gross (PKR)':      g.gross.toFixed(2),
-      'Advance (PKR)':    g.advance.toFixed(2),
-      'Recovered (PKR)': g.recovered.toFixed(2),
-      'Net Cash Paid (PKR)':g.net === null ? '' : g.net.toFixed(2),
-      'Status':           g.status,
-      'Week Ending':      payWeek,
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Payment Summary');
-    XLSX.writeFile(wb, `Payment_Summary_${payWeek}.xlsx`);
-  };
+  const handlePaymentExcelExport = () => window.location.assign('/controls');
 
   // ── CMT Rate modal helpers ─────────────────────────────────────────────────
 
@@ -462,7 +413,7 @@ function AccountsView({ user, onLogout }) {
       ALL_RATE_KEYS.forEach(k => { payload[k] = editForm[k] !== '' ? Number(editForm[k]) : 0; });
       const res = await approveCMTRate(payload);
       if (res.success) {
-        setActionMessage({ type: 'success', text: `CMT rates for ${modalRate.po_number} updated and sent to Accounts for review.` });
+        setActionMessage({ type: 'success', text: res.message || `Rate revision sent to Accounts and CEO for review.` });
         closeModal();
         loadPending();
         loadAll();
@@ -572,7 +523,7 @@ function AccountsView({ user, onLogout }) {
         <div className="modal-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
             <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#e6edf3' }}>
-              CMT Rate Detail — {r.po_number}
+              CMT Rate Detail — {r.po_number} · v{r.version || 1}
             </h3>
             <button
               onClick={closeModal}
@@ -754,7 +705,7 @@ function AccountsView({ user, onLogout }) {
                   </>
                 ) : (
                   <>
-                    <button className="btn btn-small" onClick={enterEditMode} style={{ width: 'auto', background: '#4a7cc9', color: 'white' }}>Edit</button>
+                    <button className="btn btn-small" onClick={enterEditMode} style={{ width: 'auto', background: '#4a7cc9', color: 'white' }}>{r.status === 'Approved' ? 'Create revision' : 'Edit draft'}</button>
                     <button className="btn btn-small" onClick={closeModal} style={{ width: 'auto', background: '#1c2d4a', color: '#e6edf3' }}>Close</button>
                   </>
                 )}
@@ -972,7 +923,7 @@ function AccountsView({ user, onLogout }) {
                     disabled={weekPayments.length === 0}
                     style={{ width: 'auto', background: '#3fb950', color: 'white', whiteSpace: 'nowrap' }}
                   >
-                    ↓ Excel
+                    CEO-approved payout sheet →
                   </button>
                 </div>
 
@@ -1046,7 +997,7 @@ function AccountsView({ user, onLogout }) {
                                             onClick={() => handleMarkPaid(g.code)}
                                             disabled={!!payActing[g.code]}
                                           >
-                                            {payActing[g.code] ? '...' : 'Mark Paid'}
+                                            {payActing[g.code] ? '...' : 'CEO payroll →'}
                                           </button>
                                         )}
                                       </div>
@@ -1138,7 +1089,7 @@ function AccountsView({ user, onLogout }) {
                                         <td>PKR {g.gross.toLocaleString()}</td>
                                         <td><PayStatusBadge status={g.status} /></td>
                                         <td onClick={e => e.stopPropagation()}>
-                                          {!isFlexible && (
+                                          {(
                                             <div style={{ display: 'flex', gap: '6px' }}>
                                               {g.status === 'Pending' && (
                                                 <button
@@ -1157,7 +1108,7 @@ function AccountsView({ user, onLogout }) {
                                                   onClick={() => handleMarkPaid(g.code)}
                                                   disabled={!!payActing[g.code]}
                                                 >
-                                                  {payActing[g.code] ? '...' : 'Mark Paid'}
+                                                  {payActing[g.code] ? '...' : 'CEO payroll →'}
                                                 </button>
                                               )}
                                             </div>
@@ -1191,7 +1142,7 @@ function AccountsView({ user, onLogout }) {
                                                     onClick={() => handleMarkPaidFlexible(e.id)}
                                                     disabled={!!payActing[e.id]}
                                                   >
-                                                    {payActing[e.id] ? '...' : 'Mark Paid'}
+                                                    {payActing[e.id] ? '...' : 'CEO payroll →'}
                                                   </button>
                                                 )}
                                               </div>

@@ -5,6 +5,7 @@ import { submitAcceptance, getRecords, getDropdowns, getPOs, submitCMTRate, getC
 import { ColourInput } from './PPView';
 import ProdFlowLogo from '../components/ProdFlowLogo';
 import PoweredByFintrack from '../components/PoweredByFintrack';
+import {groupAllocations,prepareBulkClaims} from '../bulkClaims';
 import ClaimAvailabilityNotice from '../components/ClaimAvailabilityNotice';
 import useClaimAvailability from '../useClaimAvailability';
 
@@ -72,8 +73,8 @@ const PL_TODAY = new Date().toISOString().split('T')[0];
 const PL_DEPARTMENTS = ['Stitching', 'Cutting', 'Finishing Shirt', 'Finishing Trouser', 'Finishing Dupatta'];
 
 const PL_OPERATION_OPTIONS = {
-  'Stitching':          ['Shirt', 'Trouser', 'Dupatta', 'Patching'],
-  'Cutting':            ['Shirt', 'Trouser', 'Dupatta', 'Patching'],
+  'Stitching':          ['Shirt', 'Trouser', 'Dupatta', 'Shirt Patching', 'Trouser Patching', 'Dupatta Patching'],
+  'Cutting':            ['Shirt', 'Trouser', 'Dupatta'],
   'Finishing Shirt':    ['Clipping', 'Heming', 'Tussling', 'Pressing'],
   'Finishing Trouser':  ['Clipping', 'Heming', 'Pressing', 'Patching'],
   'Finishing Dupatta':  ['Heming', 'Tussling', 'Pressing', 'Patching'],
@@ -83,7 +84,9 @@ const PL_DEPT_OP_TO_RATE_FIELD = {
   'Stitching|Shirt':              'shirt',
   'Stitching|Trouser':            'trouser',
   'Stitching|Dupatta':            'dupatta',
-  'Stitching|Patching':           'patching',
+  'Stitching|Shirt Patching': 'patching',
+  'Stitching|Trouser Patching': 'patching',
+  'Stitching|Dupatta Patching':           'patching',
   'Cutting|Shirt':                'cutting',
   'Cutting|Trouser':              'cutting',
   'Cutting|Dupatta':              'cutting',
@@ -103,6 +106,7 @@ const PL_DEPT_OP_TO_RATE_FIELD = {
 };
 
 const PL_EMPTY_FORM = {
+  payroll_week: '',
   entry_date:    PL_TODAY,
   po_number:     '',
   stitcher_code: '',
@@ -133,7 +137,9 @@ function componentToDeptOp(component) {
     case 'shirt':    return { dept: 'Stitching', op: 'Shirt' };
     case 'trouser':  return { dept: 'Stitching', op: 'Trouser' };
     case 'dupatta':  return { dept: 'Stitching', op: 'Dupatta' };
-    case 'patching': return { dept: 'Stitching', op: 'Patching' };
+    case 'shirt patching': return { dept: 'Stitching', op: 'Shirt Patching' };
+    case 'trouser patching': return { dept: 'Stitching', op: 'Trouser Patching' };
+    case 'dupatta patching': return { dept: 'Stitching', op: 'Dupatta Patching' };
     default:         return { dept: '', op: '' };
   }
 }
@@ -503,7 +509,7 @@ function CuttingView({ user, onLogout }) {
         ALL_RATE_KEYS.forEach(k => { payload[k] = cmtForm[k] !== '' ? Number(cmtForm[k]) : 0; });
         const res = await approveCMTRate(payload);
         if (res.success) {
-          setCMTMessage({ type: 'success', text: '✓ CMT rates updated and resubmitted for Accounts review.' });
+          setCMTMessage({ type: 'success', text: res.message || '✓ Revision submitted for approval; approved versions remain locked.' });
           setCMTForm(EMPTY_CMT_FORM);
           setColorDesignLocked(false);
           setEditingRateId(null);
@@ -788,6 +794,7 @@ function CuttingView({ user, onLogout }) {
           department:    plForm.department,
           operation:     plSelectedOps.join(', '),
           qty_claimed:   Number(plForm.qty_claimed),
+          payroll_week: plForm.payroll_week || undefined,
           ...(color            ? { color }            : {}),
           ...(plForm.remarks   ? { remarks: plForm.remarks } : {}),
         });
@@ -808,6 +815,7 @@ function CuttingView({ user, onLogout }) {
             department:    plForm.department,
             operation:     op,
             qty_claimed:   Number(plForm.qty_claimed),
+          payroll_week: plForm.payroll_week || undefined,
             ...(color            ? { color }            : {}),
             ...(plForm.remarks   ? { remarks: plForm.remarks } : {}),
           });
@@ -889,10 +897,10 @@ function CuttingView({ user, onLogout }) {
     setBulkMsg(null);
     try {
       const allocRes = await getAllocations(
-        `?stitcher_code=${encodeURIComponent(stitcherCode)}&status=In Progress`
+        `?stitcher_code=${encodeURIComponent(stitcherCode)}&module_type=Stitching`
       );
       if (!allocRes.success || !allocRes.allocations.length) {
-        setBulkMsg({ type: 'warning', text: 'No in-progress allocations found for this stitcher.' });
+        setBulkMsg({ type: 'warning', text: 'No stitching allocations found. Ask the Supervisor to allocate and accept returned work after recording cuts.' });
         setBulkLoading(false);
         return;
       }
@@ -907,7 +915,7 @@ function CuttingView({ user, onLogout }) {
           .filter(e => e.stitcher_code === stitcherCode)
           .map(e => `${e.po_number}|${(e.component || '').toLowerCase()}`)
       );
-      const rows = allocRes.allocations.map(a => {
+      const rows = groupAllocations(allocRes.allocations).map(a => {
         const { dept, op } = componentToDeptOp(a.component);
         const rateField = dept && op ? PL_DEPT_OP_TO_RATE_FIELD[`${dept}|${op}`] : null;
         const rateObj = rateMap[a.po_number] || null;
@@ -929,9 +937,9 @@ function CuttingView({ user, onLogout }) {
           alreadyLogged: loggedSet.has(`${a.po_number}|${(a.component || '').toLowerCase()}`),
         };
       });
-      setBulkRows(rows);
-    } catch {
-      setBulkMsg({ type: 'error', text: 'Failed to load allocations.' });
+      setBulkRows(await prepareBulkClaims(rows));
+    } catch (error) {
+      setBulkMsg({ type: 'error', text: error.message || 'Failed to load allocations.' });
     }
     setBulkLoading(false);
   };
@@ -1391,7 +1399,7 @@ function CuttingView({ user, onLogout }) {
           <>
             {/* SUBMIT RATES FORM */}
             <div className="card" ref={cmtFormRef}>
-              <h3>{editingRateId ? 'Edit CMT Rates' : 'Submit CMT Rates'}</h3>
+              <h3>{editingRateId ? 'Revise CMT Rates' : 'Submit CMT Rates'}</h3><p>Approved versions are permanently locked. Saving changes creates a new version for Accounts and CEO approval inside ProdFlow.</p>
 
               {cmtMessage && (
                 <div className={`alert alert-${cmtMessage.type}`}>
@@ -1614,7 +1622,7 @@ function CuttingView({ user, onLogout }) {
                         const rejectionRemarks = r.accounts_remarks || r.ceo_remarks;
                         return (
                           <tr key={i}>
-                            <td>{r.po_number}</td>
+                            <td>{r.po_number} · v{r.version || 1}</td>
                             <td>{r.color_design || '—'}</td>
                             <td>{r.total != null ? Number(r.total).toLocaleString() : '—'}</td>
                             <td>{r.submitted_at ? new Date(r.submitted_at).toLocaleDateString('en-GB') : '—'}</td>
@@ -1640,7 +1648,7 @@ function CuttingView({ user, onLogout }) {
                                 onClick={() => handleEditRate(r)}
                                 style={{ width: 'auto', background: '#1c2d4a', color: '#e6edf3' }}
                               >
-                                Edit
+                                {r.status === 'Approved' ? 'Create revision' : 'Edit draft'}
                               </button>
                             </td>
                           </tr>
@@ -2016,6 +2024,7 @@ function CuttingView({ user, onLogout }) {
                         )}
                       </div>
 
+                      <label>Payroll week ending Saturday (optional)<input type="date" value={plForm.payroll_week} onChange={e=>setPlForm({...plForm,payroll_week:e.target.value})}/><small>Keep the actual work date above. For late claims, choose a later open payroll week.</small></label>
                       <div className="form-group">
                         <label>Qty Claimed *</label>
                         <input
@@ -2147,7 +2156,7 @@ function CuttingView({ user, onLogout }) {
                                 <th>Component</th>
                                 <th>Department</th>
                                 <th>Operation</th>
-                                <th>Accepted</th>
+                                <th>Accepted / claimable</th>
                                 <th>Qty to Pay</th>
                                 <th>Rate (PKR)</th>
                                 <th>Amount (PKR)</th>
@@ -2162,6 +2171,7 @@ function CuttingView({ user, onLogout }) {
                                   <td>
                                     <select
                                       value={row.department}
+                                      disabled
                                       onChange={e => bulkHandleRowChange(i, 'department', e.target.value)}
                                       style={{ padding: '4px 8px', fontSize: '13px', border: '1px solid #30363d', borderRadius: '6px', minWidth: '150px' }}
                                     >
@@ -2173,7 +2183,7 @@ function CuttingView({ user, onLogout }) {
                                     <select
                                       value={row.operation}
                                       onChange={e => bulkHandleRowChange(i, 'operation', e.target.value)}
-                                      disabled={!row.department}
+                                      disabled
                                       style={{ padding: '4px 8px', fontSize: '13px', border: '1px solid #30363d', borderRadius: '6px', minWidth: '120px' }}
                                     >
                                       <option value="">Select...</option>
@@ -2182,14 +2192,14 @@ function CuttingView({ user, onLogout }) {
                                       ))}
                                     </select>
                                   </td>
-                                  <td style={{ textAlign: 'right' }}>{row.qty_accepted}</td>
+                                  <td style={{ textAlign: 'right' }}>{row.qty_accepted} / {row.claimable}</td>
                                   <td>
                                     <input
                                       type="number"
                                       value={row.qty_claimed}
                                       onChange={e => bulkHandleRowChange(i, 'qty_claimed', e.target.value)}
                                       min="0"
-                                      max={row.qty_accepted}
+                                      max={row.claimable}
                                       style={{ width: '80px', padding: '4px 8px', border: '1px solid #30363d', borderRadius: '6px', fontSize: '13px' }}
                                     />
                                   </td>

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { getPOs, getAllocations, getPaymentEntries, getCMTRates, getAdvanceLedger, getFinancialAudit } from '../api';
+import { getPOs, getAllocations, getPaymentEntries, getCMTRates, getAdvanceLedger, getFinancialAudit, getProductionFlow } from '../api';
 import { advanceLedger, count, day, exceptions, inPeriod, money, num, payrollPack, poBoard, weeklyTrend } from '../dashboardMetrics';
 import './ExecutiveDashboard.css';
 
@@ -37,10 +37,10 @@ export default function ExecutiveDashboard({ finance = false }) {
     setLoading(true);
     setError('');
     try {
-      const results = await Promise.all([getPOs(), getAllocations(), getPaymentEntries(), getCMTRates(), ...(finance ? [getAdvanceLedger()] : [])]);
+      const results = await Promise.all([getPOs(), getAllocations(), getPaymentEntries(), getCMTRates('?history=true'), getProductionFlow(), ...(finance ? [getAdvanceLedger()] : [])]);
       const failed = results.find(result => !result?.success);
       if (failed) throw new Error(failed.message || 'One or more data sources are unavailable.');
-      setData({ pos: results[0].pos || [], allocations: results[1].allocations || [], payments: results[2].payments || [], rates: results[3].rates || [], advances: finance ? results[4].advances || [] : [], ledger: finance ? results[4] : null });
+      setData({ pos: results[0].pos || [], allocations: results[1].allocations || [], payments: results[2].payments || [], rates: results[3].rates || [], events: results[4].events || [], advances: finance ? results[5].advances || [] : [], ledger: finance ? results[5] : null });
       try {
         const auditResult = await getFinancialAudit();
         if (!auditResult.success) throw new Error(auditResult.message || 'Audit history unavailable.');
@@ -52,7 +52,7 @@ export default function ExecutiveDashboard({ finance = false }) {
   };
   useEffect(() => { reload(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const board = useMemo(() => data ? poBoard(data.pos, data.allocations, data.payments, data.rates) : [], [data]);
+  const board = useMemo(() => data ? poBoard(data.pos, data.allocations, data.payments, data.rates,new Date(),data.events) : [], [data]);
   const periodPayments = useMemo(() => data ? data.payments.filter(p => inPeriod(p.entry_date, from, to)) : [], [data, from, to]);
   const visibleBoard = board.filter(po => `${po.po_number} ${po.article_name || ''} ${po.collection_name || ''}`.toLowerCase().includes(search.toLowerCase()));
   const trend = data ? weeklyTrend(data.payments) : [];
@@ -67,7 +67,7 @@ export default function ExecutiveDashboard({ finance = false }) {
   return <div className="executive">
     <header className="executive-hero">
       <div><span className="executive-eyebrow">PRODFLOW / {finance ? 'FINANCE INTELLIGENCE' : 'COMMAND CENTER'}</span>
-        <h1>{finance ? 'Finance overview' : 'Production pulse'}</h1>
+        <a href="/controls">Set balances · CEO payroll · change history →</a><h1>{finance ? 'Finance overview' : 'Production pulse'}</h1>
         <p>{finance ? 'Payroll, accruals and labour cost, grounded in posted entries.' : 'Live production progress, cost and exceptions across every PO.'}</p>
       </div>
       <button className="executive-refresh" onClick={reload} disabled={loading}>↻ Refresh data</button>
@@ -85,12 +85,12 @@ export default function ExecutiveDashboard({ finance = false }) {
       <div className="executive-kpis">
         <div className="executive-kpi"><small>ACTIVE PURCHASE ORDERS</small><strong>{count(board.filter(po => po.status === 'Active').length)}</strong><span>in production</span></div>
         <div className="executive-kpi"><small>FABRIC ISSUED</small><strong>{count(fabricMeters)} <em>m</em></strong><span>recorded PO component metres</span></div>
-        <div className="executive-kpi"><small>FINAL OP ACCEPTED</small><strong>{count(sum(board, 'finished'))} <em>pcs</em></strong><span>rejected pieces excluded</span></div>
+        <div className="executive-kpi"><small>FINISHING ACCEPTED</small><strong>{count(sum(board, 'finished'))} <em>pcs</em></strong><span>rejected pieces excluded</span></div>
         <div className="executive-kpi executive-kpi-accent"><small>LABOUR COST · PERIOD</small><strong>{money(sum(periodPayments, 'amount'))}</strong><span>{from} → {to}</span></div>
       </div>
 
       {finance && <section className="executive-panel">
-        <div className="executive-heading"><div><span className="executive-eyebrow">01 / WEEKLY PAYROLL</span><h2>Cash payout pack</h2></div><div className="executive-actions"><input aria-label="Week ending" type="date" value={week} onChange={event => setWeek(event.target.value)} /><button onClick={() => exportCsv(`payroll-${week}.csv`, ['Worker code', 'Worker', 'Gross PKR', 'Advances given PKR', 'Recovered PKR', 'Net cash paid PKR', 'Unpaid gross PKR'], pack.map(p => [p.code, p.name, p.gross, p.advances, p.recovered, historicWeek ? '' : p.net, p.unpaid]))}>Export CSV</button></div></div>
+        <div className="executive-heading"><div><span className="executive-eyebrow">01 / WEEKLY PAYROLL</span><h2>Weekly reconciliation</h2></div><div className="executive-actions"><input aria-label="Week ending" type="date" value={week} onChange={event => setWeek(event.target.value)} /><button onClick={() => exportCsv(`payroll-${week}.csv`, ['Worker code', 'Worker', 'Gross PKR', 'Advances given PKR', 'Recovered PKR', 'Net cash paid PKR', 'Unpaid gross PKR'], pack.map(p => [p.code, p.name, p.gross, p.advances, p.recovered, historicWeek ? '' : p.net, p.unpaid]))}>Export reconciliation CSV</button></div></div>
         <p className="executive-note">Net cash paid = paid gross less recorded recoveries. Advances given are a separate cash outflow. {historicWeek ? 'This week predates the recovery ledger, so net cash paid is unavailable.' : 'Historic opening balances need reconciliation before the ledger is authoritative.'}</p>
         <div className="executive-table-wrap"><table><thead><tr><th>Worker</th><th>Gross</th><th>Advances given</th><th>Recovered</th><th>Net cash paid</th><th>Unpaid gross</th></tr></thead><tbody>{pack.map(p => <tr key={p.code}><td><b>{p.name}</b><small>{p.code}</small></td><td>{money(p.gross)}</td><td>{money(p.advances)}</td><td>{money(p.recovered)}</td><td className="executive-strong">{historicWeek ? '—' : money(p.net)}</td><td>{money(p.unpaid)}</td></tr>)}{!pack.length && <tr><td colSpan="6" className="executive-empty">No entries for this week.</td></tr>}</tbody></table></div>
       </section>}
@@ -108,7 +108,7 @@ export default function ExecutiveDashboard({ finance = false }) {
       </div>
 
       <section className="executive-panel"><div className="executive-heading"><div><span className="executive-eyebrow">{finance ? '04' : '03'} / PO PIPELINE</span><h2>Order status board</h2></div><input className="executive-search" placeholder="Search PO or article" aria-label="Search PO or article" value={search} onChange={event => setSearch(event.target.value)} /></div>
-        <p className="executive-note">Balances use accepted pieces; repeated allocations can still overlap. Completion is a proxy from the final listed finishing operation, not a quality release. “At risk” means over 10 points behind elapsed delivery schedule, or due without completion.</p>
+        <p className="executive-note">Balances use accepted pieces; repeated allocations can still overlap. Completion requires accepted output at every positively rated finishing operation; cutting uses recorded Cut events. “At risk” means over 10 points behind elapsed delivery schedule, or due without completion.</p>
         <div className="executive-table-wrap"><table><thead><tr><th>PO / article</th><th>Ordered</th><th>To stitch</th><th>In stitching</th><th>In finishing</th><th>Final op</th><th>Complete</th><th>Delivery</th><th>Health</th></tr></thead><tbody>{visibleBoard.map(po => <tr key={po.po_number}><td><b>{po.po_number}</b><small>{po.article_name || 'Article unspecified'}</small></td><td>{count(po.ordered)}</td><td>{count(po.unallocated)}</td><td>{count(po.sewingBalance)}</td><td>{count(po.finishingBalance)}</td><td className="executive-strong">{count(po.finished)}</td><td><div className="executive-progress"><i style={{ width: `${po.complete}%` }} /></div><small>{po.complete}%</small></td><td>{po.daysLeft === null ? '—' : `${po.daysLeft}d`}</td><td><span className={`executive-pill ${po.risk ? 'risk' : 'okay'}`}>{po.risk ? 'At risk' : po.status === 'Completed' ? 'Completed' : po.daysLeft === null ? 'No date' : 'On track'}</span></td></tr>)}{!visibleBoard.length && <tr><td colSpan="9" className="executive-empty">No matching orders.</td></tr>}</tbody></table></div>
       </section>
 
