@@ -7,13 +7,17 @@ const audit=Array.from({length:300},(_,i)=>({id:i+1,entity:'cmt_payments',record
 const workers=Array.from({length:200},(_,i)=>({code:String(i+1).padStart(4,'0'),name:i===0?'Ada':'Worker '+i,gross:100,recovery:0,net:100,advance:0}));
 const payroll={week_ending:'2026-11-14',status:'Approved',submitted_by:'Accounts',approved_by:'CEO',snapshot:{workers,entries:[],net:20000}};
 const rates=pos.map((p,i)=>({id:`rate-${i+1}`,po_number:p.po_number,status:i===0?'Pending_CEO':'Approved',version:1,shirt:375,total:375,submitted_by:'Zain',approved_by_ceo:'CEO',in_app_approved:i!==0}));
+let flowFixtures=false;
+const flowAllocations=Array.from({length:120},(_,i)=>({id:'a'+i,po_number:'PO-001',stitcher_code:String(i),stitcher_name:'Worker '+i,component:'shirt',module_type:'Stitching',allocation_date:'2026-09-01',qty_allocated:10,qty_returned:i?10:3,qty_accepted:8,qty_rejected:1,qty_rework:1}));
+const flowEvents=Array.from({length:120},(_,i)=>({id:'e'+i,event_type:'Cut',po_number:'PO-001',component:'shirt',quantity:1,worker_code:'master'+i,fabric_meters:1.5}));
 const fixtures=url=>{
  const kind=url.searchParams.get('type');
  if(url.pathname==='/api/records' && kind==='controls')return {success:true,requests:[],payroll:[payroll],patchingLinks:[],legacyPatching:[]};
  if(url.pathname==='/api/records' && kind==='financial_audit')return {success:true,changes:audit};
- if(url.pathname==='/api/records' && kind==='production_flow')return {success:true,events:[],standards:[]};
+ if(url.pathname==='/api/records' && kind==='production_flow')return {success:true,events:flowFixtures?flowEvents:[],standards:[]};
+ if(url.pathname==='/api/stitchers')return {success:true,stitchers:[]};
  if(url.pathname==='/api/po-master')return {success:true,pos};
- if(url.pathname==='/api/allocations')return {success:true,allocations:[]};
+ if(url.pathname==='/api/allocations')return {success:true,allocations:flowFixtures?flowAllocations:[]};
  if(url.pathname==='/api/cmt-payments' && kind==='advance_ledger')return {success:true,activated_at:'2026-11-01',advances:[],recoveries:[],opening:[]};
  if(url.pathname==='/api/cmt-payments')return {success:true,payments:[]};
  if(url.pathname==='/api/cmt-rates')return {success:true,rates:url.searchParams.has('status')?rates.filter(r=>r.status===url.searchParams.get('status')):rates};
@@ -40,6 +44,13 @@ async function main(){
  await admin.getByRole('button',{name:'Clear workspace search'}).click();await admin.setViewportSize({width:1100,height:480});await admin.getByRole('tab',{name:'Change history'}).click();assert.ok(await admin.locator('.workspace-sidebar-scroll').evaluate(el=>el.scrollHeight>el.clientHeight));await bodyFits(admin);
  const mobile=await open('Admin','/controls#history',{width:390,height:844});await mobile.getByRole('heading',{name:'Change history',level:2}).waitFor();await mobile.getByRole('button',{name:'Open navigation',exact:true}).click();await mobile.getByRole('tab',{name:'Weekly payroll'}).click();await mobile.getByLabel('Week ending Saturday').fill('2026-11-14');await mobile.getByRole('searchbox',{name:'Search workspace'}).fill('Ada');const box=await mobile.locator('.workspace-search-results').boundingBox();assert.ok(box.x>=0 && box.x+box.width<=390);await mobile.keyboard.press('Escape');const clearMobile=mobile.getByRole('button',{name:'Clear workspace search'});if(await clearMobile.count()) await clearMobile.click();await bodyFits(mobile);await mobile.screenshot({path:'/tmp/prodflow-workspace/payroll-mobile.png',fullPage:true});
  const pp=await open('PP','/controls');await pp.getByRole('heading',{name:'PO set balance',exact:true}).waitFor();assert.equal(await pp.getByRole('tab',{name:'Weekly payroll'}).count(),0);assert.equal(await pp.getByRole('tab',{name:'Change history'}).count(),0);
- assert.deepEqual(errors,[]);console.log('PASS workspace navigation, keyboard search, 150-row PO and 300-row history filters, independent table/sidebar scrolling, preserved payroll fields and full-run totals, role visibility, desktop and mobile layout; no financial writes');
+ await admin.setViewportSize({width:1440,height:900});await admin.getByRole('tab',{name:'Exceptions',exact:true}).click();const issuePanel=admin.getByRole('region',{name:'Control exceptions'});assert.ok(await issuePanel.evaluate(el=>el.scrollHeight>el.clientHeight && el.clientHeight<=400));
+ flowFixtures=true;const flow=await open('CEO','/flow',{width:1440,height:1000});await flow.getByRole('heading',{name:'Metres per cut piece'}).waitFor();const yieldTable=flow.getByRole('region',{name:'Fabric yield'});await yieldTable.scrollIntoViewIfNeeded();
+ assert.ok(await yieldTable.evaluate(el=>el.scrollHeight>el.clientHeight && el.clientHeight<=400),'Fabric yield must scroll inside a bounded card');await yieldTable.evaluate(el=>el.scrollTop=1000);const header=await yieldTable.locator('th').first().boundingBox(),wrap=await yieldTable.boundingBox();assert.ok(Math.abs(header.y-wrap.y)<3,'Table heading stays visible while scrolling');
+ const aging=flow.getByRole('region',{name:'Open allocations'});assert.ok((await aging.locator('..').boundingBox()).height<400,'Short aging card must not stretch to match yield');
+ await flow.screenshot({path:'/tmp/prodflow-workspace/flow-panels-desktop.png',fullPage:false});
+ for(const region of await flow.locator('.executive-table-wrap').all())assert.ok((await region.boundingBox()).height<=402,'Every flow table has a height cap');
+ await flow.setViewportSize({width:390,height:844});await yieldTable.scrollIntoViewIfNeeded();assert.ok(await yieldTable.evaluate(el=>el.clientHeight<=360 && el.scrollWidth>el.clientWidth),'Mobile tables scroll vertically and horizontally');await flow.screenshot({path:'/tmp/prodflow-workspace/flow-panels-mobile.png',fullPage:false});
+ assert.deepEqual(errors,[]);console.log('PASS workspace navigation, keyboard search, 150-row PO and 300-row history filters, independent table/sidebar scrolling, preserved payroll fields and full-run totals, role visibility, desktop and mobile layout, bounded flow panels, pinned table headings and compact short cards; no financial writes');
 }
 main().catch(e=>{console.error(e);process.exitCode=1;}).finally(async()=>{if(browser)await browser.close();server.close();});

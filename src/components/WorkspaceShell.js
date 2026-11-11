@@ -1,5 +1,7 @@
 import React, {Children, isValidElement, useEffect, useId, useRef, useState} from 'react';
 import './WorkspaceShell.css';
+import './DashboardPanels.css';
+import {ProdFlowMark} from './ProdFlowLogo';
 
 export const matchesSearch = (query, ...values) => {
   const text=values.map(value=>typeof value==='object' ? JSON.stringify(value) : String(value ?? '')).join(' ').toLowerCase();
@@ -48,7 +50,7 @@ export default function WorkspaceShell({title,subtitle,children,query='',onQuery
   return <div className={`executive workspace-shell${embedded?' workspace-embedded':''}${collapsed?' workspace-collapsed':''}`}>
     {mobileOpen && <button className="workspace-scrim" aria-label="Close navigation" onClick={()=>setMobileOpen(false)}/>}
     <aside className={`workspace-sidebar${mobileOpen?' workspace-sidebar-open':''}`} aria-label="Workspace navigation">
-      <a className="workspace-brand" href={links[0]?.href || '/controls'}><span className="workspace-brand-mark">P<span>·</span></span><span className="workspace-label"><b>PRODFLOW</b><small>OPERATIONS WORKSPACE</small></span></a>
+      <a className="workspace-brand" href={links[0]?.href || '/controls'}><span className="workspace-brand-mark"><ProdFlowMark size={34}/></span><span className="workspace-label"><b>PRODFLOW</b><small>OPERATIONS WORKSPACE</small></span></a>
       <div className="workspace-sidebar-scroll">
         <div className="workspace-nav-caption workspace-label">{title}</div>
         <nav ref={navRef} role="tablist" aria-label="Workspace sections" aria-orientation="vertical" onKeyDown={navigateKeys}>

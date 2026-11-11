@@ -26,7 +26,7 @@ const ROLE_HOME = {
 
 function WorkspaceShortcuts() {
   const {pathname}=useLocation();
-  if(['/ceo','/controls'].includes(pathname))return null;
+  if(['/ceo','/controls','/flow'].includes(pathname))return null;
   return <><Link className="flow-shortcut" style={{bottom:80}} to="/controls">✓ Controls & payroll</Link><Link className="flow-shortcut" to="/flow">◆ Production flow</Link></>;
 }
 

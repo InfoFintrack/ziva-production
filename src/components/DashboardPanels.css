@@ -1,0 +1,45 @@
+/* Shared dashboard finish. Operational forms and financial rules are unchanged. */
+.production-dashboard { background:#080f1d; min-height:100dvh; }
+.production-dashboard .navbar { background:#0b1629; border-bottom:1px solid #253956; }
+.production-dashboard .main-content.executive { max-width:1600px; }
+.executive.workspace-shell { background:#080f1d; --workspace-border:#253650; }
+.workspace-shell .workspace-sidebar { background:#0b1425; }
+.workspace-shell .workspace-topbar,.workspace-shell .workspace-statusbar,.workspace-shell .workspace-notices { background:#0d192d; }
+.workspace-shell .workspace-search { background:#080f1e; }
+.workspace-shell .workspace-brand-mark { padding:0; background:none; border:0; width:34px; height:34px; flex-basis:34px; }
+.workspace-brand-mark svg { display:block; }
+.workspace-shell .workspace-search-results { background:#10213a; }
+.workspace-shell .workspace-nav-item.is-active { background:#182e50; }
+.workspace-shell .card,
+:is(.production-dashboard,.workspace-shell) .executive-panel { background:#0e1b30; border-color:#263b59; box-shadow:0 6px 22px #03091424; }
+:is(.production-dashboard,.workspace-shell) .executive-grid { align-items:start; }
+:is(.production-dashboard,.workspace-shell) .executive-kpi { background:linear-gradient(140deg,#132842,#0c192d); border-color:#2a405e; }
+:is(.production-dashboard,.workspace-shell) .executive-kpi-accent { background:linear-gradient(140deg,#1a365b,#102541); border-color:#426394; }
+.production-dashboard .executive-hero { background:radial-gradient(ellipse at 100% 0%,#213b623d,transparent 60%),#0d1b30; border-color:#2b4263; }
+.production-dashboard .executive-heading>select { width:auto; flex:0 1 360px; }
+/* Each long table owns its scroll area; a tall neighbour never stretches a short card. */
+:is(.production-dashboard,.workspace-shell) .executive-table-wrap,
+.workspace-shell .table-container {
+  max-height:min(400px,48dvh);
+  overflow:auto;
+  overscroll-behavior:contain;
+  scrollbar-gutter:stable;
+  scrollbar-width:thin;
+  scrollbar-color:#516b90 #0a1628;
+  border:1px solid #293e5b;
+  border-radius:9px;
+}
+:is(.production-dashboard,.workspace-shell) th { position:sticky; top:0; z-index:2; background:#172b48; }
+:is(.production-dashboard,.workspace-shell) .executive-table-wrap:focus-visible { outline:2px solid #89acff; outline-offset:3px; }
+:is(.production-dashboard,.workspace-shell) .executive-table-wrap::-webkit-scrollbar,
+.workspace-panel-list::-webkit-scrollbar { width:9px; height:9px; }
+:is(.production-dashboard,.workspace-shell) .executive-table-wrap::-webkit-scrollbar-thumb,
+.workspace-panel-list::-webkit-scrollbar-thumb { background:#516b90; border:2px solid #0a1628; border-radius:10px; }
+.workspace-panel-list { max-height:min(400px,48dvh); overflow:auto; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:#516b90 #0a1628; padding:4px 6px 4px 0; }
+.workspace-panel-list .flow-form { padding:14px 0; border-bottom:1px solid #293e5b; }
+.workspace-panel-list:focus-visible { outline:2px solid #89acff; outline-offset:3px; }
+@media(max-width:600px) {
+  :is(.production-dashboard,.workspace-shell) .executive-table-wrap,.workspace-shell .table-container,.workspace-panel-list { max-height:360px; max-height:min(360px,48dvh); }
+  .production-dashboard .executive-hero { padding:22px; }
+  .production-dashboard .executive-heading>select { width:100%; flex-basis:auto; }
+}
