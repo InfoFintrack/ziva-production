@@ -26,6 +26,42 @@
     {
       "source": "/flow",
       "destination": "/index.html"
+    },
+    {
+      "source": "/ceo",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/accounts",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/admin",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/admin/settings",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/issue",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/accept",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/stitching",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/supervisor",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/finishing",
+      "destination": "/index.html"
     }
   ]
 }

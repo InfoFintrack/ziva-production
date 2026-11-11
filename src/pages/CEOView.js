@@ -2,9 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { getCMTRates, approveCMTRate } from '../api';
-import ProdFlowLogo from '../components/ProdFlowLogo';
+import {WorkspacePane,matchesSearch} from '../components/WorkspaceShell';
 import ExecutiveDashboard from '../components/ExecutiveDashboard';
-import PoweredByFintrack from '../components/PoweredByFintrack';
 
 // ── Rate field definitions ────────────────────────────────────────────────────
 const ALL_RATE_KEYS = [
@@ -86,7 +85,6 @@ const FieldGrid = ({ children, cols = 2 }) => (
 
 // ── Main component ────────────────────────────────────────────────────────────
 function CEOView({ user, onLogout }) {
-  const [activeTab, setActiveTab] = useState('dashboard');
 
   const [pendingRates, setPendingRates] = useState([]);
   const [pendingLoading, setPendingLoading] = useState(false);
@@ -125,7 +123,7 @@ function CEOView({ user, onLogout }) {
   const loadAll = async () => {
     setAllLoading(true);
     try {
-      const res = await getCMTRates();
+      const res = await getCMTRates('?history=true');
       if (res.success) setAllRates(res.rates);
     } catch { /* silently fail */ }
     setAllLoading(false);
@@ -134,7 +132,7 @@ function CEOView({ user, onLogout }) {
   const filteredRates = allRates.filter(r => {
     if (!search.trim()) return true;
     const s = search.toLowerCase();
-    return r.po_number?.toLowerCase().includes(s) || r.submitted_by?.toLowerCase().includes(s);
+    return matchesSearch(s,r.po_number,r.submitted_by,r.status,r.version,r.color_design);
   });
 
   // ── Modal helpers ──────────────────────────────────────────────────────────
@@ -554,75 +552,14 @@ function CEOView({ user, onLogout }) {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="app-container">
-      <nav className="navbar">
-        <ProdFlowLogo height={32} />
-        <div className="user-info">
-          <span>Welcome, {user.name}</span>
-          <span className="role-badge">CEO</span>
-          <button className="btn btn-danger btn-small" onClick={onLogout}>
-            Logout
-          </button>
-        </div>
-      </nav>
-
-      <div className="main-content">
-
-        {/* TAB SWITCHER */}
-        <div style={{ display: 'flex', gap: '0', marginBottom: '24px', borderBottom: '1px solid #30363d' }}>
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            style={{
-              padding: '10px 24px', border: 'none', background: 'none', cursor: 'pointer',
-              fontSize: '14px', fontWeight: '600',
-              color: activeTab === 'dashboard' ? '#4a7cc9' : '#8b949e',
-              borderBottom: activeTab === 'dashboard' ? '3px solid #4a7cc9' : '3px solid transparent',
-              marginBottom: '-2px', transition: 'color 0.15s',
-            }}
-          >
-            Dashboard
-          </button>
-          <button
-            onClick={() => setActiveTab('pending')}
-            style={{
-              padding: '10px 24px', border: 'none', background: 'none', cursor: 'pointer',
-              fontSize: '14px', fontWeight: '600',
-              color: activeTab === 'pending' ? '#4a7cc9' : '#8b949e',
-              borderBottom: activeTab === 'pending' ? '3px solid #4a7cc9' : '3px solid transparent',
-              marginBottom: '-2px', transition: 'color 0.15s',
-            }}
-          >
-            Pending Rates
-            {pendingRates.length > 0 && (
-              <span style={{ background: '#f85149', color: 'white', borderRadius: '10px', fontSize: '11px', fontWeight: '700', padding: '1px 7px', marginLeft: '8px', verticalAlign: 'middle' }}>
-                {pendingRates.length}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab('all')}
-            style={{
-              padding: '10px 24px', border: 'none', background: 'none', cursor: 'pointer',
-              fontSize: '14px', fontWeight: '600',
-              color: activeTab === 'all' ? '#0f3460' : '#888',
-              borderBottom: activeTab === 'all' ? '3px solid #0f3460' : '3px solid transparent',
-              marginBottom: '-2px', transition: 'color 0.15s',
-            }}
-          >
-            All Rates
-          </button>
-        </div>
-
-        {activeTab === 'dashboard' && <ExecutiveDashboard />}
-
-        {/* ── TAB 1: PENDING RATES ──────────────────────────────────────── */}
-        {activeTab === 'pending' && (
-          <div className="card">
+    <><ExecutiveDashboard user={user} onLogout={onLogout} onWorkspaceSearch={setSearch}
+    extraSearchItems={allRates.map(r=>({id:'rate:'+r.id,pane:r.status==='Pending_CEO'?'pending-rates':'rate-history',label:r.po_number+' · v'+(r.version || 1),detail:r.status+' · '+(r.submitted_by || ''),keywords:[r.color_design,r.approved_by_ceo],onSelect:()=>setSearch(r.po_number)}))}
+    externalNotice={actionMessage && <div className={`alert alert-${actionMessage.type}`}>{actionMessage.text}</div>}
+    extraPanes={<>
+      <WorkspacePane id="pending-rates" label="Rate approvals" badge={pendingRates.length} description="Review the rates awaiting your approval. Approved versions remain permanently locked."><div className="card">
             <h3>Pending CEO Approval</h3>
 
-            {actionMessage && (
-              <div className={`alert alert-${actionMessage.type}`}>{actionMessage.text}</div>
-            )}
+
 
             {pendingLoading ? (
               <div className="loading"><div className="spinner"></div>Loading pending rates...</div>
@@ -641,7 +578,7 @@ function CEOView({ user, onLogout }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {pendingRates.map((r) => (
+                    {pendingRates.filter(r=>matchesSearch(search,r.po_number,r.submitted_by,r.status,r.color_design)).map((r) => (
                       <tr key={r.id} onClick={() => openModal(r, 'pending')} style={{ cursor: 'pointer' }}>
                         <td>{r.po_number}</td>
                         <td>{r.color_design || '—'}</td>
@@ -654,12 +591,8 @@ function CEOView({ user, onLogout }) {
                 </table>
               </div>
             )}
-          </div>
-        )}
-
-        {/* ── TAB 2: ALL RATES ──────────────────────────────────────────── */}
-        {activeTab === 'all' && (
-          <div className="card">
+          </div></WorkspacePane>
+      <WorkspacePane id="rate-history" label="Rate history" description="Find rate versions by PO, status or submitter and inspect their recorded approvals."><div className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
               <h3 style={{ margin: 0, borderBottom: 'none', padding: 0 }}>All CMT Rates</h3>
               <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -720,14 +653,9 @@ function CEOView({ user, onLogout }) {
                 </table>
               </div>
             )}
-          </div>
-        )}
-
-        <PoweredByFintrack />
-      </div>
-
-      {renderRateModal()}
-    </div>
+          </div></WorkspacePane>
+    </>}
+  />{renderRateModal()}</>
   );
 }
 

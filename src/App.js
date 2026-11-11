@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import Login from './pages/Login';
 import PPView from './pages/PPView';
 import CuttingView from './pages/CuttingView';
@@ -23,6 +23,12 @@ const ROLE_HOME = {
   CEO:        '/ceo',
   Admin:      '/admin',
 };
+
+function WorkspaceShortcuts() {
+  const {pathname}=useLocation();
+  if(['/ceo','/controls'].includes(pathname))return null;
+  return <><Link className="flow-shortcut" style={{bottom:80}} to="/controls">✓ Controls & payroll</Link><Link className="flow-shortcut" to="/flow">◆ Production flow</Link></>;
+}
 
 function App() {
   const [user, setUser] = useState(null);
@@ -106,11 +112,10 @@ function App() {
             ? <AdminSettings user={user} onLogout={handleLogout} />
             : <Navigate to={home} />
         } />
-        <Route path="/controls" element={<ControlCenter user={user} home={home} />} />
+        <Route path="/controls" element={<ControlCenter user={user} home={home} onLogout={handleLogout} />} />
         <Route path="/flow" element={<ProductionFlowView user={user} onLogout={handleLogout} home={home} />} />
       </Routes>
-      <Link className="flow-shortcut" style={{bottom:80}} to="/controls">✓ Controls & payroll</Link>
-      <Link className="flow-shortcut" to="/flow">◆ Production flow</Link>
+      <WorkspaceShortcuts />
     </Router>
   );
 }
