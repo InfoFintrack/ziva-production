@@ -28,3 +28,10 @@ test('a valid cut records its worker and quantity', async () => {
   expect(client.query.mock.calls.find(([sql]) => sql.includes('INSERT INTO production_stage_events'))[1]).toContain('0001');
   expect(client.query.mock.calls.some(([sql]) => sql === 'COMMIT')).toBe(true);
 });
+
+test.each(['Cut', 'QC_Packed', 'Dispatched'])('%s still rejects fractional pieces on the server', async type => {
+  const { pool } = db();
+  const result = await recordProductionFlow(pool, { role: 'Admin', name: 'Admin' }, { type, po_number: 'PO-1', component: 'shirt', quantity: 10.01, worker_code: '0001' });
+  expect(result).toMatchObject({ status: 400, body: { message: 'Piece quantities must be whole numbers.' } });
+  expect(pool.connect).not.toHaveBeenCalled();
+});
