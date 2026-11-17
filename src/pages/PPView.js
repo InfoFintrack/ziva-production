@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
+import {COLOUR_LIST,isKidsThreePiece,garmentTypesWithKids,normalizeColour,isValidColour,validateKidsThreePiece} from '../poRules';
 import ProdFlowLogo from '../components/ProdFlowLogo';
 import PoweredByFintrack from '../components/PoweredByFintrack';
 import {
@@ -10,14 +11,7 @@ import {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-export const COLOUR_LIST = [
-  'Black','White','Red','Maroon','Navy Blue','Teal','Green','Mustard','Peach','Beige',
-  'Brown','Purple','Pink','Cream','Off White','Burgundy','Lime Yellow','Sea Green','Blue',
-  'Yellow','Orange','Grey','Silver','Gold','Ferozi','Skin','Rust','Mint','Ivory','Coral',
-  'Black Karundi','Green Karundi','Brown Karundi','Cream Karundi','Mustard Karundi',
-  'Burgundy Karundi','Purple Karundi','Pink Karundi','Blue Karundi','Red Karundi',
-  'Maroon Karundi','Navy Karundi',
-];
+export { COLOUR_LIST } from '../poRules';
 
 const FABRIC_TYPES = [
   'Lawn','Khaddar','Cotton','Jacquard','Velvet','Raw Silk','Chiffon','Georgette',
@@ -68,7 +62,7 @@ const getEmptyPOForm = () => ({
 // ── ColourInput component ────────────────────────────────────────────────────
 
 export const ColourInput = React.forwardRef(function ColourInput(
-  { value, onChange, onValidate, placeholder, required, disabled },
+  { value, onChange, onValidate, placeholder, required, disabled, label },
   ref
 ) {
   const [suggestions, setSuggestions] = useState([]);
@@ -77,14 +71,13 @@ export const ColourInput = React.forwardRef(function ColourInput(
 
   React.useImperativeHandle(ref, () => ({
     validate: () => {
-      if (!value && !required) {
+      if (!String(value || '').trim() && !required) {
         setError('');
         if (onValidate) onValidate(true);
         return true;
       }
-      const inList = COLOUR_LIST.includes(value);
-      const valid  = inList || value.length >= 4;
-      setError(valid ? '' : 'Please enter full colour name (min 4 characters)');
+      const valid = isValidColour(value);
+      setError(valid ? '' : 'Enter a full colour name, e.g. Red or Navy Blue (at least 3 characters).');
       if (onValidate) onValidate(valid);
       return valid;
     },
@@ -94,6 +87,7 @@ export const ColourInput = React.forwardRef(function ColourInput(
     return (
       <input
         type="text"
+        aria-label={label}
         value={value}
         disabled
         className="auto-field"
@@ -125,20 +119,19 @@ export const ColourInput = React.forwardRef(function ColourInput(
   };
 
   const handleBlur = () => {
-    setTimeout(() => {
-      setShowDropdown(false);
-      if (!value && !required) { setError(''); return; }
-      const inList = COLOUR_LIST.includes(value);
-      const valid  = inList || value.length >= 4;
-      setError(valid ? '' : 'Please enter full colour name (min 4 characters)');
-      if (onValidate) onValidate(valid);
-    }, 150);
+    setShowDropdown(false);
+    const normalized = normalizeColour(value);
+    if (normalized !== value) onChange(normalized);
+    const valid = (!normalized && !required) || isValidColour(normalized);
+    setError(valid ? '' : 'Enter a full colour name, e.g. Red or Navy Blue (at least 3 characters).');
+    if (onValidate) onValidate(valid);
   };
 
   return (
     <div style={{ position: 'relative' }}>
       <input
         type="text"
+        aria-label={label}
         value={value}
         onChange={handleChange}
         onBlur={handleBlur}
@@ -154,7 +147,7 @@ export const ColourInput = React.forwardRef(function ColourInput(
           boxSizing: 'border-box',
           outline: 'none',
         }}
-        onFocus={e => { e.target.style.borderColor = error ? '#dc2626' : '#0f3460'; e.target.style.background = 'white'; }}
+        onFocus={e => { e.target.style.borderColor = error ? '#dc2626' : '#0f3460'; e.target.style.background = '#101926'; }}
       />
       {showDropdown && (
         <div style={{
@@ -166,10 +159,10 @@ export const ColourInput = React.forwardRef(function ColourInput(
           {suggestions.map(s => (
             <div
               key={s}
-              onMouseDown={() => handleSelect(s)}
+              onMouseDown={event => { event.preventDefault(); handleSelect(s); }}
               style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '14px', borderBottom: '1px solid #30363d' }}
-              onMouseEnter={e => { e.currentTarget.style.background = '#f0f2f5'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'white'; }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#223250'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = '#161b22'; }}
             >
               {s}
             </div>
@@ -271,7 +264,7 @@ function PPView({ user, onLogout }) {
       }
       if (dropdownsRes.success) {
         setDropdowns({
-          garmentTypes:    dropdownsRes.garmentTypes,
+          garmentTypes:    garmentTypesWithKids(dropdownsRes.garmentTypes || []),
           units:           dropdownsRes.units,
           receivingVendors:dropdownsRes.receivingVendors,
           accessoryTypes:  dropdownsRes.accessoryTypes || [],
@@ -650,8 +643,9 @@ function PPView({ user, onLogout }) {
       setPOMessage({ type: 'error', text: 'Garment Type is required.' }); return;
     }
 
-    // Shirt and Trouser are required. Dupatta is optional, but must be complete if used.
-    const isKids = poForm.garment_type === 'Kids';
+    // Kids 3 Piece requires all three garments; other orders may leave Dupatta blank.
+    const categoryError = validateKidsThreePiece(poForm);
+    if (categoryError) { setPOMessage({type:'error',text:categoryError}); return; }
     const components = [
       { key: 'shirt',   label: 'Shirt' },
       { key: 'trouser', label: 'Trouser' },
@@ -667,7 +661,7 @@ function PPView({ user, onLogout }) {
         setPOMessage({ type: 'error', text: `${label} Quantity is required.` }); return;
       }
     }
-    if (!isKids && hasComponentDetails(poForm, 'dupatta')) {
+    if (hasComponentDetails(poForm, 'dupatta')) {
       if (!poForm.dupatta_colour.trim()) {
         setPOMessage({ type: 'error', text: 'Dupatta Colour is required when Dupatta is added.' }); return;
       }
@@ -682,7 +676,7 @@ function PPView({ user, onLogout }) {
     // Validate colour inputs
     const shirtOk   = shirtColourRef.current?.validate()   ?? true;
     const trouserOk = trouserColourRef.current?.validate() ?? true;
-    const dupattaOk = isKids || !hasComponentDetails(poForm, 'dupatta') ? true : (dupattaColourRef.current?.validate() ?? true);
+    const dupattaOk = !hasComponentDetails(poForm, 'dupatta') ? true : (dupattaColourRef.current?.validate() ?? true);
     if (!shirtOk || !trouserOk || !dupattaOk) {
       setPOMessage({ type: 'error', text: 'Please fix all colour fields.' }); return;
     }
@@ -699,13 +693,13 @@ function PPView({ user, onLogout }) {
         po_date:        poForm.po_date         || undefined,
         delivery_date:  poForm.delivery_date   || undefined,
         remarks:        poForm.remarks         || undefined,
-        shirt_colour:   poForm.shirt_colour    || undefined,
+        shirt_colour:   normalizeColour(poForm.shirt_colour)    || undefined,
         shirt_fabric:   poForm.shirt_fabric    || undefined,
         shirt_qty:      poForm.shirt_qty ? Number(poForm.shirt_qty) : undefined,
-        trouser_colour: poForm.trouser_colour  || undefined,
+        trouser_colour: normalizeColour(poForm.trouser_colour)  || undefined,
         trouser_fabric: poForm.trouser_fabric  || undefined,
         trouser_qty:    poForm.trouser_qty ? Number(poForm.trouser_qty) : undefined,
-        dupatta_colour: poForm.dupatta_colour  || undefined,
+        dupatta_colour: normalizeColour(poForm.dupatta_colour)  || undefined,
         dupatta_fabric: poForm.dupatta_fabric  || undefined,
         dupatta_qty:    poForm.dupatta_qty ? Number(poForm.dupatta_qty) : undefined,
       });
@@ -865,8 +859,9 @@ function PPView({ user, onLogout }) {
       return;
     }
 
-    const isEditKids = editPOForm.garment_type === 'Kids';
-    if (!isEditKids && hasComponentDetails(editPOForm, 'dupatta')) {
+    const categoryError = validateKidsThreePiece(editPOForm);
+    if (categoryError) { setEditPOMessage({type:'error',text:categoryError}); return; }
+    if (hasComponentDetails(editPOForm, 'dupatta')) {
       if (!editPOForm.dupatta_colour.trim()) {
         setEditPOMessage({ type: 'error', text: 'Dupatta Colour is required when Dupatta is added.' }); return;
       }
@@ -879,7 +874,7 @@ function PPView({ user, onLogout }) {
     }
     const shirtOk   = editShirtColourRef.current?.validate()   ?? true;
     const trouserOk = editTrouserColourRef.current?.validate() ?? true;
-    const dupattaOk = isEditKids || !hasComponentDetails(editPOForm, 'dupatta') ? true : (editDupattaColourRef.current?.validate() ?? true);
+    const dupattaOk = !hasComponentDetails(editPOForm, 'dupatta') ? true : (editDupattaColourRef.current?.validate() ?? true);
     if (!shirtOk || !trouserOk || !dupattaOk) {
       setEditPOMessage({ type: 'error', text: 'Please fix all colour fields.' }); return;
     }
@@ -901,13 +896,13 @@ function PPView({ user, onLogout }) {
         po_date:          editPOForm.po_date         || null,
         delivery_date:    editPOForm.delivery_date   || null,
         remarks:          editPOForm.remarks         || null,
-        shirt_colour:     editPOForm.shirt_colour    || null,
+        shirt_colour:     normalizeColour(editPOForm.shirt_colour)    || null,
         shirt_fabric:     editPOForm.shirt_fabric    || null,
         shirt_qty:        editPOForm.shirt_qty       ? Number(editPOForm.shirt_qty)   : null,
-        trouser_colour:   editPOForm.trouser_colour  || null,
+        trouser_colour:   normalizeColour(editPOForm.trouser_colour)  || null,
         trouser_fabric:   editPOForm.trouser_fabric  || null,
         trouser_qty:      editPOForm.trouser_qty     ? Number(editPOForm.trouser_qty) : null,
-        dupatta_colour:   editPOForm.dupatta_colour  || null,
+        dupatta_colour:   normalizeColour(editPOForm.dupatta_colour)  || null,
         dupatta_fabric:   editPOForm.dupatta_fabric  || null,
         dupatta_qty:      editPOForm.dupatta_qty     ? Number(editPOForm.dupatta_qty) : null,
       });
@@ -962,6 +957,7 @@ function PPView({ user, onLogout }) {
               <label>Colour{optional ? '' : ' *'}</label>
               <ColourInput
                 ref={colourRef}
+                label={`${compKey} colour`}
                 value={poForm[`${compKey}_colour`]}
                 onChange={(v) => handlePOColourChange(compKey, v)}
                 placeholder="e.g. Navy Blue"
@@ -972,6 +968,8 @@ function PPView({ user, onLogout }) {
               <label>Fabric Type{optional ? '' : ' *'}</label>
               <select
                 name={`${compKey}_fabric`}
+                aria-label={`${compKey} fabric type`}
+                required={!optional}
                 value={poForm[`${compKey}_fabric`]}
                 onChange={handlePOChange}
               >
@@ -984,6 +982,8 @@ function PPView({ user, onLogout }) {
               <input
                 type="number"
                 name={`${compKey}_qty`}
+                aria-label={`${compKey} quantity`}
+                required={!optional}
                 value={poForm[`${compKey}_qty`]}
                 onChange={handlePOChange}
                 onWheel={e => e.target.blur()}
@@ -1007,7 +1007,7 @@ function PPView({ user, onLogout }) {
     </div>
   );
 
-  const editComponentCard = (compKey, compLabel, colourRef) => (
+  const editComponentCard = (compKey, compLabel, colourRef, optional = false) => (
     <div key={compKey} style={{ border: '1px solid #30363d', borderRadius: '8px', marginBottom: '12px', overflow: 'hidden' }}>
       <div
         style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#161b22', cursor: 'pointer' }}
@@ -1020,18 +1020,22 @@ function PPView({ user, onLogout }) {
         <div style={{ padding: '16px' }}>
           <div className="form-grid">
             <div className="form-group">
-              <label>Colour</label>
+              <label>Colour{optional ? '' : ' *'}</label>
               <ColourInput
                 ref={colourRef}
+                label={`${compKey} colour`}
                 value={editPOForm[`${compKey}_colour`] || ''}
                 onChange={(v) => handleEditPOColourChange(compKey, v)}
                 placeholder="e.g. Navy Blue"
+                required={!optional}
               />
             </div>
             <div className="form-group">
-              <label>Fabric Type</label>
+              <label>Fabric Type{optional ? '' : ' *'}</label>
               <select
                 name={`${compKey}_fabric`}
+                aria-label={`${compKey} fabric type`}
+                required={!optional}
                 value={editPOForm[`${compKey}_fabric`] || ''}
                 onChange={handleEditPOChange}
               >
@@ -1040,10 +1044,12 @@ function PPView({ user, onLogout }) {
               </select>
             </div>
             <div className="form-group">
-              <label>Quantity (Pieces)</label>
+              <label>Quantity (Pieces){optional ? '' : ' *'}</label>
               <input
                 type="number"
                 name={`${compKey}_qty`}
+                aria-label={`${compKey} quantity`}
+                required={!optional}
                 value={editPOForm[`${compKey}_qty`] || ''}
                 onChange={handleEditPOChange}
                 onWheel={e => e.target.blur()}
@@ -1526,13 +1532,7 @@ function PPView({ user, onLogout }) {
                 </div>
                 {componentCard('shirt',   'Shirt',   shirtColourRef)}
                 {componentCard('trouser', 'Trouser', trouserColourRef)}
-                {poForm.garment_type === 'Kids' ? (
-                  <div style={{ padding: '12px 16px', background: '#0d2818', border: '1px solid #bbf7d0', borderRadius: '8px', marginBottom: '12px' }}>
-                    <p style={{ margin: 0, fontSize: '13px', color: '#3fb950', fontWeight: '600' }}>
-                      ℹ Dupatta not applicable for Kids garments — skipped.
-                    </p>
-                  </div>
-                ) : componentCard('dupatta', 'Dupatta (Optional)', dupattaColourRef, true)}
+                {componentCard('dupatta', isKidsThreePiece(poForm.garment_type) ? 'Dupatta' : 'Dupatta (Optional)', dupattaColourRef, !isKidsThreePiece(poForm.garment_type))}
 
                 {/* Section C: Accessories */}
                 <div style={{ marginTop: '24px', marginBottom: '8px', paddingBottom: '8px', borderBottom: '1px solid #30363d' }}>
@@ -1736,13 +1736,7 @@ function PPView({ user, onLogout }) {
               </div>
               {editComponentCard('shirt',   'Shirt',   editShirtColourRef)}
               {editComponentCard('trouser', 'Trouser', editTrouserColourRef)}
-              {editPOForm.garment_type === 'Kids' ? (
-                <div style={{ padding: '12px 16px', background: '#0d2818', border: '1px solid #bbf7d0', borderRadius: '8px', marginBottom: '12px' }}>
-                  <p style={{ margin: 0, fontSize: '13px', color: '#3fb950', fontWeight: '600' }}>
-                    ℹ Dupatta not applicable for Kids garments — skipped.
-                  </p>
-                </div>
-              ) : editComponentCard('dupatta', 'Dupatta (Optional)', editDupattaColourRef)}
+              {editComponentCard('dupatta', isKidsThreePiece(editPOForm.garment_type) ? 'Dupatta' : 'Dupatta (Optional)', editDupattaColourRef, !isKidsThreePiece(editPOForm.garment_type))}
 
               {/* Section C: Accessories */}
               <div style={{ marginTop: '24px', marginBottom: '8px', paddingBottom: '8px', borderBottom: '1px solid #30363d' }}>

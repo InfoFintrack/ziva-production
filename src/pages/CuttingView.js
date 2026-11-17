@@ -489,7 +489,7 @@ function CuttingView({ user, onLogout }) {
     if (!colorDesignLocked && cmtForm.color_design && cmtColourRef.current) {
       const colourValid = cmtColourRef.current.validate();
       if (!colourValid) {
-        setCMTMessage({ type: 'error', text: 'Please enter a valid colour/design name (min 4 characters).' });
+        setCMTMessage({ type: 'error', text: 'Please enter a full colour/design name, e.g. Red or Navy Blue (at least 3 characters).' });
         return;
       }
     }

@@ -1,3 +1,4 @@
+const { garmentTypesWithKids } = require('../src/poRules');
 const { getPool } = require('./_lib/db');
 const { authenticateToken } = require('./_lib/auth');
 
@@ -26,7 +27,7 @@ export default async function handler(req, res) {
       const group = (cat) => rows.filter((r) => r.category === cat).map((r) => r.value);
       return res.json({
         success:          true,
-        garmentTypes:     group('garment_type'),
+        garmentTypes:     garmentTypesWithKids(group('garment_type')),
         units:            group('unit'),
         fabricConditions: group('fabric_condition'),
         receivingVendors: group('receiving_vendor'),

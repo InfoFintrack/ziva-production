@@ -1,3 +1,4 @@
+const { validateKidsThreePiece } = require('../src/poRules');
 const { auditedQuery } = require('./_lib/auditedQuery');
 const { getPool } = require('./_lib/db');
 const { authenticateToken } = require('./_lib/auth');
@@ -159,6 +160,9 @@ export default async function handler(req, res) {
       return res.json({ success: false, message: 'Collection Name and Article Name are required. Use TBD if not decided yet.' });
     }
 
+    const categoryError = validateKidsThreePiece(req.body);
+    if (categoryError) return res.status(400).json({success:false,message:categoryError});
+
     try {
       const { rows: existing } = await pool.query(
         `SELECT id FROM po_master WHERE po_number = $1`,
@@ -284,6 +288,8 @@ export default async function handler(req, res) {
       if (!collection_name || !collection_name.trim() || !article_name || !article_name.trim()) {
         return res.json({ success: false, message: 'Collection Name and Article Name are required. Use TBD if not decided yet.' });
       }
+      const categoryError = validateKidsThreePiece(req.body);
+      if (categoryError) return res.status(400).json({success:false,message:categoryError});
       try {
         const result = await auditedQuery(pool, user.name,
         `UPDATE po_master SET
